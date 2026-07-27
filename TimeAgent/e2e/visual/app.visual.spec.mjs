@@ -87,6 +87,28 @@ for (const screen of screens) {
   });
 }
 
+test('홈 일정 추가 버튼이 내비게이션 위에 고정됨', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('좋은 오후예요, 서연님', { exact: true }).waitFor({ state: 'visible' });
+  const floatingAction = page.getByRole('button', { name: '새 일정 추가' });
+  const homeTab = page.getByRole('tab', { name: '홈' });
+  const before = await floatingAction.boundingBox();
+  const tab = await homeTab.boundingBox();
+
+  expect(before).not.toBeNull();
+  expect(tab).not.toBeNull();
+  expect(before.y + before.height, '일정 추가 버튼 하단이 내비게이션 탭 위에 있어야 합니다').toBeLessThanOrEqual(tab.y - 12);
+
+  await page.evaluate(() => {
+    for (const element of document.querySelectorAll('*')) {
+      if (element.scrollHeight > element.clientHeight) element.scrollTop = element.scrollHeight;
+    }
+  });
+  const after = await floatingAction.boundingBox();
+  expect(after).not.toBeNull();
+  expect(after.y).toBeCloseTo(before.y, 0);
+});
+
 test('progress-normal 화면', async ({ page }) => {
   await page.goto('/progress');
   await page.getByText('정시 도착 가능', { exact: true }).waitFor({ state: 'visible' });

@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Header, Screen, SectionTitle, StatusPill, type } from '@/components/app-ui';
@@ -11,9 +12,11 @@ import { color, radius, space } from '@/constants/design';
 import { demoSchedule } from '@/data/demo';
 import { useSchedule } from '@/state/schedule-context';
 import { hasCompletedOnboarding } from '@/lib/onboarding';
+import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
 
 export default function HomeScreen() {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const insets = useSafeAreaInsets();
   const { activePlan, activeSchedule, timeline, delayMinutes, startProgress } = useSchedule();
   const schedule = activeSchedule ?? demoSchedule;
   const prepStart = activePlan?.prepStart ?? demoSchedule.prepStart;
@@ -65,8 +68,16 @@ export default function HomeScreen() {
         <SectionTitle action={<Pressable onPress={() => router.push('/plan')}><Text style={styles.link}>전체 보기</Text></Pressable>}>오늘의 준비 계획</SectionTitle>
         <Card><Timeline steps={timeline.slice(0, 4)} compact /></Card>
 
-        <Pressable accessibilityRole="button" accessibilityLabel="새 일정 추가" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} style={styles.fab}><AppIcon name="plus" size={26} iconColor={color.surface} strokeWidth={2.5} /></Pressable>
       </Screen>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="새 일정 추가"
+        accessibilityHint="새 일정 등록 화면으로 이동합니다"
+        onPress={() => router.push({ pathname: '/create', params: { new: '1' } })}
+        style={[styles.fab, { bottom: getHomeFloatingActionBottom(insets.bottom) }]}
+      >
+        <AppIcon name="plus" size={26} iconColor={color.surface} strokeWidth={2.5} />
+      </Pressable>
       <BottomNav />
     </View>
   );
@@ -86,5 +97,5 @@ const styles = StyleSheet.create({
   coachIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.cyan },
   coachTitle: { fontSize: 14, color: color.deepBlue, fontWeight: '900', marginBottom: 3 },
   link: { color: color.deepBlue, fontSize: 14, fontWeight: '800' },
-  fab: { position: 'absolute', right: 22, bottom: 88, width: 56, height: 56, borderRadius: radius.pill, backgroundColor: color.deepBlue, alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 12px rgba(0,119,182,0.25)', elevation: 5 },
+  fab: { position: 'absolute', right: 22, zIndex: 10, width: 56, height: 56, borderRadius: radius.pill, backgroundColor: color.deepBlue, alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 12px rgba(0,119,182,0.25)', elevation: 8 },
 });
