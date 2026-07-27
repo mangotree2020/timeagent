@@ -118,6 +118,7 @@ adb shell am start -a android.intent.action.VIEW -d ontime:/// com.ontime.app
 24. 앱을 백그라운드로 보내거나 화면을 끈 뒤 새 위치 event에서 마지막 갱신 시각과 음성 전달 상태가 바뀌는지 확인한다.
 25. 백그라운드 TTS 실패 시 동일 행동·ETA·거리가 OS 알림으로 전달되는지 확인한다.
 26. `화면 꺼짐 안내 끄기`와 목적지 도착에서 foreground service, task 등록, `@on-time/background-journey` 저장값이 모두 제거되는지 확인한다.
+27. 새 일정 1단계에서 `음성으로 일정 만들기`를 열고 사전 설명→마이크 녹음→AI 확인 질문→변경 비교를 확인한 뒤, `이 일정에 적용` 전에는 초안이 유지되고 적용 후에만 등록 화면 값이 바뀌는지 확인한다. 마이크 거부와 네트워크 오류에서는 직접 입력·재시도·수동 등록 경로를 확인한다.
 
 ## Android ARM64 개발 APK
 

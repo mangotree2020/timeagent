@@ -69,7 +69,16 @@
             ]
           }
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "ON:TIME이 말한 약속 내용을 인식해 일정으로 제안하도록 마이크 사용을 허용해 주세요.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

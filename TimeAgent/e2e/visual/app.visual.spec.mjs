@@ -52,6 +52,7 @@ test.beforeEach(async ({ page }) => {
 const screens = [
   { id: 'home', path: '/', ready: '좋은 오후예요, 서연님' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
+  { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '현재 초안과 달라지는 내용' },
   { id: 'plan', path: '/plan', ready: '준비 계획이 완성됐어요' },
   { id: 'plan-b', path: '/plan-b', ready: '플랜 B' },
   { id: 'journey-fallback', path: '/journey', ready: '연결 상태' },

@@ -1,5 +1,7 @@
 # 지도·경로 연동
 
+음성 일정 AI 연동은 [Client Secret 설정 가이드](CLIENT_SECRET_SETUP.md)의 `assistant` Edge Function 경계를 따른다. 앱은 최대 60초 오디오 또는 직접 입력 텍스트와 현재 초안·최근 8개 대화만 전송한다. 서버는 `gpt-4o-transcribe`로 한국어 음성을 전사하고 Responses API의 구조화된 출력으로 `gpt-5.6-sol` 일정 제안을 반환한다. 원본 오디오와 대화는 서버에 저장하지 않으며 `store: false`로 요청한다. 앱은 제안을 자동 반영하지 않고 사용자의 `이 일정에 적용` 이후에만 초안을 변경한다.
+
 ## 확정 공급자
 
 | 기능 | 공급자 | 책임 |

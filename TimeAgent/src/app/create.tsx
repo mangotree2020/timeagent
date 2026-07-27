@@ -43,6 +43,7 @@ export default function CreateScreen() {
       {step === 1 ? <TransportForm draft={draft} onChange={updateDraft} /> : null}
       {step === 2 ? <RoutineForm draft={draft} onChange={updateDraft} /> : null}
 
+      {step === 0 ? <Button label="음성으로 일정 만들기" variant="secondary" accessibilityHint="AI가 약속 내용을 듣고 일정 변경안을 제안합니다" onPress={() => router.push('/voice-schedule')} /> : null}
       <View style={styles.actions}>
         {step > 0 ? <Button label="이전" variant="secondary" onPress={() => setDraftStep((step - 1) as 0 | 1)} /> : null}
         <View style={{ flex: 1 }}><Button label={step === 2 ? 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : setDraftStep((step + 1) as 1 | 2)} /></View>
