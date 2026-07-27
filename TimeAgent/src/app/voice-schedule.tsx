@@ -233,29 +233,14 @@ export default function VoiceScheduleScreen() {
 }
 
 async function recordingToInput(uri: string): Promise<VoiceScheduleInput> {
+  const file = new File(uri);
   try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    const base64 = await blobToBase64(blob);
-    const mimeType = blob.type.startsWith('audio/') ? blob.type : uri.endsWith('.webm') ? 'audio/webm' : 'audio/mp4';
+    const base64 = await file.base64();
+    const mimeType = file.type.startsWith('audio/') ? file.type : uri.endsWith('.webm') ? 'audio/webm' : 'audio/mp4';
     return { kind: 'audio', base64, mimeType };
   } finally {
-    try { new File(uri).delete(); } catch { /* The OS may already have cleared the cache entry. */ }
+    try { file.delete(); } catch { /* The OS may already have cleared the cache entry. */ }
   }
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('recording read failed'));
-    reader.onload = () => {
-      const result = String(reader.result ?? '');
-      const comma = result.indexOf(',');
-      if (comma < 0) reject(new Error('recording encoding failed'));
-      else resolve(result.slice(comma + 1));
-    };
-    reader.readAsDataURL(blob);
-  });
 }
 
 const styles = StyleSheet.create({
