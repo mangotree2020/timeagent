@@ -139,3 +139,23 @@ test('온보딩 키보드 포커스와 실행', async ({ page }) => {
   await page.keyboard.press('Space');
   await expect(page.getByText('현재 속도에 맞춰 계획을 다시 맞춰요', { exact: true })).toBeVisible();
 });
+
+test('Journey 핵심 정보와 주 CTA가 지도보다 먼저 탐색된다', async ({ page }) => {
+  await page.goto('/journey?e2eState=permission-denied&e2eScreenReader=1');
+  await page.getByText('화면 읽기 사용', { exact: true }).waitFor({ state: 'visible' });
+
+  const positions = await Promise.all([
+    page.getByText('도착까지', { exact: true }).boundingBox(),
+    page.getByText('다음 행동', { exact: true }).boundingBox(),
+    page.getByRole('button', { name: '목적지 도착 확인' }).boundingBox(),
+    page.getByLabel('지도 텍스트 대체 화면').boundingBox(),
+  ]);
+  const [status, nextAction, primaryAction, map] = positions.map((position) => {
+    expect(position).not.toBeNull();
+    return position;
+  });
+
+  expect(status.y).toBeLessThan(nextAction.y);
+  expect(nextAction.y).toBeLessThan(primaryAction.y);
+  expect(primaryAction.y).toBeLessThan(map.y);
+});

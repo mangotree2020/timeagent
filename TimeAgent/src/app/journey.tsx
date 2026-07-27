@@ -223,12 +223,14 @@ export default function JourneyScreen() {
 
       {journey.status !== 'ready' ? <Card style={styles.fallbackCard}><StatusPill label="연결 상태" tone={statusTone} /><Text style={type.body}>{journey.message}</Text><Button label={loading ? '다시 확인 중…' : '위치·경로 다시 확인'} variant="secondary" disabled={loading} onPress={() => void refreshJourney()} /></Card> : null}
 
-      <JourneyMap route={journey.route} location={journey.location} destinationName={schedule.destination} />
-
       <Card style={styles.nextCard}>
         <View style={styles.nextIcon}><AppIcon name="walk" size={24} /></View>
         <View style={{ flex: 1 }}><Text style={styles.nextLabel}>다음 행동</Text><Text accessibilityLiveRegion="polite" style={type.heading}>{journey.nextManeuver?.instruction ?? '목적지 방향으로 이동하세요.'}</Text><Text style={styles.updated}>{journey.message}</Text></View>
       </Card>
+      <Button label="목적지 도착 확인" onPress={() => void confirmArrival()} />
+
+      <JourneyMap route={journey.route} location={journey.location} destinationName={schedule.destination} />
+
       <Card style={styles.backgroundCard}>
         <View style={styles.backgroundHeader}><View style={styles.backgroundIcon}><AppIcon name="navigation" size={22} /></View><View style={{ flex: 1 }}><Text style={type.heading}>화면이 꺼져도 이동 안내</Text><Text style={type.bodyMuted}>사용자가 켠 동안만 25m 또는 15초 간격으로 위치를 확인하고, 새 안내 지점에서 음성을 재생합니다.</Text></View><StatusPill label={backgroundStatusLabel(backgroundStatus)} tone={backgroundStatusTone(backgroundStatus)} /></View>
         <Text accessibilityLiveRegion="polite" style={styles.backgroundDetail}>{backgroundStatusDescription(backgroundStatus)}</Text>
@@ -242,7 +244,6 @@ export default function JourneyScreen() {
         />
         <Text style={styles.privacy}>위치 기록은 이 기기의 진행 세션에만 저장하고 안내를 끄면 즉시 삭제합니다. 백그라운드 TTS가 실패하면 같은 내용을 알림으로 전달합니다.</Text>
       </Card>
-      <Button label="목적지 도착 확인" onPress={() => void confirmArrival()} />
       <Text style={styles.disclaimer}>현위치는 기기 위치 권한으로, 도보 경로·시간·거리는 TMAP 연동으로 갱신됩니다. 통신 실패 시 마지막 위치와 직선 임시 경로를 유지합니다.</Text>
     </Screen>
   );
