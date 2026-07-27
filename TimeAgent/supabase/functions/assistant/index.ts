@@ -33,6 +33,7 @@ Deno.serve(async (request) => {
       draft: body.draft,
       history: body.history.slice(-MAX_HISTORY),
       transcript,
+      clientContext: body.clientContext,
     });
     return jsonResponse({ transcript, ...result });
   } catch (error) {
@@ -50,6 +51,7 @@ async function transcribe(input: Extract<Input, { kind: "audio" }>, apiKey: stri
   form.append("file", new Blob([bytes], { type: input.mimeType }), `schedule.${extension}`);
   form.append("model", "gpt-4o-transcribe");
   form.append("language", "ko");
+  form.append("prompt", "한국어 약속 일정입니다. 날짜, 시각, 장소, 이동수단과 준비 행동을 정확히 받아쓰세요.");
   const response = await openAIRequest(`${OPENAI_BASE_URL}/audio/transcriptions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -60,12 +62,13 @@ async function transcribe(input: Extract<Input, { kind: "audio" }>, apiKey: stri
   return payload.text.trim().slice(0, 2_000);
 }
 
-async function completeSchedule({ apiKey, conversationId, draft, history, transcript }: {
+async function completeSchedule({ apiKey, conversationId, draft, history, transcript, clientContext }: {
   apiKey: string;
   conversationId: string;
   draft: Record<string, unknown>;
   history: Array<{ role: "user" | "assistant"; text: string }>;
   transcript: string;
+  clientContext: { nowIso: string; timezone: string };
 }) {
   const model = Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-sol";
   const response = await openAIRequest(`${OPENAI_BASE_URL}/responses`, {
@@ -79,11 +82,12 @@ async function completeSchedule({ apiKey, conversationId, draft, history, transc
       instructions: [
         "당신은 한국어 일정 등록 도우미다. 사용자의 현재 일정 초안과 최근 대화를 바탕으로 이번 말을 반영한 변경 제안을 만든다.",
         "값을 추측하지 말고 부족한 핵심 정보(날짜, 시간, 목적지)는 한 번에 하나의 짧은 질문으로 확인한다.",
-        "날짜는 사용자가 말한 자연어를 한국어 표시 문자열로 보존하고 시간은 반드시 24시간 HH:mm 형식으로 낸다.",
+        "오늘, 내일, 다음 주 같은 상대 날짜는 clientContext의 현재 시각과 시간대를 기준으로 해석하고 날짜에는 사용자가 확인할 수 있는 절대 날짜를 포함한다. 시간은 반드시 24시간 HH:mm 형식으로 낸다.",
         "사용자가 분명히 말한 항목만 patch에 채우며 나머지는 null이다. 적용 여부를 결정하지 말고 제안만 설명한다.",
+        "routines를 변경할 때는 추가분만 내지 말고 currentDraft의 기존 준비 행동과 이번 변경을 병합한 최종 전체 목록을 낸다. 사용자가 삭제를 요청한 행동만 제외한다.",
         "assistantMessage는 이해한 내용을 짧게 확인하고, question이 있으면 자연스럽게 이어지게 작성한다.",
       ].join("\n"),
-      input: JSON.stringify({ currentDraft: draft, recentConversation: history, currentUserUtterance: transcript }),
+      input: JSON.stringify({ clientContext, currentDraft: draft, recentConversation: history, currentUserUtterance: transcript }),
       text: {
         format: {
           type: "json_schema",
@@ -152,11 +156,12 @@ async function openAIRequest(url: string, init: RequestInit, timeoutMs: number) 
   }
 }
 
-function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input } {
+function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string } } {
   if (!isRecord(value)
     || typeof value.conversationId !== "string"
     || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.conversationId)
     || !isRecord(value.draft)
+    || !isClientContext(value.clientContext)
     || !Array.isArray(value.history)
     || value.history.length > 50
     || !value.history.every((turn) => isRecord(turn) && (turn.role === "user" || turn.role === "assistant") && validText(turn.text, 1_000))
@@ -168,6 +173,15 @@ function isRequestBody(value: unknown): value is { conversationId: string; draft
     && value.input.base64.length <= MAX_AUDIO_BASE64
     && typeof value.input.mimeType === "string"
     && ["audio/mp4", "audio/m4a", "audio/webm", "audio/wav", "audio/x-m4a"].includes(value.input.mimeType);
+}
+
+function isClientContext(value: unknown): value is { nowIso: string; timezone: string } {
+  return isRecord(value)
+    && typeof value.nowIso === "string"
+    && Number.isFinite(Date.parse(value.nowIso))
+    && typeof value.timezone === "string"
+    && /^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value.timezone)
+    && value.timezone.length <= 80;
 }
 
 function extractOutputText(value: unknown) {
@@ -198,6 +212,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function upstreamFailure(status: number) {
+  if (status === 401 || status === 403) {
+    return new AssistantError("SERVICE_NOT_CONFIGURED", "AI 인증 설정을 확인해 주세요.", false, 503);
+  }
   const retryable = status === 429 || status >= 500;
   return new AssistantError(retryable ? "UPSTREAM_UNAVAILABLE" : "UPSTREAM_REJECTED", retryable ? "AI 서비스를 일시적으로 사용할 수 없습니다." : "말한 내용을 AI가 처리하지 못했습니다.", retryable, retryable ? 503 : 422);
 }

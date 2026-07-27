@@ -1,6 +1,8 @@
 # 지도·경로 연동
 
-음성 일정 AI 연동은 [Client Secret 설정 가이드](CLIENT_SECRET_SETUP.md)의 `assistant` Edge Function 경계를 따른다. 앱은 최대 60초 오디오 또는 직접 입력 텍스트와 현재 초안·최근 8개 대화만 전송한다. 서버는 `gpt-4o-transcribe`로 한국어 음성을 전사하고 Responses API의 구조화된 출력으로 `gpt-5.6-sol` 일정 제안을 반환한다. 원본 오디오와 대화는 서버에 저장하지 않으며 `store: false`로 요청한다. 앱은 제안을 자동 반영하지 않고 사용자의 `이 일정에 적용` 이후에만 초안을 변경한다.
+음성 일정 AI 연동은 [Client Secret 설정 가이드](CLIENT_SECRET_SETUP.md)의 `assistant` Edge Function 경계를 따른다. 앱은 최대 60초 오디오 또는 직접 입력 텍스트와 현재 초안·최근 8개 대화·상대 날짜 해석용 기기 시각과 시간대만 전송한다. 서버는 `gpt-4o-transcribe`로 한국어 음성을 전사하고 Responses API의 구조화된 출력으로 `gpt-5.6-sol` 일정 제안을 반환한다. 원본 오디오와 대화는 서버에 저장하지 않으며 `store: false`로 요청한다. 앱은 제안을 자동 반영하지 않고 사용자의 `이 일정에 적용` 이후에만 초안을 변경한다.
+
+운영 함수는 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/assistant`에 배포돼 있다. 2026-07-27 `/health`, CORS, 키 미설정 오류 계약을 확인했으며 실제 AI 왕복은 `OPENAI_API_KEY` 등록 후 검증한다.
 
 ## 확정 공급자
 

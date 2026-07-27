@@ -31,7 +31,12 @@ const validReply = {
 describe('SupabaseVoiceScheduleProvider', () => {
   it('sends a bounded text turn and validates the assistant response', async () => {
     const fetcher = jest.fn(async (_input: string, _request: RequestInit) => jsonResponse(validReply));
-    const provider = new SupabaseVoiceScheduleProvider({ baseUrl, fetcher });
+    const provider = new SupabaseVoiceScheduleProvider({
+      baseUrl,
+      fetcher,
+      now: () => new Date('2026-07-27T06:30:00.000Z'),
+      timezone: () => 'Asia/Seoul',
+    });
 
     const reply = await provider.submitTurn({
       conversationId: 'device-session-1',
@@ -46,6 +51,10 @@ describe('SupabaseVoiceScheduleProvider', () => {
     expect(JSON.parse(String(request.body))).toMatchObject({
       conversationId: 'device-session-1',
       input: { kind: 'text', text: '내일 오전 열 시 반이야' },
+      clientContext: {
+        nowIso: '2026-07-27T06:30:00.000Z',
+        timezone: 'Asia/Seoul',
+      },
     });
     expect(reply.patch.appointmentTime).toBe('10:30');
   });

@@ -45,11 +45,15 @@ export class SupabaseVoiceScheduleProvider {
   private readonly baseUrl: string;
   private readonly fetcher: VoiceScheduleFetcher;
   private readonly timeoutMs: number;
+  private readonly now: () => Date;
+  private readonly timezone: () => string;
 
-  constructor({ baseUrl, fetcher = fetch, timeoutMs = 45_000 }: {
+  constructor({ baseUrl, fetcher = fetch, timeoutMs = 45_000, now = () => new Date(), timezone = deviceTimezone }: {
     baseUrl: string;
     fetcher?: VoiceScheduleFetcher;
     timeoutMs?: number;
+    now?: () => Date;
+    timezone?: () => string;
   }) {
     const normalized = baseUrl.trim().replace(/\/+$/, '');
     if (!normalized.startsWith('https://')) {
@@ -58,6 +62,8 @@ export class SupabaseVoiceScheduleProvider {
     this.baseUrl = normalized;
     this.fetcher = fetcher;
     this.timeoutMs = timeoutMs;
+    this.now = now;
+    this.timezone = timezone;
   }
 
   async submitTurn(request: VoiceScheduleTurnRequest): Promise<VoiceScheduleAssistantReply> {
@@ -80,6 +86,10 @@ export class SupabaseVoiceScheduleProvider {
           draft: request.draft,
           history: request.history.slice(-8),
           input: request.input,
+          clientContext: {
+            nowIso: this.now().toISOString(),
+            timezone: this.timezone(),
+          },
         }),
         signal: controller.signal,
       });
@@ -144,4 +154,12 @@ function responseError(value: unknown, status: number) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
+}
+
+function deviceTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul';
+  } catch {
+    return 'Asia/Seoul';
+  }
 }

@@ -143,9 +143,9 @@
 - Observe: 새 일정 등록은 키보드 3단계만 지원해 이동 중이거나 입력이 어려운 사용자가 약속을 빠르게 등록할 수 없었음.
 - Select: 말한 약속을 인식하고 AI가 부족한 정보를 질문하되, 사용자의 명시적 적용 전에는 초안을 변경하지 않는 단일 음성 등록 흐름을 선택.
 - Specify: 마이크 사전 설명, 최대 60초 녹음, 인식문·AI 확인·질문·변경 전후 표시, 다회 답변, 명시적 적용, 마이크 거부·네트워크 오류·화면 읽기·원본 오디오 삭제를 수용 기준으로 정의.
-- Implement: `expo-audio` 녹음과 직접 입력 fallback, 최근 8개 대화와 구조화된 일정 patch, TalkBack 활성 시 앱 TTS 중지, 읽은 녹음 캐시 즉시 삭제, `gpt-4o-transcribe`→`gpt-5.6-sol` Supabase `assistant` Edge Function을 구현.
-- Verify: 신규 도메인·API 테스트 포함 `npm run verify` 72/72, Expo Doctor 20/20, 세 viewport 전체 시각·키보드 42/42, ARM64 Gradle 403 tasks 빌드·설치 통과. Android 12 `SM-N971N`에서 TalkBack 중지 상태를 유지하며 사전 설명→8초 녹음→완료→서버 오류 직접 입력 fallback과 치명적 로그 없음 확인.
-- Pending: Supabase Secrets에 `OPENAI_API_KEY`가 없어 assistant 배포와 실제 한국어 전사→AI 질문→음성 확인→제안 적용 왕복은 미검증. 키 등록 후 함수 배포·실기기 왕복을 통과해야 P1 체크박스를 완료함.
+- Implement: `expo-audio` 녹음과 직접 입력 fallback, 최근 8개 대화와 구조화된 일정 patch, 상대 날짜 해석용 기기 시각·시간대, TalkBack 활성 시 앱 TTS 중지, 읽은 녹음 캐시 즉시 삭제, `gpt-4o-transcribe`→`gpt-5.6-sol` Supabase `assistant` Edge Function을 구현.
+- Verify: 신규 도메인·API 테스트 포함 `npm run verify` 72/72, Expo Doctor 20/20, 세 viewport 전체 시각·키보드 42/42, ARM64 Gradle 403 tasks 빌드·설치 통과. Android 12 `SM-N971N`에서 TalkBack 중지 상태를 유지하며 사전 설명→8초 녹음→완료→서버 오류 직접 입력 fallback과 치명적 로그 없음 확인. 서울 리전에 `assistant`를 배포하고 `/health` 200, CORS 200, 키 미설정 요청의 `SERVICE_NOT_CONFIGURED` 503 계약을 실호출로 확인.
+- Pending: Supabase Secrets에 `OPENAI_API_KEY`가 없어 실제 한국어 전사→AI 질문→음성 확인→제안 적용 왕복은 미검증. 키 등록 후 재배포 없이 실기기 왕복을 통과해야 P1 체크박스를 완료함.
 - Reflect: AI 변경은 자동 저장하지 않고 별도 제안 상태에서만 누적하며, 서버 응답도 enum·시간·길이·준비 시간 범위를 앱에서 다시 검증함. 비회원 공개 함수의 운영 rate limit은 배포 전에 추가 검토가 필요함.
 
 ## 2026-07-27 Ralph Loop - TalkBack과 앱 TTS 중복 방지 (완료)
