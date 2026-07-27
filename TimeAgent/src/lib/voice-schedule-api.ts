@@ -68,6 +68,12 @@ export class SupabaseVoiceScheduleProvider {
 
   async submitTurn(request: VoiceScheduleTurnRequest): Promise<VoiceScheduleAssistantReply> {
     validateRequest(request);
+    let input = request.input;
+    if (request.input.kind === 'audio') {
+      const mimeType = inferVoiceScheduleAudioMimeType('', request.input.mimeType);
+      if (!mimeType) throw invalidInput();
+      input = { ...request.input, mimeType };
+    }
     const controller = new AbortController();
     let timedOut = false;
     const onAbort = () => controller.abort();
@@ -78,6 +84,8 @@ export class SupabaseVoiceScheduleProvider {
     }, this.timeoutMs);
 
     try {
+      const now = this.now();
+      const timezone = this.timezone();
       const response = await this.fetcher(`${this.baseUrl}/v1/schedule/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,10 +93,11 @@ export class SupabaseVoiceScheduleProvider {
           conversationId: request.conversationId,
           draft: request.draft,
           history: request.history.slice(-8),
-          input: request.input,
+          input,
           clientContext: {
-            nowIso: this.now().toISOString(),
-            timezone: this.timezone(),
+            nowIso: now.toISOString(),
+            timezone,
+            localDate: localCalendarDate(now, timezone),
           },
         }),
         signal: controller.signal,
@@ -113,6 +122,17 @@ export class SupabaseVoiceScheduleProvider {
   }
 }
 
+export function inferVoiceScheduleAudioMimeType(uri: string, declaredType: string) {
+  const normalized = declaredType.split(';', 1)[0].trim().toLowerCase();
+  if (normalized === 'audio/mp4' || normalized === 'audio/x-m4a' || normalized === 'audio/m4a') return 'audio/m4a';
+  if (normalized === 'audio/wav' || normalized === 'audio/webm') return normalized;
+  const extension = uri.split(/[?#]/, 1)[0].toLowerCase();
+  if (extension.endsWith('.m4a') || extension.endsWith('.mp4')) return 'audio/m4a';
+  if (extension.endsWith('.wav')) return 'audio/wav';
+  if (extension.endsWith('.webm')) return 'audio/webm';
+  return null;
+}
+
 export function createConfiguredVoiceScheduleProvider() {
   const mobilityBase = process.env.EXPO_PUBLIC_MOBILITY_API_BASE_URL ?? '';
   const derivedBase = mobilityBase.replace(/\/mobility\/?$/, '/assistant');
@@ -126,7 +146,7 @@ function validateRequest(request: VoiceScheduleTurnRequest) {
   if (request.history.length > 50 || request.history.some((turn) => !turn.text.trim() || turn.text.length > 1_000)) throw invalidInput();
   if (request.input.kind === 'text') {
     if (!request.input.text.trim() || request.input.text.length > 2_000) throw invalidInput();
-  } else if (!request.input.base64 || request.input.base64.length > 7_000_000 || !/^audio\//.test(request.input.mimeType)) {
+  } else if (!request.input.base64 || request.input.base64.length > 7_000_000 || !inferVoiceScheduleAudioMimeType('', request.input.mimeType)) {
     throw invalidInput();
   }
 }
@@ -162,4 +182,18 @@ function deviceTimezone() {
   } catch {
     return 'Asia/Seoul';
   }
+}
+
+function localCalendarDate(now: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: 'year' | 'month' | 'day') => parts.find((part) => part.type === type)?.value;
+  const year = value('year');
+  const month = value('month');
+  const day = value('day');
+  return year && month && day ? `${year}-${month}-${day}` : now.toISOString().slice(0, 10);
 }

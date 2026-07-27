@@ -9,7 +9,7 @@ const turn = {
   draft: { title: '', date: '', appointmentTime: '' },
   history: [{ role: 'assistant' as const, text: '언제 약속인가요?' }],
   input: { kind: 'text' as const, text: '내일 오전 열 시 치과' },
-  clientContext: { nowIso: '2026-07-28T01:00:00.000Z', timezone: 'Asia/Seoul' },
+  clientContext: { nowIso: '2026-07-28T01:00:00.000Z', timezone: 'Asia/Seoul', localDate: '2026-07-28' },
 };
 
 describe('Gemini assistant adapter', () => {
@@ -45,6 +45,15 @@ describe('Gemini assistant adapter', () => {
       expect.objectContaining({ type: 'text', text: expect.stringContaining('첨부된 한국어 음성을 정확히 전사') }),
       { type: 'audio', data: 'AAECAw==', mime_type: 'audio/m4a' },
     ]);
+  });
+
+  it('normalizes Android M4A aliases for Gemini audio input', () => {
+    const body = buildGeminiInteractionBody('gemini-3.1-flash-lite', {
+      ...turn,
+      input: { kind: 'audio', base64: 'AAECAw==', mimeType: 'audio/mp4; codecs=mp4a.40.2' },
+    });
+
+    expect(body.input[1]).toEqual({ type: 'audio', data: 'AAECAw==', mime_type: 'audio/m4a' });
   });
 
   it('extracts structured candidate text and rejects empty responses', () => {

@@ -40,7 +40,7 @@
 
 ## P1 - 네이티브 핵심
 
-- [ ] 새 일정 음성 AI 도우미
+- [x] 새 일정 음성 AI 도우미
   - Given 새 일정 등록을 시작함, When `음성으로 일정 만들기`를 누르면, Then 운영체제 마이크 팝업보다 먼저 음성을 사용하는 이유와 직접 입력 대체 경로를 보여준다.
   - Given 마이크를 허용함, When 최대 60초의 약속 내용을 말하고 녹음을 마치면, Then 인식한 문장·AI 확인 문장·부족한 정보 질문·현재 일정 변경 제안을 텍스트로 함께 보여주고 화면 읽기를 사용하지 않을 때만 확인 문장을 음성으로 읽는다.
   - Given AI가 일정 변경을 제안함, When 사용자가 `이 일정에 적용`을 누르기 전이거나 제안을 거절하면, Then 자동 저장 초안은 바뀌지 않는다.
@@ -166,14 +166,14 @@
 - Superseded: 이 OpenAI 구현은 2026-07-28 Gemini Flash-Lite 단일 호출 구현으로 대체됨. 당시 운영 키가 없어 실제 왕복은 수행하지 않았음.
 - Reflect: AI 변경은 자동 저장하지 않고 별도 제안 상태에서만 누적하며, 서버 응답도 enum·시간·길이·준비 시간 범위를 앱에서 다시 검증함. 비회원 공개 함수의 운영 rate limit은 배포 전에 추가 검토가 필요함.
 
-## 2026-07-28 Ralph Loop - Gemini Flash-Lite 전환 (서버 실호출 완료, 실기기 대기)
+## 2026-07-28 Ralph Loop - Gemini Flash-Lite 전환 (실기기 완료)
 
 - Observe: 기존 Edge Function은 `gpt-4o-transcribe` 전사와 `gpt-5.6-sol` 일정 해석의 두 번 호출 구조였고 운영 키가 없어 실제 왕복 기준선은 없었음.
 - Select: 사용자 결정에 따라 음성과 구조화 출력을 함께 지원하는 `gemini-3.1-flash-lite`를 기본 공급자로 적용하고 한 번의 호출로 전사문과 일정 제안을 반환하도록 전환.
 - Specify: 상대 날짜, 자정 경계, 모호한 시각, 반복 일정, 목적지 수정, 이동수단, 준비 행동, 다회 확인 질문을 포함한 고정 한국어 평가셋을 구성한다. 후보마다 중요 필드 정확도, JSON Schema 검증, 질문 필요성, p50/p95 지연, 실패율, 1,000건 예상 비용을 같은 조건으로 기록한다.
-- Implement: M4A를 명시적으로 지원하는 Gemini Interactions API adapter, 인라인 base64 오디오, `store: false`, 최소 추론, 단일 JSON Schema 응답, 텍스트 transcript 원문 보존, `GEMINI_SCHEDULE_MODEL` 환경변수, provider/model/configured health 응답과 upstream 오류 매핑을 구현. 앱의 Supabase API 계약과 명시적 적용 흐름은 변경하지 않음.
-- Pending: Android 연결 기기가 없어 앱의 사전 설명→녹음→AI 제안 표시→`이 일정에 적용` 명시적 반영 왕복은 미검증. 고정 한국어 평가셋의 필드 정확도·p50/p95 지연·1,000건 예상 비용 기준선도 추가 측정해야 함.
-- Verify: Gemini endpoint·텍스트·M4A 인라인 오디오·구조화 응답 추출 단위 테스트 4건과 `npm run verify` 79/79 통과. 서울 리전 `assistant` 배포 후 CORS 200, 키 누락 `SERVICE_NOT_CONFIGURED` 503을 확인했고, 키 등록 후 `/health`가 provider `gemini`, model `gemini-3.1-flash-lite`, configured true를 반환함. 한국어 텍스트에서 `2026-07-29 10:30`·연산동 치과·양치 5분을, Yuna 합성 M4A 음성에서 `2026-07-29 15:00`·서울 시청·지하철·자료 준비 10분을 정확히 전사·구조화해 각각 HTTP 200으로 확인함. 원본 음성은 서버에 저장하지 않았고 검증용 로컬 음성 파일도 즉시 삭제함.
+- Implement: M4A를 명시적으로 지원하는 Gemini Interactions API adapter, 인라인 base64 오디오, `store: false`, 최소 추론, 단일 JSON Schema 응답, 텍스트 transcript 원문 보존, `GEMINI_SCHEDULE_MODEL` 환경변수, provider/model/configured health 응답과 upstream 오류 매핑을 구현. 실기기에서 발견한 Android `audio/mp4; codecs=…`·`audio/x-m4a` 변형은 `audio/m4a`로 정규화하고, UTC 자정 경계의 상대 날짜 오해를 막기 위해 기기 시간대의 `localDate`를 별도 전송함. 앱의 명시적 적용 흐름은 유지함.
+- Pending: 음성 도우미의 구현·운영 왕복은 완료. 별도 P1인 고정 한국어 평가셋의 필드 정확도·p50/p95 지연·1,000건 예상 비용 기준선은 추가 측정해야 함.
+- Verify: Gemini endpoint·M4A MIME 정규화·현지 날짜 문맥·구조화 응답 테스트를 포함해 `npm run verify` 20 suites, 81/81과 360×800·390×844·430×932 시각·키보드 45/45 통과. 서울 리전 `assistant`를 재배포하고 `/health`에서 provider `gemini`, model `gemini-3.1-flash-lite`, configured true를 확인함. Android 12 `SM-N971N`에서 TalkBack 중지 상태로 사전 설명→Yuna 합성 한국어 녹음→전사·제안 표시→명시적 적용 왕복을 수행해 `2026-07-29`, `16:00`, 부산역, 선택된 지하철, 선물 포장 10분이 등록 초안에 반영됨을 확인했고 치명적 런타임 오류가 없었음. 첫 왕복에서 MIME 거부와 UTC 날짜 오해를 재현한 뒤 각각 회귀 테스트와 실기기 재시험으로 해소함. 앞선 서버 실호출의 텍스트·M4A 결과와 원본 오디오 비저장·검증 파일 즉시 삭제 조건도 유지함.
 - Reflect: API 단가만이 아니라 일정 오해의 사용자 비용을 함께 평가한다. 무료 tier의 데이터 처리 조건은 운영 판단 근거로 사용하지 않고 유료 운영 조건과 보존 정책을 확인한다.
 - Price snapshot (2026-07-28, USD/1M tokens unless noted): OpenAI `gpt-4o-transcribe` audio input/output $2.50/$10, `gpt-4o-mini-transcribe` $1.25/$5, `gpt-5.6-sol` text $5/$30, `gpt-5.6-luna` $1/$6, `gpt-4o-mini` $0.15/$0.60. Gemini `gemini-3.1-flash-lite` standard text/audio input $0.25/$0.50, output $1.50. Groq Whisper Large v3 Turbo $0.04/transcribed hour. 구현 시 공급자 공식 가격 페이지를 다시 확인한다.
 

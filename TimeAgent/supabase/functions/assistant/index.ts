@@ -3,6 +3,7 @@ import {
   extractGeminiOutputText,
   GEMINI_INTERACTIONS_URL,
   GeminiAssistantTurn,
+  normalizeGeminiAudioMimeType,
 } from "../_shared/gemini-assistant.ts";
 import { corsHeaders, jsonResponse } from "../_shared/http.ts";
 
@@ -113,7 +114,7 @@ function invalidResponse() {
   return new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
 }
 
-function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string } } {
+function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string; localDate: string } } {
   if (!isRecord(value)
     || typeof value.conversationId !== "string"
     || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.conversationId)
@@ -129,16 +130,19 @@ function isRequestBody(value: unknown): value is { conversationId: string; draft
     && value.input.base64.length > 0
     && value.input.base64.length <= MAX_AUDIO_BASE64
     && typeof value.input.mimeType === "string"
-    && ["audio/mp4", "audio/m4a", "audio/webm", "audio/wav", "audio/x-m4a"].includes(value.input.mimeType);
+    && normalizeGeminiAudioMimeType(value.input.mimeType) !== null;
 }
 
-function isClientContext(value: unknown): value is { nowIso: string; timezone: string } {
+function isClientContext(value: unknown): value is { nowIso: string; timezone: string; localDate: string } {
   return isRecord(value)
     && typeof value.nowIso === "string"
     && Number.isFinite(Date.parse(value.nowIso))
     && typeof value.timezone === "string"
     && /^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value.timezone)
-    && value.timezone.length <= 80;
+    && value.timezone.length <= 80
+    && typeof value.localDate === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(value.localDate)
+    && Number.isFinite(Date.parse(`${value.localDate}T00:00:00Z`));
 }
 
 function validText(value: unknown, max: number): value is string {

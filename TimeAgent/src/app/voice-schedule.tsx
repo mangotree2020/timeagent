@@ -23,6 +23,7 @@ import {
 } from '@/lib/voice-schedule-assistant';
 import {
   createConfiguredVoiceScheduleProvider,
+  inferVoiceScheduleAudioMimeType,
   VoiceScheduleHistoryTurn,
   VoiceScheduleInput,
 } from '@/lib/voice-schedule-api';
@@ -236,7 +237,8 @@ async function recordingToInput(uri: string): Promise<VoiceScheduleInput> {
   const file = new File(uri);
   try {
     const base64 = await file.base64();
-    const mimeType = file.type.startsWith('audio/') ? file.type : uri.endsWith('.webm') ? 'audio/webm' : 'audio/mp4';
+    const mimeType = inferVoiceScheduleAudioMimeType(uri, file.type);
+    if (!mimeType) throw new Error('unsupported recording format');
     return { kind: 'audio', base64, mimeType };
   } finally {
     try { file.delete(); } catch { /* The OS may already have cleared the cache entry. */ }

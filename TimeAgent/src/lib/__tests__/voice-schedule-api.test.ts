@@ -1,4 +1,8 @@
-import { SupabaseVoiceScheduleProvider, VoiceScheduleApiError } from '@/lib/voice-schedule-api';
+import {
+  inferVoiceScheduleAudioMimeType,
+  SupabaseVoiceScheduleProvider,
+  VoiceScheduleApiError,
+} from '@/lib/voice-schedule-api';
 import { createDefaultScheduleDraft } from '@/lib/schedule-draft';
 
 const baseUrl = 'https://project.supabase.co/functions/v1/assistant';
@@ -29,6 +33,29 @@ const validReply = {
 };
 
 describe('SupabaseVoiceScheduleProvider', () => {
+  it('normalizes Android M4A MIME variants before sending audio', async () => {
+    const fetcher = jest.fn(async (_input: string, _request: RequestInit) => jsonResponse(validReply));
+    const provider = new SupabaseVoiceScheduleProvider({
+      baseUrl,
+      fetcher,
+      now: () => new Date('2026-07-27T18:30:00.000Z'),
+      timezone: () => 'Asia/Seoul',
+    });
+
+    await provider.submitTurn({
+      conversationId: 'device-session-1',
+      draft: createDefaultScheduleDraft(),
+      history: [],
+      input: { kind: 'audio', base64: 'AAECAw==', mimeType: 'audio/mp4; codecs=mp4a.40.2' },
+    });
+
+    const body = JSON.parse(String(fetcher.mock.calls[0][1].body));
+    expect(body.input).toEqual({ kind: 'audio', base64: 'AAECAw==', mimeType: 'audio/m4a' });
+    expect(body.clientContext.localDate).toBe('2026-07-28');
+    expect(inferVoiceScheduleAudioMimeType('file:///cache/recording.m4a', '')).toBe('audio/m4a');
+    expect(inferVoiceScheduleAudioMimeType('file:///cache/recording.m4a', 'audio/x-m4a')).toBe('audio/m4a');
+  });
+
   it('sends a bounded text turn and validates the assistant response', async () => {
     const fetcher = jest.fn(async (_input: string, _request: RequestInit) => jsonResponse(validReply));
     const provider = new SupabaseVoiceScheduleProvider({
@@ -54,6 +81,7 @@ describe('SupabaseVoiceScheduleProvider', () => {
       clientContext: {
         nowIso: '2026-07-27T06:30:00.000Z',
         timezone: 'Asia/Seoul',
+        localDate: '2026-07-27',
       },
     });
     expect(reply.patch.appointmentTime).toBe('10:30');
