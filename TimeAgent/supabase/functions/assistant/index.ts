@@ -1,6 +1,7 @@
 import {
   buildGeminiInteractionBody,
   extractGeminiOutputText,
+  extractGeminiUsage,
   GEMINI_INTERACTIONS_URL,
   GeminiAssistantTurn,
   normalizeGeminiAudioMimeType,
@@ -53,7 +54,14 @@ Deno.serve(async (request) => {
     if (!outputText) throw new AssistantError("UPSTREAM_REJECTED", "음성을 인식하지 못했거나 일정 응답을 만들지 못했습니다.", false, 422);
 
     const result = parseAssistantResult(outputText, body.input);
-    return jsonResponse(result);
+    return jsonResponse({
+      ...result,
+      _meta: {
+        provider: "gemini",
+        model: configuredModel(),
+        usage: extractGeminiUsage(payload),
+      },
+    });
   } catch (error) {
     if (error instanceof AssistantError) {
       return errorResponse(error.code, error.message, error.retryable, error.status);

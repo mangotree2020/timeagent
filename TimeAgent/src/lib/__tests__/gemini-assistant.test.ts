@@ -1,6 +1,7 @@
 import {
   buildGeminiInteractionBody,
   extractGeminiOutputText,
+  extractGeminiUsage,
   GEMINI_INTERACTIONS_URL,
 } from '../../../supabase/functions/_shared/gemini-assistant';
 
@@ -63,5 +64,31 @@ describe('Gemini assistant adapter', () => {
     })).toBe('{"transcript":"내일 치과"}');
     expect(extractGeminiOutputText({ status: 'completed', steps: [] })).toBeNull();
     expect(extractGeminiOutputText({ status: 'failed', steps: [] })).toBeNull();
+  });
+
+  it('extracts only non-sensitive token usage needed for cost measurement', () => {
+    expect(extractGeminiUsage({
+      id: 'must-not-leak',
+      usage: {
+        input_tokens_by_modality: [{ modality: 'text', tokens: 320 }, { modality: 'audio', tokens: 125 }],
+        total_input_tokens: 445,
+        total_output_tokens: 90,
+        total_thought_tokens: 12,
+        total_tokens: 547,
+      },
+    })).toEqual({
+      inputTokensByModality: [{ modality: 'text', tokens: 320 }, { modality: 'audio', tokens: 125 }],
+      totalInputTokens: 445,
+      totalOutputTokens: 90,
+      totalThoughtTokens: 12,
+      totalTokens: 547,
+    });
+    expect(extractGeminiUsage({ usage: { total_input_tokens: -1 } })).toEqual({
+      inputTokensByModality: [],
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalThoughtTokens: 0,
+      totalTokens: 0,
+    });
   });
 });

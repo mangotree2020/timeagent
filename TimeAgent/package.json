@@ -63,6 +63,7 @@
     "e2e:android:smoke": "maestro test --include-tags smoke e2e/maestro",
     "visual:test": "playwright test",
     "visual:update": "playwright test --update-snapshots",
+    "benchmark:assistant": "node scripts/benchmark-gemini-assistant.mjs",
     "verify": "npm run typecheck && npm run lint && npm test"
   },
   "jest": {

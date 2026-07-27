@@ -49,7 +49,7 @@
   - Given 마이크를 거부했거나 네트워크·서버 오류가 발생함, When 음성 흐름을 계속함, Then 직접 입력·재시도·수동 등록 복귀 중 가능한 다음 행동과 현재 초안 유지 상태를 표시한다.
   - Given 화면 읽기가 활성 또는 확인 중임, When AI 답변이 도착함, Then 앱 자체 TTS를 재생하지 않고 상태 변화와 질문을 접근성 라이브 영역으로 전달한다.
   - Given 녹음 요청을 처리함, When 응답 또는 오류가 끝나면, Then 원본 오디오는 앱 저장소와 서버에 보관하지 않고 Gemini 키는 Supabase Edge Function 비밀값으로만 사용한다.
-- [ ] Gemini Flash-Lite 운영 검증과 비용 기준선
+- [x] Gemini Flash-Lite 운영 검증과 비용 기준선
   - Given `GEMINI_API_KEY`를 등록하고 `gemini-3.1-flash-lite` 왕복이 동작함, When 고정 한국어 일정 평가셋을 실행하면, Then 필드 정확도·구조화 응답 성공률·p50/p95 지연·요청당 비용을 기준선으로 기록한다.
   - Given 텍스트 또는 최대 60초 음성을 보냄, When Gemini 응답이 도착하면, Then 전사문과 JSON Schema 일정 제안이 한 호출에서 반환되고 앱의 기존 응답 계약을 통과한다.
   - Given 운영 결과를 평가함, When 날짜·시각·시간대·반복·목적지·이동수단·준비 행동의 중요 필드 회귀가 발견되면, Then 자동 적용하지 않고 직접 입력·재시도·수동 등록 fallback을 유지하며 모델 또는 공급자 재선정을 검토한다.
@@ -176,6 +176,15 @@
 - Verify: Gemini endpoint·M4A MIME 정규화·현지 날짜 문맥·구조화 응답 테스트를 포함해 `npm run verify` 20 suites, 81/81과 360×800·390×844·430×932 시각·키보드 45/45 통과. 서울 리전 `assistant`를 재배포하고 `/health`에서 provider `gemini`, model `gemini-3.1-flash-lite`, configured true를 확인함. Android 12 `SM-N971N`에서 TalkBack 중지 상태로 사전 설명→Yuna 합성 한국어 녹음→전사·제안 표시→명시적 적용 왕복을 수행해 `2026-07-29`, `16:00`, 부산역, 선택된 지하철, 선물 포장 10분이 등록 초안에 반영됨을 확인했고 치명적 런타임 오류가 없었음. 첫 왕복에서 MIME 거부와 UTC 날짜 오해를 재현한 뒤 각각 회귀 테스트와 실기기 재시험으로 해소함. 앞선 서버 실호출의 텍스트·M4A 결과와 원본 오디오 비저장·검증 파일 즉시 삭제 조건도 유지함.
 - Reflect: API 단가만이 아니라 일정 오해의 사용자 비용을 함께 평가한다. 무료 tier의 데이터 처리 조건은 운영 판단 근거로 사용하지 않고 유료 운영 조건과 보존 정책을 확인한다.
 - Price snapshot (2026-07-28, USD/1M tokens unless noted): OpenAI `gpt-4o-transcribe` audio input/output $2.50/$10, `gpt-4o-mini-transcribe` $1.25/$5, `gpt-5.6-sol` text $5/$30, `gpt-5.6-luna` $1/$6, `gpt-4o-mini` $0.15/$0.60. Gemini `gemini-3.1-flash-lite` standard text/audio input $0.25/$0.50, output $1.50. Groq Whisper Large v3 Turbo $0.04/transcribed hour. 구현 시 공급자 공식 가격 페이지를 다시 확인한다.
+
+## 2026-07-28 Ralph Loop - Gemini 품질·지연·비용 기준선 (완료)
+
+- Observe: 운영 텍스트·음성 왕복은 통과했지만 같은 입력으로 회귀를 찾을 평가셋과 실제 토큰 기반 비용·지연 기준선이 없었음.
+- Select: 사용자 데이터 대신 12개 고정 한국어 텍스트와 Yuna 합성 M4A 1개로 날짜·자정 경계·목적지·이동수단·준비 행동·부족 정보 질문·다회 대화·반복 일정 fallback을 평가.
+- Specify: HTTP 200과 서버 구조 검증을 모두 통과하고, 기대 필드 및 질문 여부가 일치해야 사례를 통과시킨다. 목적지는 의미가 같은 공백 차이만 정규화하며 날짜·시간·enum·준비 시간은 정확히 비교한다. Gemini 응답의 비식별 modality별 토큰 수만 비용 계산에 사용한다.
+- Implement: 재실행 가능한 `npm run benchmark:assistant` 하네스, 고정 fixture, 토큰 사용량 정제, 텍스트/오디오별 p50·p95와 공식 표준 단가 기반 요청당·1,000건 비용 계산을 추가. 원본 응답 ID나 입력 원문은 운영 메타데이터에 포함하지 않음.
+- Verify: 2026-07-28 서울 리전 운영 함수에서 13/13 사례, 기대 필드 33/33, 구조화 응답 13/13 통과. 전체 p50 1,899ms, p95 3,244ms. 텍스트 12건 p50/p95 1,891/2,365ms, 평균 $0.000503/요청·$0.503/1,000건. 합성 음성 1건 3,244ms, $0.000559/요청·$0.559/1,000건. 세부 방법과 제한은 [Gemini 기준선](GEMINI_BENCHMARK.md)에 기록.
+- Reflect: 텍스트 기준선은 회귀 감시에 사용할 수 있으나 음성은 표본 1개이므로 발화 길이·억양·소음별 p95로 일반화하지 않는다. 반복 일정은 현재 초안 스키마가 지원하지 않아 질문 fallback만 통과 기준으로 유지한다.
 
 ## 2026-07-27 Ralph Loop - TalkBack과 앱 TTS 중복 방지 (완료)
 

@@ -1,0 +1,72 @@
+[
+  {
+    "id": "relative-full",
+    "input": "내일 오전 10시 30분 연산동 치과에 지하철로 가고 양치 5분 준비할래",
+    "expectedPatch": { "date": "2026-07-29", "appointmentTime": "10:30", "destination": "연산동 치과", "transport": "지하철" },
+    "expectedRoutine": { "label": "양치", "minutes": 5 }
+  },
+  {
+    "id": "midnight-boundary",
+    "input": "내일 새벽 1시에 부산역에서 만나",
+    "expectedPatch": { "date": "2026-07-29", "appointmentTime": "01:00", "destination": "부산역" }
+  },
+  {
+    "id": "today-evening",
+    "input": "오늘 저녁 7시 광안리에서 저녁 약속",
+    "expectedPatch": { "date": "2026-07-28", "appointmentTime": "19:00", "destination": "광안리" }
+  },
+  {
+    "id": "explicit-date",
+    "input": "8월 3일 오후 2시 20분 서울시청에서 회의",
+    "expectedPatch": { "date": "2026-08-03", "appointmentTime": "14:20", "destination": "서울시청" }
+  },
+  {
+    "id": "destination-correction",
+    "input": "장소만 부산시민공원으로 바꿔줘",
+    "draft": { "destination": "서면 볼링장", "destinationAddress": "부산진구 중앙대로 672" },
+    "expectedPatch": { "destination": "부산시민공원" }
+  },
+  {
+    "id": "transport-priority",
+    "input": "택시로 가고 비용을 우선할래",
+    "expectedPatch": { "transport": "택시", "priority": "cost" }
+  },
+  {
+    "id": "routine-merge",
+    "input": "선물 포장 10분도 준비에 추가해줘",
+    "expectedRoutine": { "label": "선물 포장", "minutes": 10 }
+  },
+  {
+    "id": "routine-delete",
+    "input": "화장은 준비에서 빼줘",
+    "forbiddenRoutine": "화장"
+  },
+  {
+    "id": "missing-date",
+    "input": "오후 3시에 해운대에서 만나",
+    "expectedPatch": { "appointmentTime": "15:00", "destination": "해운대" },
+    "expectedQuestion": true
+  },
+  {
+    "id": "missing-time",
+    "input": "내일 부산대학교에서 상담이 있어",
+    "expectedPatch": { "date": "2026-07-29", "destination": "부산대학교" },
+    "expectedQuestion": true
+  },
+  {
+    "id": "multi-turn-time",
+    "input": "오후 네 시야",
+    "draft": { "date": "2026-07-29", "destination": "부산역" },
+    "history": [
+      { "role": "user", "text": "내일 부산역에서 친구 만나" },
+      { "role": "assistant", "text": "몇 시에 만나는 약속인가요?" }
+    ],
+    "expectedPatch": { "appointmentTime": "16:00" }
+  },
+  {
+    "id": "recurrence-unsupported",
+    "input": "매주 월요일 오전 9시에 팀 회의로 등록해줘",
+    "expectedPatch": { "appointmentTime": "09:00" },
+    "expectedQuestion": true
+  }
+]

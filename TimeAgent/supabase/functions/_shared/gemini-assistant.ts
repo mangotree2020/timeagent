@@ -72,6 +72,25 @@ export function extractGeminiOutputText(value: unknown) {
   return null;
 }
 
+export function extractGeminiUsage(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.usage)) return null;
+  const usage = value.usage;
+  const inputTokensByModality = Array.isArray(usage.input_tokens_by_modality)
+    ? usage.input_tokens_by_modality.flatMap((item) => isRecord(item)
+      && typeof item.modality === "string"
+      && nonNegativeInteger(item.tokens)
+      ? [{ modality: item.modality, tokens: item.tokens }]
+      : [])
+    : [];
+  return {
+    inputTokensByModality,
+    totalInputTokens: integerOrZero(usage.total_input_tokens),
+    totalOutputTokens: integerOrZero(usage.total_output_tokens),
+    totalThoughtTokens: integerOrZero(usage.total_thought_tokens),
+    totalTokens: integerOrZero(usage.total_tokens),
+  };
+}
+
 const systemInstruction = [
   "당신은 한국어 일정 등록 도우미다. 현재 일정 초안과 최근 대화를 바탕으로 이번 입력을 반영한 변경 제안을 만든다.",
   "값을 추측하지 말고 부족한 핵심 정보(날짜, 시간, 목적지)는 한 번에 하나의 짧은 질문으로 확인한다.",
@@ -129,4 +148,12 @@ export const geminiResponseSchema = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function integerOrZero(value: unknown) {
+  return nonNegativeInteger(value) ? value : 0;
 }
