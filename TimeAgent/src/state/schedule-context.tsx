@@ -64,6 +64,7 @@ type ScheduleContextValue = {
   updateDraft: (values: Partial<ScheduleDraft>) => void;
   setDraftStep: (step: ScheduleDraftStep) => void;
   beginDraft: (reset?: boolean) => void;
+  beginDraftWith: (values: Partial<ScheduleDraft>) => void;
   finalizeDraft: () => Promise<void>;
   useStandardPlan: () => void;
   setPersonalizationEnabled: (enabled: boolean) => Promise<void>;
@@ -360,6 +361,13 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setDraft((current) => ({ ...current, step }));
     },
     beginDraft,
+    beginDraftWith(values) {
+      void recordAnalyticsEvent(AsyncStorage, 'draft_started');
+      newDraftRequested.current = true;
+      setDraft({ ...createDefaultScheduleDraft(), ...values, step: 0 });
+      setDraftStatus('saving');
+      setDraftPhase('editing');
+    },
     async finalizeDraft() {
       const nextPlan = createCurrentPlan(draft);
       const currentProgress = progressSessionRef.current;

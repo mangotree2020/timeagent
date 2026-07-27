@@ -8,10 +8,20 @@
     "scheme": "ontime",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "ON:TIME이 기기에 연결된 캘린더에서 향후 일정을 보여주고 선택한 일정을 준비 계획으로 가져오도록 캘린더 접근을 허용해 주세요.",
+        "NSCalendarsFullAccessUsageDescription": "ON:TIME이 기기에 연결된 캘린더에서 향후 일정을 읽도록 캘린더 전체 접근을 허용해 주세요. 앱은 캘린더를 수정하거나 삭제하지 않습니다."
+      }
     },
     "android": {
       "package": "com.ontime.app",
+      "permissions": [
+        "android.permission.READ_CALENDAR"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_CALENDAR"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -54,6 +54,15 @@
   - Given 텍스트 또는 최대 60초 음성을 보냄, When Gemini 응답이 도착하면, Then 전사문과 JSON Schema 일정 제안이 한 호출에서 반환되고 앱의 기존 응답 계약을 통과한다.
   - Given 운영 결과를 평가함, When 날짜·시각·시간대·반복·목적지·이동수단·준비 행동의 중요 필드 회귀가 발견되면, Then 자동 적용하지 않고 직접 입력·재시도·수동 등록 fallback을 유지하며 모델 또는 공급자 재선정을 검토한다.
   - 벤치마크는 실제 사용자 녹음을 다른 공급자에 복제하지 않고 합성·사전 동의된 고정 fixture만 사용한다. Gemini 키는 Supabase Edge Function Secrets에만 저장하고 앱 번들·로그·저장소에 포함하지 않는다.
+- [x] Google·Apple·Android 기기 캘린더 조회와 일정 가져오기
+  - Given 일정 탭에서 캘린더를 처음 사용함, When 연결을 시작하면, Then 운영체제 팝업 전에 향후 30일 읽기·기기 내 처리·수동 등록 대체 경로를 설명하고 Android에서는 `READ_CALENDAR`만, iOS에서는 EventKit 조회에 필요한 캘린더 접근을 요청한다.
+  - Given 권한을 허용함, When 기기에 Google 계정·iCloud/Apple·Android 로컬 캘린더가 동기화돼 있으면, Then 공급자와 캘린더 이름을 텍스트로 구분하고 전체·공급자 필터와 날짜별 일정 목록을 표시한다.
+  - Given 시간 일정 또는 종일 일정이 있음, When 목록을 확인하면, Then 시작 시각 또는 `종일`, 제목, 장소, 캘린더 출처를 표시하고 색상만으로 출처를 전달하지 않는다.
+  - Given 캘린더 일정을 선택함, When 상세 미리보기를 열면, Then 현재 ON:TIME 초안은 유지하며 `이 일정 가져오기`를 누른 뒤에만 제목·날짜·시간·장소를 새 초안에 반영한다.
+  - Given 종일 일정에 시간이 없음, When 가져오면, Then 시간을 추측하지 않고 약속 시간 입력을 비운 채 등록 화면에서 확인해야 할 다음 행동을 표시한다.
+  - Given 권한 거부·차단, 캘린더 없음, 일정 없음, 조회 오류 또는 앱 복귀가 발생함, When 캘린더 화면을 표시하면, Then 재요청·기기 설정·새로고침·수동 등록 중 가능한 행동을 제공한다.
+  - Given 캘린더를 조회함, When 사용자가 가져오지 않거나 화면을 닫으면, Then 조회한 원문을 서버나 앱 영구 저장소에 저장하지 않는다.
+  - Android 12 `SM-N971N`에서 실제 Google·로컬 캘린더의 시간·종일 일정과 공급자 필터를 확인하고, 선택 미리보기→명시적 가져오기→시간 일정 필드 반영 및 종일 일정 시간 빈칸·다음 행동 안내를 통과했다. iOS EventKit 경로는 동일 네이티브 adapter의 iOS 번들 생성과 사용 설명 설정을 확인했다.
 - [x] 지도·도보 경로 공급자 결정
   - 지도/좌표: NAVER Maps, 도보 경로: TMAP API.
 - [x] 위치/알림 권한 사전 설명과 거부 상태
@@ -125,9 +134,9 @@
   - 각 flow가 앱 상태를 독립 초기화하고 Android 12 `SM-N971N`에서 4/4 흐름 통과.
 - [x] 세 기준 화면 크기 스크린샷 회귀
   - Playwright로 360×800, 390×844, 430×932 프로젝트와 고정 시각·fixture를 구성.
-  - 홈, 등록 3단계, AI 계획, 개인화 계획, MVP 지표, Plan B, Journey fallback/화면 읽기, 완료, 설정, 정상/지연 진행 12상태의 기준 이미지 36개 생성.
+  - 홈, 등록 3단계, AI 계획, 캘린더 일정, 개인화 계획, MVP 지표, Plan B, Journey fallback/화면 읽기, 완료, 설정, 정상/지연 진행 14상태의 기준 이미지 42개 생성.
   - 모든 상태에서 문서 가로 넘침을 자동 검사하고 기준 이미지 대비 0.2% 초과 픽셀 차이를 회귀로 처리.
-  - `npm run visual:test` 시각·키보드 39/39 통과, 대표 360/430px 화면 육안 검토 완료.
+  - `npm run visual:test` 시각·키보드·캘린더 가져오기 51/51 통과, 캘린더 화면을 포함한 360/390/430px 기준 이미지를 육안 검토 완료.
 - [x] 폰트 200%, 스크린리더, 키보드 접근성 점검 (TalkBack 실제 탐색은 계획에서 취소)
   - Android 시스템 `font_scale=2.0`에서 H-01 첫 설치→온보딩→등록→계획→진행 전체 흐름 통과 후 원래 1.0으로 복원.
   - 200%에서 타임라인 시각이 줄바꿈되고 Journey 지표 단위가 분리되는 결함을 수정.
@@ -146,6 +155,16 @@
   - 설정에서 완료율·생성 시간·알림 전환·지연 결정·단계 오차·정시 도착률과 측정 대기 상태를 제공.
   - 일정 내용·위치는 저장하지 않고 최대 500개 이벤트를 기기에만 보관하며 별도 2단계 초기화 제공.
   - Jest 61/61, Expo Doctor 20/20, 시각·키보드 36/36, Android `L-01` 지표 생성·초기화 취소 통과.
+
+## 2026-07-28 Ralph Loop - 기기 캘린더 조회·일정 가져오기 (완료)
+
+- Observe: 일정은 ON:TIME 안에서 직접 입력해야 했고, 기기에 이미 동기화된 Google·Apple/iCloud·Android 캘린더를 계획 초안으로 활용할 경로가 없었음.
+- Select: 별도 OAuth나 서버 복제 없이 운영체제 캘린더 저장소를 읽고, 사용자가 선택·확인한 일정만 새 초안으로 가져오는 기기 연동 방식을 선택.
+- Specify: 권한 사전 설명, Android `READ_CALENDAR` 전용·iOS EventKit 접근, 향후 30일 조회, 공급자 텍스트 필터, 날짜별 시간·종일 일정, 선택 전 초안 불변, 종일 시간 미추정, 거부·차단·빈 상태·오류·복귀 fallback을 수용 기준으로 정의. TalkBack 실제 탐색은 사용자 요청으로 범위에서 제외.
+- Implement: Expo Calendar 네이티브 adapter, 캘린더/이벤트 정규화와 공급자 분류, 일정 탭의 `내 일정·캘린더·완료` UI, 선택 항목 바로 아래 미리보기, 원자적 새 초안 생성, 가져오기 확인 배너와 1단계 필수값 검증을 구현. 조회 원문은 화면 상태에만 두고 영구 저장하지 않음.
+- Verify: `npm run verify` 21 suites·86/86, Expo Doctor 20/20, iOS 번들 생성, 360×800·390×844·430×932 시각·상호작용 51/51, ARM64 Gradle 403 tasks 빌드·설치 통과. APK 권한은 `READ_CALENDAR`만 있고 `WRITE_CALENDAR`가 없음을 확인. Android 12 `SM-N971N`에서 사전 설명→시스템 권한→실제 Google/로컬 일정→시간 일정 가져오기와 종일 일정 시간 빈칸·안내까지 수동 통과했으며 치명적 React Native 오류가 없었음.
+- Reflect: 긴 캘린더에서 미리보기를 목록 끝에 배치한 초기 결함을 실기기에서 발견해 선택 카드 바로 아래로 이동함. Apple/iCloud 실제 계정 조회는 iOS 실기기 확보 시 출시 전 추가 스모크 대상으로 유지하지만 현재 완료 조건의 Android 핵심 흐름과 iOS 빌드 계약은 충족함.
+- Evidence: `src/lib/device-calendar.ts`, `src/lib/device-calendar-provider.native.ts`, `src/app/schedules.tsx`, `src/app/create.tsx`, `src/lib/__tests__/device-calendar.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/calendar-events.png`.
 
 ## 2026-07-27 Ralph Loop - 홈 일정 추가 플로팅 버튼 (완료)
 
@@ -229,7 +248,6 @@
 
 1. 연결 폰 잠금 해제 후 백그라운드 안내 중지·task/저장 삭제 검증
 2. 실제 이동 중 화면 꺼짐 위치 event 갱신 확인
-3. TalkBack 실제 기기 읽기 순서·상태 변화 안내 검증
 
 ## 2026-07-27 Ralph Loop - NAVER 인증·백그라운드 실행 검증 (진행)
 
@@ -247,7 +265,7 @@
 - Specify: 기본 세로 스와이프는 화면을 이동하고, 사용자가 명시적으로 지도 조작을 켠 동안만 지도 이동·확대 제스처가 동작해야 함. 화면 읽기 서비스 활성 중에는 앱 TTS를 자동 재생하지 않고 다음 행동 변화는 live region으로 전달해야 함.
 - Implement: NAVER 지도 `화면 스크롤 우선/지도 조작` 토글과 gesture props, AccessibilityInfo 구독·TTS 중지, 다음 행동 live region, heading 역할을 구현. `BG-01` 권한 게이트 flow 추가.
 - Verify: `npm run verify` TypeScript/ESLint/Jest 64/64, 시각·키보드 39/39, Android `BG-01` TMAP 실제 경로→하단 CTA→시스템 `위치 액세스 권한` 화면 진입 통과. 현재 `ACCESS_BACKGROUND_LOCATION=false`, TalkBack 서비스 꺼짐을 읽기 전용 확인.
-- Pending: 연결 폰에서 사용자가 `항상 허용` 선택 후 foreground service·화면 꺼짐 위치/TTS·중지 삭제 검증, TalkBack 활성 후 실제 초점 순서·상태 안내 검증.
+- Pending: 연결 폰에서 사용자가 `항상 허용` 선택 후 foreground service·화면 꺼짐 위치/TTS·중지 삭제 검증. TalkBack 실제 초점 순서·상태 안내 검증은 사용자 요청으로 계획에서 취소.
 
 Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소를 사용하며 Geocoding과 TMAP 도보 경로 실호출 검증을 완료했다.
 
@@ -312,14 +330,14 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Reflect: 지연 변경 CTA까지 스크롤한 위치가 캡처에 남아 화면 상단이 누락되는 테스트 결함을 발견해, 상호작용 완료 후 모든 스크롤 컨테이너를 상단으로 복원하도록 고정.
 - Evidence: `playwright.config.mjs`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/`.
 
-## 2026-07-26 Ralph Loop - 폰트 200%·접근성 기본 점검 (TalkBack 대기)
+## 2026-07-26 Ralph Loop - 폰트 200%·접근성 기본 점검 (완료)
 
 - Observe: Android 200% 글자 크기에서 타임라인 시각이 `12: / 49`로 갈라지고 Journey 핵심 지표가 `160 / 분`, `12k / m`처럼 분리됨.
 - Select: 사용자가 지금 해야 할 행동·남은 시간·거리의 가독성을 먼저 복구하고 첫 일정 전체 흐름을 큰 글자로 검증.
 - Specify: 시각과 단위는 한 줄을 유지하고, 핵심 CTA는 스크롤로 접근 가능하며, 클릭 요소는 읽을 이름을 가져야 하고 키보드로 실행 가능해야 함.
 - Implement: fontScale 기반 타임라인 시각 열 확장, Journey 1.6배 이상 세로 지표 레이아웃, 큰 글자에서도 동작하는 Maestro 스크롤 계약, 개발 빌드 전용 permission-denied fixture로 E2E 상태 격리를 구현.
 - Verify: 연결 Android `font_scale=2.0`에서 H-01 전체 통과 후 1.0 복원. 홈·등록·Plan B·완료·설정에서 이름 없는 클릭 요소 0개. 키보드 포커스·Space 실행 3/3, 시각/키보드 합계 30/30, `npm run verify` 52/52, Android 전체 3/3 통과.
-- Pending: TalkBack 서비스는 기기 전체 조작 방식을 바꾸므로 자동 활성화하지 않음. 사용자 활성화 후 헤더→상태→주 CTA 읽기 순서와 `accessibilityLiveRegion` 전달을 최종 검증해야 항목 완료.
+- Scope update (2026-07-28): TalkBack 실제 읽기 순서·상태 변화 음성·스와이프 탐색은 사용자 요청으로 계획에서 취소. 폰트 200%와 키보드 접근성 검증 결과로 이 항목을 종료함.
 - Evidence: `tmp/ralph-loop/timeagent-font200-home-bottom-fixed.png`, `tmp/ralph-loop/timeagent-font200-journey-fixed.png`, `tmp/ralph-loop/timeagent-a11y-*.xml`.
 
 ## 2026-07-26 Ralph Loop - 로컬 알림 예약·재예약·완료 취소 (완료)

@@ -53,6 +53,7 @@ const screens = [
   { id: 'home', path: '/', ready: '좋은 오후예요, 서연님' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '현재 초안과 달라지는 내용' },
+  { id: 'calendar-events', path: '/schedules?e2eCalendar=events', ready: '기기 캘린더 일정' },
   { id: 'plan', path: '/plan', ready: '준비 계획이 완성됐어요' },
   { id: 'plan-b', path: '/plan-b', ready: '플랜 B' },
   { id: 'journey-fallback', path: '/journey', ready: '연결 상태' },
@@ -161,4 +162,17 @@ test('온보딩 키보드 포커스와 실행', async ({ page }) => {
   await expect(next).toBeFocused();
   await page.keyboard.press('Space');
   await expect(page.getByText('현재 속도에 맞춰 계획을 다시 맞춰요', { exact: true })).toBeVisible();
+});
+
+test('캘린더 일정은 선택·확인 후 새 초안으로 가져옴', async ({ page }) => {
+  await page.goto('/schedules?e2eCalendar=events');
+  await page.getByRole('button', { name: /팀 주간 회의/ }).click();
+  await expect(page.getByText('가져오기 전 미리보기', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/schedule-draft')).title)).toBe('친구와 볼링');
+  await page.getByRole('button', { name: '이 일정 가져오기' }).click();
+  await expect(page.getByText('캘린더에서 가져왔어요', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '일정 이름' })).toHaveValue('팀 주간 회의');
+  await expect(page.getByRole('textbox', { name: '날짜' })).toHaveValue('2026-07-28');
+  await expect(page.getByRole('textbox', { name: '약속 시간' })).toHaveValue('10:00');
+  await expect(page.getByRole('textbox', { name: '목적지', exact: true })).toHaveValue('서울시청 회의실');
 });
