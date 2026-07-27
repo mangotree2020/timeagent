@@ -1,0 +1,28 @@
+appId: com.ontime.app
+name: BG-01 백그라운드 위치 권한 게이트
+tags:
+  - permission
+  - android
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+      android.permission.ACCESS_FINE_LOCATION: allow
+      android.permission.ACCESS_COARSE_LOCATION: allow
+      android.permission.ACCESS_BACKGROUND_LOCATION: deny
+- extendedWaitUntil:
+    visible: "언제 준비해야 할지.*"
+    timeout: 15000
+- openLink: "ontime://journey"
+- extendedWaitUntil:
+    visible: "도보 · TMAP 경로"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "화면 꺼짐 안내 켜기"
+    direction: DOWN
+- tapOn: "화면 꺼짐 안내 켜기"
+- extendedWaitUntil:
+    visible: ".*위치.*"
+    timeout: 10000

@@ -1,0 +1,24 @@
+appId: com.ontime.app
+name: J-01 위치 거부 이동 안내 fallback
+tags:
+  - fallback
+  - android
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+      android.permission.ACCESS_FINE_LOCATION: deny
+      android.permission.ACCESS_COARSE_LOCATION: deny
+- extendedWaitUntil:
+    visible: "언제 준비해야 할지.*"
+    timeout: 15000
+- openLink: "ontime://journey?e2eState=permission-denied"
+- extendedWaitUntil:
+    visible: "서면 볼링장"
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "연결 상태"
+    timeout: 10000
+- assertVisible: "위치 권한이 없어 마지막 위치 기준 경로를 표시합니다."
+- assertVisible: "위치·경로 다시 확인"

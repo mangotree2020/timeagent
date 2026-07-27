@@ -1,0 +1,65 @@
+appId: com.ontime.app
+name: H-01 비회원 첫 일정부터 실시간 준비까지
+tags:
+  - smoke
+  - android
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+      android.permission.ACCESS_FINE_LOCATION: allow
+      android.permission.ACCESS_COARSE_LOCATION: allow
+- extendedWaitUntil:
+    visible: "언제 준비해야 할지.*"
+    timeout: 15000
+- assertVisible: "ON:TIME"
+- tapOn: "다음"
+- assertVisible: "현재 속도에 맞춰.*"
+- tapOn: "다음"
+- assertVisible: "현위치와 경로를 보고.*"
+- tapOn: "첫 일정 만들기"
+- extendedWaitUntil:
+    visible: "새 일정 만들기"
+    timeout: 10000
+- assertVisible: "언제, 어디에서 만나나요?"
+- scrollUntilVisible:
+    element:
+      text: "다음"
+    direction: DOWN
+- tapOn: "다음"
+- assertVisible: "어떻게 이동할까요?"
+- tapOn: "택시"
+- scrollUntilVisible:
+    element:
+      text: "다음"
+    direction: DOWN
+- tapOn: "다음"
+- assertVisible: "무엇을 준비해야 하나요?"
+- scrollUntilVisible:
+    element:
+      text: "AI 계획 만들기"
+    direction: DOWN
+- tapOn: "AI 계획 만들기"
+- extendedWaitUntil:
+    visible: "준비 계획이 완성됐어요"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "택시로 출발"
+    direction: DOWN
+- assertVisible: "택시로 출발"
+- scrollUntilVisible:
+    element:
+      text: "이 계획으로 시작"
+    direction: DOWN
+- tapOn: "이 계획으로 시작"
+- extendedWaitUntil:
+    visible: "실시간 준비"
+    timeout: 10000
+- assertVisible: "현재.*"
+- scrollUntilVisible:
+    element:
+      text: "이동 경로 보기"
+    direction: DOWN
+- assertVisible: "이동 경로 보기"

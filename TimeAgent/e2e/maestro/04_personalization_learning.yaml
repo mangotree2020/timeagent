@@ -1,0 +1,122 @@
+appId: com.ontime.app
+name: L-01 실제 시간 학습과 다음 계획 반영
+tags:
+  - learning
+  - android
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "언제 준비해야 할지.*"
+    timeout: 15000
+- openLink: "ontime://progress"
+- extendedWaitUntil:
+    visible: "실시간 준비"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "샤워 완료"
+    direction: UP
+- tapOn:
+    text: "샤워 완료"
+    waitToSettleTimeoutMs: 500
+- scrollUntilVisible:
+    element:
+      text: "화장 완료"
+    direction: UP
+- tapOn:
+    text: "화장 완료"
+    waitToSettleTimeoutMs: 500
+- scrollUntilVisible:
+    element:
+      text: "옷 입기 완료"
+    direction: UP
+- tapOn:
+    text: "옷 입기 완료"
+    waitToSettleTimeoutMs: 500
+- scrollUntilVisible:
+    element:
+      text: "짐 챙기기 완료"
+    direction: UP
+- tapOn:
+    text: "짐 챙기기 완료"
+    waitToSettleTimeoutMs: 500
+- scrollUntilVisible:
+    element:
+      text: "추천 경로로 출발 완료"
+    direction: UP
+- tapOn:
+    text: "추천 경로로 출발 완료"
+    waitToSettleTimeoutMs: 500
+- scrollUntilVisible:
+    element:
+      text: "도착 예정 완료"
+    direction: UP
+- tapOn:
+    text: "도착 예정 완료"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "일정 완료"
+    timeout: 10000
+- assertVisible: "이번 기록 5개를 학습해.*"
+- openLink: "ontime://settings"
+- extendedWaitUntil:
+    visible: "실제 시간 학습"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "학습 기록 초기화"
+    direction: DOWN
+- tapOn: "학습 기록 초기화"
+- assertVisible: "누적 실제 기록 5개를 이 기기에서 삭제할까요?"
+- tapOn: "취소"
+- assertVisible: "학습 기록 초기화"
+- openLink: "ontime://create?new=1"
+- extendedWaitUntil:
+    visible: "새 일정 만들기"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "다음"
+    direction: DOWN
+- tapOn: "다음"
+- assertVisible: "어떻게 이동할까요?"
+- scrollUntilVisible:
+    element:
+      text: "다음"
+    direction: DOWN
+- tapOn: "다음"
+- assertVisible: "무엇을 준비해야 하나요?"
+- scrollUntilVisible:
+    element:
+      text: "AI 계획 만들기"
+    direction: DOWN
+- tapOn: "AI 계획 만들기"
+- extendedWaitUntil:
+    visible: "내 실제 기록을 반영했어요"
+    timeout: 10000
+- assertVisible: "실제 기록 1회 평균"
+- scrollUntilVisible:
+    element:
+      text: "이번 계획에서는 기본 시간 사용"
+    direction: DOWN
+- tapOn: "이번 계획에서는 기본 시간 사용"
+- assertNotVisible: "내 실제 기록을 반영했어요"
+- openLink: "ontime://settings"
+- extendedWaitUntil:
+    visible: "설정"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "MVP 지표 · 이 기기"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "측정 데이터 초기화"
+    direction: DOWN
+- assertVisible: "첫 일정 생성 완료율"
+- tapOn: "측정 데이터 초기화"
+- assertVisible: "이 기기의 MVP 측정 데이터를 삭제할까요?"
+- tapOn: "취소"

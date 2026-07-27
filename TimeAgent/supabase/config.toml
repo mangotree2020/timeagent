@@ -1,0 +1,5 @@
+project_id = "timeagent"
+
+[functions.mobility]
+verify_jwt = false
+
