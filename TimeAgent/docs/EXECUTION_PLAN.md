@@ -48,7 +48,12 @@
   - Given 일정 정보가 부족함, When AI 질문에 음성 또는 텍스트로 답하면, Then 직전 제안을 포함한 제한된 대화 문맥으로 제안을 보완하며 사용자가 적용하기 전에는 초안을 변경하지 않는다.
   - Given 마이크를 거부했거나 네트워크·서버 오류가 발생함, When 음성 흐름을 계속함, Then 직접 입력·재시도·수동 등록 복귀 중 가능한 다음 행동과 현재 초안 유지 상태를 표시한다.
   - Given 화면 읽기가 활성 또는 확인 중임, When AI 답변이 도착함, Then 앱 자체 TTS를 재생하지 않고 상태 변화와 질문을 접근성 라이브 영역으로 전달한다.
-  - Given 녹음 요청을 처리함, When 응답 또는 오류가 끝나면, Then 원본 오디오는 앱 저장소와 서버에 보관하지 않고 OpenAI 키는 Supabase Edge Function 비밀값으로만 사용한다.
+  - Given 녹음 요청을 처리함, When 응답 또는 오류가 끝나면, Then 원본 오디오는 앱 저장소와 서버에 보관하지 않고 Gemini 키는 Supabase Edge Function 비밀값으로만 사용한다.
+- [ ] Gemini Flash-Lite 운영 검증과 비용 기준선
+  - Given `GEMINI_API_KEY`를 등록하고 `gemini-3.1-flash-lite` 왕복이 동작함, When 고정 한국어 일정 평가셋을 실행하면, Then 필드 정확도·구조화 응답 성공률·p50/p95 지연·요청당 비용을 기준선으로 기록한다.
+  - Given 텍스트 또는 최대 60초 음성을 보냄, When Gemini 응답이 도착하면, Then 전사문과 JSON Schema 일정 제안이 한 호출에서 반환되고 앱의 기존 응답 계약을 통과한다.
+  - Given 운영 결과를 평가함, When 날짜·시각·시간대·반복·목적지·이동수단·준비 행동의 중요 필드 회귀가 발견되면, Then 자동 적용하지 않고 직접 입력·재시도·수동 등록 fallback을 유지하며 모델 또는 공급자 재선정을 검토한다.
+  - 벤치마크는 실제 사용자 녹음을 다른 공급자에 복제하지 않고 합성·사전 동의된 고정 fixture만 사용한다. Gemini 키는 Supabase Edge Function Secrets에만 저장하고 앱 번들·로그·저장소에 포함하지 않는다.
 - [x] 지도·도보 경로 공급자 결정
   - 지도/좌표: NAVER Maps, 도보 경로: TMAP API.
 - [x] 위치/알림 권한 사전 설명과 거부 상태
@@ -158,8 +163,19 @@
 - Specify: 마이크 사전 설명, 최대 60초 녹음, 인식문·AI 확인·질문·변경 전후 표시, 다회 답변, 명시적 적용, 마이크 거부·네트워크 오류·화면 읽기·원본 오디오 삭제를 수용 기준으로 정의.
 - Implement: `expo-audio` 녹음과 직접 입력 fallback, 최근 8개 대화와 구조화된 일정 patch, 상대 날짜 해석용 기기 시각·시간대, TalkBack 활성 시 앱 TTS 중지, 읽은 녹음 캐시 즉시 삭제, `gpt-4o-transcribe`→`gpt-5.6-sol` Supabase `assistant` Edge Function을 구현.
 - Verify: 신규 도메인·API 테스트 포함 `npm run verify` 72/72, Expo Doctor 20/20, 세 viewport 전체 시각·키보드 42/42, ARM64 Gradle 403 tasks 빌드·설치 통과. Android 12 `SM-N971N`에서 TalkBack 중지 상태를 유지하며 사전 설명→8초 녹음→완료→서버 오류 직접 입력 fallback과 치명적 로그 없음 확인. 서울 리전에 `assistant`를 배포하고 `/health` 200, CORS 200, 키 미설정 요청의 `SERVICE_NOT_CONFIGURED` 503 계약을 실호출로 확인.
-- Pending: Supabase Secrets에 `OPENAI_API_KEY`가 없어 실제 한국어 전사→AI 질문→음성 확인→제안 적용 왕복은 미검증. 키 등록 후 재배포 없이 실기기 왕복을 통과해야 P1 체크박스를 완료함.
+- Superseded: 이 OpenAI 구현은 2026-07-28 Gemini Flash-Lite 단일 호출 구현으로 대체됨. 당시 운영 키가 없어 실제 왕복은 수행하지 않았음.
 - Reflect: AI 변경은 자동 저장하지 않고 별도 제안 상태에서만 누적하며, 서버 응답도 enum·시간·길이·준비 시간 범위를 앱에서 다시 검증함. 비회원 공개 함수의 운영 rate limit은 배포 전에 추가 검토가 필요함.
+
+## 2026-07-28 Ralph Loop - Gemini Flash-Lite 전환 (운영 키 대기)
+
+- Observe: 기존 Edge Function은 `gpt-4o-transcribe` 전사와 `gpt-5.6-sol` 일정 해석의 두 번 호출 구조였고 운영 키가 없어 실제 왕복 기준선은 없었음.
+- Select: 사용자 결정에 따라 음성과 구조화 출력을 함께 지원하는 `gemini-3.1-flash-lite`를 기본 공급자로 적용하고 한 번의 호출로 전사문과 일정 제안을 반환하도록 전환.
+- Specify: 상대 날짜, 자정 경계, 모호한 시각, 반복 일정, 목적지 수정, 이동수단, 준비 행동, 다회 확인 질문을 포함한 고정 한국어 평가셋을 구성한다. 후보마다 중요 필드 정확도, JSON Schema 검증, 질문 필요성, p50/p95 지연, 실패율, 1,000건 예상 비용을 같은 조건으로 기록한다.
+- Implement: M4A를 명시적으로 지원하는 Gemini Interactions API adapter, 인라인 base64 오디오, `store: false`, 최소 추론, 단일 JSON Schema 응답, 텍스트 transcript 원문 보존, `GEMINI_SCHEDULE_MODEL` 환경변수, provider/model/configured health 응답과 upstream 오류 매핑을 구현. 앱의 Supabase API 계약과 명시적 적용 흐름은 변경하지 않음.
+- Pending: Supabase Secrets에 `GEMINI_API_KEY`를 등록하고 함수를 배포한 뒤 실제 한국어 음성→전사→질문→제안 적용 왕복과 비용 기준선을 확인해야 함.
+- Verify: Gemini endpoint·텍스트·M4A 인라인 오디오·구조화 응답 추출 단위 테스트 4건과 `npm run verify` 79/79 통과. 서울 리전 `assistant` 배포 후 `/health`가 provider `gemini`, model `gemini-3.1-flash-lite`, configured false를 반환하고 CORS 200과 키 누락 `SERVICE_NOT_CONFIGURED` 503을 확인. 키 등록 후 세 viewport 오류/대기/제안 화면과 Android 실기기 한국어 음성 왕복, upstream 오류 계약, 원시 음성·키·민감 입력 비저장을 추가 확인한다.
+- Reflect: API 단가만이 아니라 일정 오해의 사용자 비용을 함께 평가한다. 무료 tier의 데이터 처리 조건은 운영 판단 근거로 사용하지 않고 유료 운영 조건과 보존 정책을 확인한다.
+- Price snapshot (2026-07-28, USD/1M tokens unless noted): OpenAI `gpt-4o-transcribe` audio input/output $2.50/$10, `gpt-4o-mini-transcribe` $1.25/$5, `gpt-5.6-sol` text $5/$30, `gpt-5.6-luna` $1/$6, `gpt-4o-mini` $0.15/$0.60. Gemini `gemini-3.1-flash-lite` standard text/audio input $0.25/$0.50, output $1.50. Groq Whisper Large v3 Turbo $0.04/transcribed hour. 구현 시 공급자 공식 가격 페이지를 다시 확인한다.
 
 ## 2026-07-27 Ralph Loop - TalkBack과 앱 TTS 중복 방지 (완료)
 

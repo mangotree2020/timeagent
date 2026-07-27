@@ -1,6 +1,12 @@
+import {
+  buildGeminiInteractionBody,
+  extractGeminiOutputText,
+  GEMINI_INTERACTIONS_URL,
+  GeminiAssistantTurn,
+} from "../_shared/gemini-assistant.ts";
 import { corsHeaders, jsonResponse } from "../_shared/http.ts";
 
-const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 const MAX_AUDIO_BASE64 = 7_000_000;
 const MAX_HISTORY = 8;
 
@@ -10,32 +16,43 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname.endsWith("/health")) {
-    return jsonResponse({ status: "ok", openaiConfigured: Boolean(Deno.env.get("OPENAI_API_KEY")) });
+    return jsonResponse({
+      status: "ok",
+      provider: "gemini",
+      model: configuredModel(),
+      geminiConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")?.trim()),
+    });
   }
   if (request.method !== "POST" || !url.pathname.endsWith("/v1/schedule/turn")) {
     return errorResponse("INVALID_INPUT", "지원하지 않는 요청입니다.", false, 404);
   }
 
-  const apiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
-  if (!apiKey) return errorResponse("SERVICE_NOT_CONFIGURED", "AI 연결 설정이 필요합니다.", false, 503);
+  const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
+  if (!apiKey) return errorResponse("SERVICE_NOT_CONFIGURED", "Gemini AI 연결 설정이 필요합니다.", false, 503);
 
   try {
     const body: unknown = await request.json();
     if (!isRequestBody(body)) return errorResponse("INVALID_INPUT", "말하거나 입력한 내용을 확인해 주세요.", false, 400);
-    const transcript = body.input.kind === "text"
-      ? body.input.text.trim()
-      : await transcribe(body.input, apiKey);
-    if (!transcript) return errorResponse("UPSTREAM_REJECTED", "음성을 인식하지 못했습니다. 다시 말하거나 직접 입력해 주세요.", false, 422);
 
-    const result = await completeSchedule({
-      apiKey,
+    const turn: GeminiAssistantTurn = {
       conversationId: body.conversationId,
       draft: body.draft,
       history: body.history.slice(-MAX_HISTORY),
-      transcript,
+      input: body.input,
       clientContext: body.clientContext,
-    });
-    return jsonResponse({ transcript, ...result });
+    };
+    const response = await geminiRequest(
+      GEMINI_INTERACTIONS_URL,
+      apiKey,
+      buildGeminiInteractionBody(configuredModel(), turn),
+      45_000,
+    );
+    const payload: unknown = await response.json();
+    const outputText = extractGeminiOutputText(payload);
+    if (!outputText) throw new AssistantError("UPSTREAM_REJECTED", "음성을 인식하지 못했거나 일정 응답을 만들지 못했습니다.", false, 422);
+
+    const result = parseAssistantResult(outputText, body.input);
+    return jsonResponse(result);
   } catch (error) {
     if (error instanceof AssistantError) {
       return errorResponse(error.code, error.message, error.retryable, error.status);
@@ -44,108 +61,21 @@ Deno.serve(async (request) => {
   }
 });
 
-async function transcribe(input: Extract<Input, { kind: "audio" }>, apiKey: string) {
-  const bytes = decodeBase64(input.base64);
-  const extension = input.mimeType.includes("webm") ? "webm" : input.mimeType.includes("wav") ? "wav" : "m4a";
-  const form = new FormData();
-  form.append("file", new Blob([bytes], { type: input.mimeType }), `schedule.${extension}`);
-  form.append("model", "gpt-4o-transcribe");
-  form.append("language", "ko");
-  form.append("prompt", "한국어 약속 일정입니다. 날짜, 시각, 장소, 이동수단과 준비 행동을 정확히 받아쓰세요.");
-  const response = await openAIRequest(`${OPENAI_BASE_URL}/audio/transcriptions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  }, 45_000);
-  const payload: unknown = await response.json();
-  if (!isRecord(payload) || typeof payload.text !== "string") throw upstreamFailure(response.status);
-  return payload.text.trim().slice(0, 2_000);
+function configuredModel() {
+  const model = Deno.env.get("GEMINI_SCHEDULE_MODEL")?.trim() || DEFAULT_GEMINI_MODEL;
+  return /^[a-zA-Z0-9._-]+$/.test(model) ? model : DEFAULT_GEMINI_MODEL;
 }
 
-async function completeSchedule({ apiKey, conversationId, draft, history, transcript, clientContext }: {
-  apiKey: string;
-  conversationId: string;
-  draft: Record<string, unknown>;
-  history: Array<{ role: "user" | "assistant"; text: string }>;
-  transcript: string;
-  clientContext: { nowIso: string; timezone: string };
-}) {
-  const model = Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-sol";
-  const response = await openAIRequest(`${OPENAI_BASE_URL}/responses`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      store: false,
-      safety_identifier: conversationId,
-      reasoning: { effort: "low" },
-      instructions: [
-        "당신은 한국어 일정 등록 도우미다. 사용자의 현재 일정 초안과 최근 대화를 바탕으로 이번 말을 반영한 변경 제안을 만든다.",
-        "값을 추측하지 말고 부족한 핵심 정보(날짜, 시간, 목적지)는 한 번에 하나의 짧은 질문으로 확인한다.",
-        "오늘, 내일, 다음 주 같은 상대 날짜는 clientContext의 현재 시각과 시간대를 기준으로 해석하고 날짜에는 사용자가 확인할 수 있는 절대 날짜를 포함한다. 시간은 반드시 24시간 HH:mm 형식으로 낸다.",
-        "사용자가 분명히 말한 항목만 patch에 채우며 나머지는 null이다. 적용 여부를 결정하지 말고 제안만 설명한다.",
-        "routines를 변경할 때는 추가분만 내지 말고 currentDraft의 기존 준비 행동과 이번 변경을 병합한 최종 전체 목록을 낸다. 사용자가 삭제를 요청한 행동만 제외한다.",
-        "assistantMessage는 이해한 내용을 짧게 확인하고, question이 있으면 자연스럽게 이어지게 작성한다.",
-      ].join("\n"),
-      input: JSON.stringify({ clientContext, currentDraft: draft, recentConversation: history, currentUserUtterance: transcript }),
-      text: {
-        format: {
-          type: "json_schema",
-          name: "schedule_proposal",
-          strict: true,
-          schema: responseSchema,
-        },
-      },
-    }),
-  }, 45_000);
-  const payload: unknown = await response.json();
-  if (!response.ok) throw upstreamFailure(response.status);
-  const outputText = extractOutputText(payload);
-  if (!outputText) throw new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
-  try {
-    return JSON.parse(outputText);
-  } catch {
-    throw new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
-  }
-}
-
-const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
-const responseSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["assistantMessage", "question", "readyToApply", "patch"],
-  properties: {
-    assistantMessage: { type: "string" },
-    question: nullableString,
-    readyToApply: { type: "boolean" },
-    patch: {
-      type: "object",
-      additionalProperties: false,
-      required: ["title", "date", "appointmentTime", "destination", "destinationAddress", "transport", "priority", "routines"],
-      properties: {
-        title: nullableString,
-        date: nullableString,
-        appointmentTime: nullableString,
-        destination: nullableString,
-        destinationAddress: nullableString,
-        transport: { anyOf: [{ type: "string", enum: ["AI 추천", "도보", "버스", "지하철", "자가용", "택시"] }, { type: "null" }] },
-        priority: { anyOf: [{ type: "string", enum: ["on-time", "cost"] }, { type: "null" }] },
-        routines: {
-          anyOf: [
-            { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["label", "minutes"], properties: { label: { type: "string" }, minutes: { type: "integer", minimum: 1, maximum: 180 } } } },
-            { type: "null" },
-          ],
-        },
-      },
-    },
-  },
-};
-
-async function openAIRequest(url: string, init: RequestInit, timeoutMs: number) {
+async function geminiRequest(url: string, apiKey: string, body: unknown, timeoutMs: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
     if (!response.ok) throw upstreamFailure(response.status);
     return response;
   } catch (error) {
@@ -154,6 +84,33 @@ async function openAIRequest(url: string, init: RequestInit, timeoutMs: number) 
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function parseAssistantResult(outputText: string, input: Input) {
+  let value: unknown;
+  try {
+    value = JSON.parse(outputText);
+  } catch {
+    throw invalidResponse();
+  }
+  if (!isAssistantResult(value)) throw invalidResponse();
+  return {
+    ...value,
+    transcript: input.kind === "text" ? input.text.trim() : value.transcript.trim(),
+  };
+}
+
+function isAssistantResult(value: unknown): value is Record<string, unknown> & { transcript: string } {
+  return isRecord(value)
+    && validText(value.transcript, 2_000)
+    && validText(value.assistantMessage, 1_000)
+    && (value.question === null || validText(value.question, 500))
+    && typeof value.readyToApply === "boolean"
+    && isRecord(value.patch);
+}
+
+function invalidResponse() {
+  return new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
 }
 
 function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string } } {
@@ -184,25 +141,6 @@ function isClientContext(value: unknown): value is { nowIso: string; timezone: s
     && value.timezone.length <= 80;
 }
 
-function extractOutputText(value: unknown) {
-  if (!isRecord(value) || !Array.isArray(value.output)) return null;
-  for (const item of value.output) {
-    if (!isRecord(item) || !Array.isArray(item.content)) continue;
-    for (const content of item.content) {
-      if (isRecord(content) && content.type === "output_text" && typeof content.text === "string") return content.text;
-    }
-  }
-  return null;
-}
-
-function decodeBase64(value: string) {
-  try {
-    return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-  } catch {
-    throw new AssistantError("INVALID_INPUT", "녹음 파일을 확인하지 못했습니다.", false, 400);
-  }
-}
-
 function validText(value: unknown, max: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= max;
 }
@@ -212,8 +150,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function upstreamFailure(status: number) {
-  if (status === 401 || status === 403) {
-    return new AssistantError("SERVICE_NOT_CONFIGURED", "AI 인증 설정을 확인해 주세요.", false, 503);
+  if (status === 400 || status === 401 || status === 403 || status === 404) {
+    return new AssistantError("SERVICE_NOT_CONFIGURED", "Gemini AI 인증 또는 모델 설정을 확인해 주세요.", false, 503);
   }
   const retryable = status === 429 || status >= 500;
   return new AssistantError(retryable ? "UPSTREAM_UNAVAILABLE" : "UPSTREAM_REJECTED", retryable ? "AI 서비스를 일시적으로 사용할 수 없습니다." : "말한 내용을 AI가 처리하지 못했습니다.", retryable, retryable ? 503 : 422);

@@ -2,7 +2,7 @@
 
 ## 보안 경계
 
-- NAVER Client Secret과 TMAP App Key는 mobility 서버에만, OpenAI API Key는 assistant 서버에만 둔다.
+- NAVER Client Secret과 TMAP App Key는 mobility 서버에만, Gemini API Key는 assistant 서버에만 둔다.
 - `EXPO_PUBLIC_` 접두사가 붙은 값은 앱 번들에 포함될 수 있으므로 비밀값에 사용하지 않는다.
 - React Native 앱은 공개 proxy URL로 ON:TIME의 mobility·assistant 서버만 호출한다.
 - 실제 키는 Git, 문서, 스크린샷, 로그에 남기지 않는다.
@@ -20,7 +20,7 @@ EXPO_PUBLIC_MOBILITY_API_BASE_URL=https://YOUR_PROJECT_REF.supabase.co/functions
 NAVER_CLIENT_ID=발급받은_Geocoding_Client_ID
 NAVER_CLIENT_SECRET=발급받은_Client_Secret
 TMAP_APP_KEY=발급받은_TMAP_App_Key
-OPENAI_API_KEY=발급받은_OpenAI_API_Key
+GEMINI_API_KEY=발급받은_Gemini_API_Key
 ```
 
 현재 `.gitignore`는 `.env.local`과 `.env.*`를 제외하고 `.env.example`만 추적하도록 설정돼 있다. 비밀값이 담긴 파일에 `git add -f`를 사용하지 않는다.
@@ -47,7 +47,7 @@ npx supabase functions deploy assistant --no-verify-jwt
 
 함수에서는 `Deno.env.get('NAVER_CLIENT_SECRET')` 형태로 읽는다. 앱 코드와 `EXPO_PUBLIC_` 변수에는 비밀값을 두지 않는다.
 
-음성 일정 도우미는 `OPENAI_API_KEY`를 Edge Function Secret으로만 읽는다. 선택적으로 `OPENAI_SCHEDULE_MODEL`을 설정할 수 있으며 기본 모델은 `gpt-5.6-sol`, 음성 전사 모델은 `gpt-4o-transcribe`다. 앱에는 공개 proxy URL인 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 둘 수 있다. 이 값이 없으면 mobility URL의 마지막 `/mobility`를 `/assistant`로 바꿔 같은 Supabase 프로젝트를 사용한다.
+음성 일정 도우미는 `GEMINI_API_KEY`를 Edge Function Secret으로만 읽는다. 선택적으로 `GEMINI_SCHEDULE_MODEL`을 설정할 수 있으며 기본 모델은 `gemini-3.1-flash-lite`다. Gemini가 인라인 음성 전사와 구조화된 일정 제안을 한 요청에서 처리한다. 앱에는 공개 proxy URL인 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 둘 수 있다. 이 값이 없으면 mobility URL의 마지막 `/mobility`를 `/assistant`로 바꿔 같은 Supabase 프로젝트를 사용한다.
 
 배포된 endpoint는 다음과 같다.
 
@@ -68,11 +68,11 @@ Supabase Edge Function Secrets에 다음을 암호화된 비밀값으로 등록�
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
 - `TMAP_APP_KEY`
-- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
 
 선택 설정:
 
-- `OPENAI_SCHEDULE_MODEL`: 기본값 `gpt-5.6-sol`
+- `GEMINI_SCHEDULE_MODEL`: 기본값 `gemini-3.1-flash-lite`
 
 앱 빌드 환경에는 공개 proxy URL인 `EXPO_PUBLIC_MOBILITY_API_BASE_URL`과 필요 시 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 설정한다. 개발·스테이징·운영 키와 NAVER 허용 도메인/패키지를 각각 분리한다.
 
