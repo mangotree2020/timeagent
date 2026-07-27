@@ -166,14 +166,14 @@
 - Superseded: 이 OpenAI 구현은 2026-07-28 Gemini Flash-Lite 단일 호출 구현으로 대체됨. 당시 운영 키가 없어 실제 왕복은 수행하지 않았음.
 - Reflect: AI 변경은 자동 저장하지 않고 별도 제안 상태에서만 누적하며, 서버 응답도 enum·시간·길이·준비 시간 범위를 앱에서 다시 검증함. 비회원 공개 함수의 운영 rate limit은 배포 전에 추가 검토가 필요함.
 
-## 2026-07-28 Ralph Loop - Gemini Flash-Lite 전환 (운영 키 대기)
+## 2026-07-28 Ralph Loop - Gemini Flash-Lite 전환 (서버 실호출 완료, 실기기 대기)
 
 - Observe: 기존 Edge Function은 `gpt-4o-transcribe` 전사와 `gpt-5.6-sol` 일정 해석의 두 번 호출 구조였고 운영 키가 없어 실제 왕복 기준선은 없었음.
 - Select: 사용자 결정에 따라 음성과 구조화 출력을 함께 지원하는 `gemini-3.1-flash-lite`를 기본 공급자로 적용하고 한 번의 호출로 전사문과 일정 제안을 반환하도록 전환.
 - Specify: 상대 날짜, 자정 경계, 모호한 시각, 반복 일정, 목적지 수정, 이동수단, 준비 행동, 다회 확인 질문을 포함한 고정 한국어 평가셋을 구성한다. 후보마다 중요 필드 정확도, JSON Schema 검증, 질문 필요성, p50/p95 지연, 실패율, 1,000건 예상 비용을 같은 조건으로 기록한다.
 - Implement: M4A를 명시적으로 지원하는 Gemini Interactions API adapter, 인라인 base64 오디오, `store: false`, 최소 추론, 단일 JSON Schema 응답, 텍스트 transcript 원문 보존, `GEMINI_SCHEDULE_MODEL` 환경변수, provider/model/configured health 응답과 upstream 오류 매핑을 구현. 앱의 Supabase API 계약과 명시적 적용 흐름은 변경하지 않음.
-- Pending: Supabase Secrets에 `GEMINI_API_KEY`를 등록한 뒤 실제 한국어 음성→전사→질문→제안 적용 왕복과 비용 기준선을 확인해야 함. Gemini 함수 배포와 키 누락 계약 검증은 완료함.
-- Verify: Gemini endpoint·텍스트·M4A 인라인 오디오·구조화 응답 추출 단위 테스트 4건과 `npm run verify` 79/79 통과. 서울 리전 `assistant` 배포 후 `/health`가 provider `gemini`, model `gemini-3.1-flash-lite`, configured false를 반환하고 CORS 200과 키 누락 `SERVICE_NOT_CONFIGURED` 503을 확인. 키 등록 후 세 viewport 오류/대기/제안 화면과 Android 실기기 한국어 음성 왕복, upstream 오류 계약, 원시 음성·키·민감 입력 비저장을 추가 확인한다.
+- Pending: Android 연결 기기가 없어 앱의 사전 설명→녹음→AI 제안 표시→`이 일정에 적용` 명시적 반영 왕복은 미검증. 고정 한국어 평가셋의 필드 정확도·p50/p95 지연·1,000건 예상 비용 기준선도 추가 측정해야 함.
+- Verify: Gemini endpoint·텍스트·M4A 인라인 오디오·구조화 응답 추출 단위 테스트 4건과 `npm run verify` 79/79 통과. 서울 리전 `assistant` 배포 후 CORS 200, 키 누락 `SERVICE_NOT_CONFIGURED` 503을 확인했고, 키 등록 후 `/health`가 provider `gemini`, model `gemini-3.1-flash-lite`, configured true를 반환함. 한국어 텍스트에서 `2026-07-29 10:30`·연산동 치과·양치 5분을, Yuna 합성 M4A 음성에서 `2026-07-29 15:00`·서울 시청·지하철·자료 준비 10분을 정확히 전사·구조화해 각각 HTTP 200으로 확인함. 원본 음성은 서버에 저장하지 않았고 검증용 로컬 음성 파일도 즉시 삭제함.
 - Reflect: API 단가만이 아니라 일정 오해의 사용자 비용을 함께 평가한다. 무료 tier의 데이터 처리 조건은 운영 판단 근거로 사용하지 않고 유료 운영 조건과 보존 정책을 확인한다.
 - Price snapshot (2026-07-28, USD/1M tokens unless noted): OpenAI `gpt-4o-transcribe` audio input/output $2.50/$10, `gpt-4o-mini-transcribe` $1.25/$5, `gpt-5.6-sol` text $5/$30, `gpt-5.6-luna` $1/$6, `gpt-4o-mini` $0.15/$0.60. Gemini `gemini-3.1-flash-lite` standard text/audio input $0.25/$0.50, output $1.50. Groq Whisper Large v3 Turbo $0.04/transcribed hour. 구현 시 공급자 공식 가격 페이지를 다시 확인한다.
 
