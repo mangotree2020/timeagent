@@ -122,6 +122,8 @@ adb shell am start -a android.intent.action.VIEW -d ontime:/// com.ontime.app
 28. 일정 화면의 `캘린더` 탭에서 사전 설명을 확인한 뒤 권한을 허용하고, 실제 Google·Apple/iCloud 또는 기기 캘린더의 향후 30일 일정과 공급자 필터가 표시되는지 확인한다.
 29. 시간 일정을 선택해 카드 바로 아래 미리보기를 확인하고 `이 일정 가져오기` 전에는 기존 초안이 유지되며, 누른 뒤에만 제목·날짜·시간·장소가 새 일정 1단계에 반영되는지 확인한다.
 30. 종일 일정을 가져와 약속 시간이 빈칸이고 시간을 입력하라는 다음 행동이 표시되는지 확인한다. Android APK에는 `READ_CALENDAR`만 포함되고 `WRITE_CALENDAR`가 없는지도 함께 확인한다.
+31. 설정의 `Plus 미리보기`에서 완료 3회 전 남은 횟수, 완료 3회 후 가격안 선택, 적용 전 저장 불변, 관심 등록, 앱 재실행 복원, 철회 확인 전 유지와 확인 후 삭제를 확인한다. 화면에는 결제·자동 갱신·연락처 수집이 없고 기능이 출시 후보임이 표시돼야 한다.
+32. 설정의 `Phase 0 테스트 결과`에서 사용자 유형을 고르고 공유 항목에 동의한 뒤 운영체제 공유창을 연다. 공유창을 닫은 뒤 `공유하지 않았어요`를 선택하면 성공 지표가 늘지 않고, 다시 공유해 `공유 완료 확인`을 선택한 경우에만 1회 늘어나는지 확인한다.
 
 ## Android ARM64 개발 APK
 
@@ -136,7 +138,7 @@ NAVER 지도 의존성을 받으려면 `app.json`의 `expo-build-properties`에 
 
 ## 시각 회귀 매트릭스
 
-각 핵심 화면을 360x800, 390x844, 430x932에서 라이트 모드로 캡처한다. 최소 대상은 홈, 등록 3단계, AI 결과, 캘린더 일정, 정상/지연 진행, 플랜 B, 완료, 설정이다.
+각 핵심 화면을 360x800, 390x844, 430x932에서 라이트 모드로 캡처한다. 최소 대상은 홈, 등록 3단계, AI 결과, 캘린더 일정, 정상/지연 진행, 플랜 B, 완료, 설정, Plus 미리보기, Phase 0 테스트 결과다.
 
 ### 세 기준 화면 시각 회귀
 
@@ -158,7 +160,7 @@ npm run visual:test
 npm run visual:update
 ```
 
-`playwright.config.mjs`가 Expo web server, 한국 시간대, 고정 모바일 viewport를 준비한다. `e2e/visual/app.visual.spec.mjs`는 홈·등록 3단계·AI 계획·개인화 계획·MVP 지표·Plan B·Journey fallback/화면 읽기·완료·설정·정상/지연 진행을 검증하며 기준 PNG는 `e2e/visual/__screenshots__/`에 보관한다. 각 테스트는 가로 넘침과 기준 이미지 대비 0.2% 초과 차이를 실패로 처리한다.
+`playwright.config.mjs`가 Expo web server, 한국 시간대, 고정 모바일 viewport를 준비한다. `e2e/visual/app.visual.spec.mjs`는 홈·등록 3단계·AI 계획·개인화 계획·MVP 지표·Plan B·Journey fallback/화면 읽기·완료·설정·Plus·Phase 0 테스트 결과·정상/지연 진행을 검증하며 기준 PNG는 `e2e/visual/__screenshots__/`에 보관한다. 각 테스트는 가로 넘침과 기준 이미지 대비 0.2% 초과 차이를 실패로 처리한다.
 
 확인 항목:
 

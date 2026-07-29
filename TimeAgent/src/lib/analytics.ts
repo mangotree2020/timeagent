@@ -11,7 +11,11 @@ export type AnalyticsEventName =
   | 'delay_applied'
   | 'delay_rejected'
   | 'step_completed'
-  | 'schedule_completed';
+  | 'schedule_completed'
+  | 'plus_offer_viewed'
+  | 'plus_interest_selected'
+  | 'plus_interest_withdrawn'
+  | 'pilot_summary_shared';
 
 export type AnalyticsEvent = {
   id: string;
@@ -38,6 +42,11 @@ export type AnalyticsSummary = {
   delayRejectRate: number | null;
   averageStepErrorMinutes: number | null;
   onTimeArrivalRate: number | null;
+  plusOfferViews: number;
+  plusInterestSelections: number;
+  plusInterestWithdrawals: number;
+  plusInterestRate: number | null;
+  pilotSummaryShares: number;
 };
 
 type StorageLike = {
@@ -107,6 +116,10 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
     return typeof actual === 'number' && typeof planned === 'number' ? Math.abs(actual - planned) : null;
   }).filter((value): value is number => value !== null);
   const arrivals = byName('schedule_completed').map((event) => event.properties.onTime).filter((value): value is boolean => typeof value === 'boolean');
+  const plusOfferViews = byName('plus_offer_viewed').length;
+  const plusInterestSelections = byName('plus_interest_selected').length;
+  const plusInterestWithdrawals = byName('plus_interest_withdrawn').length;
+  const pilotSummaryShares = byName('pilot_summary_shared').length;
 
   return {
     eventCount: store.events.length,
@@ -121,6 +134,11 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
     delayRejectRate: rate(rejected, proposals),
     averageStepErrorMinutes: average(stepErrors),
     onTimeArrivalRate: rate(arrivals.filter(Boolean).length, arrivals.length),
+    plusOfferViews,
+    plusInterestSelections,
+    plusInterestWithdrawals,
+    plusInterestRate: rate(plusInterestSelections, plusOfferViews),
+    pilotSummaryShares,
   };
 }
 

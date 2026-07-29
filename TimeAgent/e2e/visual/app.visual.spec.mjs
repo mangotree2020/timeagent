@@ -39,6 +39,20 @@ const analyticsStore = {
     { id: '8', name: 'schedule_completed', at: 1_721_700_055_000, properties: { onTime: true } },
   ],
 };
+const plusEligibleAnalyticsStore = {
+  version: 1,
+  events: [
+    { id: 'p1', name: 'schedule_completed', at: 1_721_700_001_000, properties: { onTime: true } },
+    { id: 'p2', name: 'schedule_completed', at: 1_721_700_002_000, properties: { onTime: true } },
+    { id: 'p3', name: 'schedule_completed', at: 1_721_700_003_000, properties: { onTime: false } },
+  ],
+};
+const plusInterestFixture = {
+  version: 1,
+  status: 'interested',
+  plan: 'annual',
+  updatedAt: 1_721_700_004_000,
+};
 
 test.beforeEach(async ({ page }) => {
   await page.clock.install({ time: fixedNow });
@@ -147,6 +161,104 @@ test('mvp-metrics 화면', async ({ page }) => {
     metric?.scrollIntoView({ block: 'start' });
   });
   await expectVisual(page, 'mvp-metrics');
+});
+
+test('plus-offer 화면', async ({ page }) => {
+  await page.addInitScript((analytics) => {
+    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
+  }, plusEligibleAnalyticsStore);
+  await page.goto('/plus');
+  await page.getByText('사전등록할 수 있어요', { exact: true }).waitFor({ state: 'visible' });
+  await expectVisual(page, 'plus-offer');
+});
+
+test('Plus 관심은 명시적 선택 후 저장하고 확인 후 철회함', async ({ page }) => {
+  await page.addInitScript((analytics) => {
+    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
+  }, plusEligibleAnalyticsStore);
+  await page.goto('/plus');
+  await page.getByText('사전등록할 수 있어요', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('radio', { name: /학생 연간/ }).click();
+  expect(await page.evaluate(() => window.localStorage.getItem('@on-time/plus-interest'))).toBeNull();
+  await page.getByRole('button', { name: '이 플랜에 관심 있어요' }).click();
+  await expect(page.getByText('관심 등록됨', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/plus-interest')).plan)).toBe('student-annual');
+  await page.getByRole('button', { name: '관심 등록 철회' }).click();
+  expect(await page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/plus-interest')).plan)).toBe('student-annual');
+  await page.getByRole('button', { name: '철회 확인' }).click();
+  await expect(page.getByText('관심 등록됨', { exact: true })).not.toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem('@on-time/plus-interest'))).toBeNull();
+});
+
+test('Plus 저장 오류는 성공 처리하지 않고 다시 시도 상태를 유지함', async ({ page }) => {
+  await page.addInitScript((analytics) => {
+    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === '@on-time/plus-interest') throw new Error('fixture storage failure');
+      return originalSetItem.call(this, key, value);
+    };
+  }, plusEligibleAnalyticsStore);
+  await page.goto('/plus');
+  await page.getByText('사전등록할 수 있어요', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '이 플랜에 관심 있어요' }).click();
+  await expect(page.getByText('관심 상태를 저장하지 못했어요', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '이 플랜에 관심 있어요' })).toBeEnabled();
+  expect(await page.evaluate(() => window.localStorage.getItem('@on-time/plus-interest'))).toBeNull();
+});
+
+test('Plus 불러오기 오류는 기본 상태와 다시 불러오기 행동을 제공함', async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key) {
+      if (key === '@on-time/plus-interest') throw new Error('fixture load failure');
+      return originalGetItem.call(this, key);
+    };
+  });
+  await page.goto('/plus');
+  await expect(page.getByText('관심 상태를 불러오지 못했어요', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '다시 불러오기' })).toBeVisible();
+  await expect(page.getByText('일정 3회 더 완료해 주세요', { exact: true })).toBeVisible();
+});
+
+test('pilot-summary 화면은 유형과 공유 동의를 명시적으로 요구함', async ({ page }) => {
+  await page.addInitScript(({ analytics, interest }) => {
+    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
+    window.localStorage.setItem('@on-time/plus-interest', JSON.stringify(interest));
+  }, { analytics: plusEligibleAnalyticsStore, interest: plusInterestFixture });
+  await page.goto('/pilot-summary');
+  const share = page.getByRole('button', { name: '검증 결과 공유하기' });
+  await expect(share).toBeDisabled();
+  await page.getByRole('radio', { name: '직장인·프리랜서' }).click();
+  await expect(share).toBeDisabled();
+  await page.getByRole('checkbox', { name: '공유할 집계값과 제외 정보를 확인했습니다' }).click();
+  await expect(share).toBeEnabled();
+  await expect(page.getByText('일정명 · 장소 · 위치 · 음성 · 연락처 · 기기 식별자 · 정확한 이벤트 시각', { exact: true })).toBeVisible();
+  await expectVisual(page, 'pilot-summary');
+});
+
+test('pilot-summary 상단 정보 위계', async ({ page }) => {
+  await page.addInitScript(({ analytics, interest }) => {
+    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
+    window.localStorage.setItem('@on-time/plus-interest', JSON.stringify(interest));
+  }, { analytics: plusEligibleAnalyticsStore, interest: plusInterestFixture });
+  await page.goto('/pilot-summary');
+  await page.getByText('수익화 검증에 필요한 수치만', { exact: true }).waitFor({ state: 'visible' });
+  await expectVisual(page, 'pilot-summary-top');
+});
+
+test('pilot-summary 불러오기 오류는 빈 집계와 재시도를 제공함', async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key) {
+      if (key === '@on-time/plus-interest') throw new Error('fixture load failure');
+      return originalGetItem.call(this, key);
+    };
+  });
+  await page.goto('/pilot-summary');
+  await expect(page.getByText('테스트 결과를 불러오지 못했어요', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '다시 불러오기' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '검증 결과 공유하기' })).toBeDisabled();
 });
 
 test('온보딩 키보드 포커스와 실행', async ({ page }) => {

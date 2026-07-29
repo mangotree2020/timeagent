@@ -156,6 +156,42 @@
   - 일정 내용·위치는 저장하지 않고 최대 500개 이벤트를 기기에만 보관하며 별도 2단계 초기화 제공.
   - Jest 61/61, Expo Doctor 20/20, 시각·키보드 36/36, Android `L-01` 지표 생성·초기화 취소 통과.
 
+## P3 - BM 수요 검증
+
+- [x] Plus 사전 수요 검증
+  - Given 누적 완료 일정이 3회 미만임, When Plus 상태를 확인하면, Then 남은 완료 횟수와 등록 불가 상태를 표시한다.
+  - Given 누적 완료 일정이 3회 이상임, When 상품을 선택하고 명시적으로 적용하면, Then 이 기기에 관심 상품을 저장하고 로컬 분석 이벤트를 기록한다.
+  - Given 관심 등록 상태임, When 철회를 확인하기 전이면, Then 기존 상태를 유지하고 확인 후에만 관심 상태를 삭제한다.
+  - Given Plus 화면을 확인함, Then 결제·자동 갱신·연락처 수집이 없고 표시 기능은 출시 후보임을 안내한다.
+  - Given 저장 오류 또는 잘못된 저장값이 있음, When Plus 화면을 사용하면, Then 기본 상태·오류 문구·다시 시도 행동을 제공한다.
+  - [수익화 PRD](MONETIZATION_PRD.md)의 M0-01~M0-05, 단위 테스트, 세 기준 화면, Android 네이티브 저장 흐름을 검증했다.
+- [x] Phase 0 비식별 결과 공유
+  - Given 사용자가 테스트 결과 화면을 열었음, When 공유 내용을 확인하면, Then 일정·위치·음성 원문이나 식별자 없이 집계값만 표시한다.
+  - Given 사용자 유형 선택 또는 공유 동의가 없음, When 공유 CTA를 확인하면, Then 비활성 상태와 필요한 다음 행동을 표시한다.
+  - Given 사용자가 유형을 선택하고 공유에 동의함, When 공유 CTA를 누르면, Then 운영체제 공유창을 열고 복귀 후 사용자가 공유 완료를 확인한 경우에만 로컬 성공 이벤트를 기록한다.
+  - Given 공유 취소·오류가 발생함, When 화면으로 돌아오면, Then 성공으로 표시하지 않고 다시 시도할 수 있다.
+  - [수익화 PRD](MONETIZATION_PRD.md)의 M0-06, 단위 테스트, 세 기준 화면, Android 공유창 취소·사용자 완료 확인을 검증했다.
+
+## 2026-07-29 Ralph Loop - Phase 0 비식별 결과 공유 (완료)
+
+- Observe: Plus 관심 상태와 로컬 지표는 구현됐지만 50~100명 파일럿 참여자가 일정 원문을 노출하지 않고 결과를 제출하는 제품 내 경로가 없었음.
+- Select: 서버 자동 수집이나 결제보다 먼저, 참여자가 공유될 집계값을 확인하고 넓은 사용자 유형을 선택한 뒤 운영체제 공유창으로 직접 전달하는 최소 흐름을 선택.
+- Specify: 일정명·장소·위치·음성·연락처·기기 식별자·정확한 이벤트 시각 제외, 사용자 유형 선택, 공유 항목 동의, 수신자 자동 선택 금지, 취소·오류 성공 처리 금지를 M0-06으로 정의.
+- Implement: 순수 비식별 집계·텍스트 생성, 설정 진입점, 결과 미리보기, 동의 체크, 운영체제 공유창, 로컬 완료 지표를 구현. Android `Share`가 공유창 취소도 `sharedAction`으로 반환하는 동작을 수동 검증에서 발견해, 복귀 후 `공유하지 않았어요`와 `공유 완료 확인`을 명시적으로 선택하도록 보강함.
+- Verify: `npm run verify`에서 TypeScript/ESLint와 Jest 23 suites·92/92, Expo Doctor 20/20 통과. `npm run visual:test`에서 360×800·390×844·430×932의 결과 상·하단, 동의 전후, 읽기 오류 fallback 포함 72/72 통과. Android API 34에서 시스템 공유창 진입을 확인하고, 취소 확인 후 `pilot_summary_shared` 1회 유지, 사용자 완료 확인 후 2회 증가를 SQLite 저장값으로 검증. Debug APK 584 tasks 빌드·설치 통과.
+- Reflect: 운영체제 반환값만으로 실제 전달을 확정할 수 없으므로 지표는 사용자 확인 기반임을 문서와 UI에 명시함. 앱은 원문·식별자를 자동 수집하지 않으며 다음 단계도 서버 분석 개발이 아니라 동의한 참여자 모집과 수동 결과 취합임.
+- Evidence: `src/lib/pilot-summary.ts`, `src/app/pilot-summary.tsx`, `src/lib/__tests__/pilot-summary.test.ts`, `e2e/visual/__screenshots__/*/pilot-summary.png`, `e2e/visual/__screenshots__/*/pilot-summary-top.png`, `artifacts/timeagent-pilot-share-android.png`, `artifacts/timeagent-pilot-confirm-android.png`.
+
+## 2026-07-28 Ralph Loop - Plus 사전 수요 검증 (완료)
+
+- Observe: BM에 Free/Plus 가격과 Phase 0 검증 순서는 있었지만 제품 요구사항, 자격 기준, 로컬 관심 상태와 실제 검증 화면이 없었음.
+- Select: 결제 SDK나 기존 기능 제한보다 먼저, 일정 3회 완료 사용자의 상품·가격 관심을 투명하게 확인하는 로컬 사전 수요 검증을 선택.
+- Specify: 누적 완료 3회 자격, 명시적 상품 적용, 2단계 철회, 결제·자동 갱신·연락처 수집 없음, 출시 후보 표시, 저장 오류 fallback을 `MONETIZATION_PRD.md`의 M0-01~M0-05로 정의.
+- Implement: Plus 관심 v1 로컬 저장 계약, 자격 계산, 월간/연간/학생 가격안, 설정 진입점, Plus 미리보기, 관심 등록·변경·철회, 로컬 노출·선택·철회 이벤트와 설정 지표를 구현. 기존 수동 일정·알림·접근성 기능은 제한하지 않음.
+- Verify: `npm run verify`에서 TypeScript/ESLint와 Jest 22 suites·89/89 통과. `npm run visual:test`에서 360×800·390×844·430×932 Plus/설정 화면, 등록·철회, 읽기·저장 오류 fallback 포함 63/63 통과. Android API 34 ARM64 debug APK 403 tasks 빌드·설치 후 자격 전 상태, 완료 3회 자격, 학생 연간 선택 전 저장 불변, 관심 등록, 강제 종료 후 복원, 철회 확인 전 유지, 확인 후 `@on-time/plus-interest` 삭제를 통과.
+- Reflect: 로컬 데이터만으로 전체 전환율을 자동 집계할 수 없으므로 다음 단계는 결제 구현이 아니라 동의한 50~100명 테스트의 세그먼트별 관심률·철회율·일정 완료율 수집이다. 서버 분석은 목적·보존·철회·삭제 계약을 먼저 정의한다.
+- Evidence: `docs/MONETIZATION_PRD.md`, `src/lib/monetization.ts`, `src/app/plus.tsx`, `src/app/settings.tsx`, `src/lib/__tests__/monetization.test.ts`, `e2e/visual/__screenshots__/*/plus-offer.png`, `artifacts/timeagent-plus-android.png`.
+
 ## 2026-07-28 Ralph Loop - 기기 캘린더 조회·일정 가져오기 (완료)
 
 - Observe: 일정은 ON:TIME 안에서 직접 입력해야 했고, 기기에 이미 동기화된 Google·Apple/iCloud·Android 캘린더를 계획 초안으로 활용할 경로가 없었음.
@@ -191,7 +227,7 @@
 - Select: 사용자 결정에 따라 음성과 구조화 출력을 함께 지원하는 `gemini-3.1-flash-lite`를 기본 공급자로 적용하고 한 번의 호출로 전사문과 일정 제안을 반환하도록 전환.
 - Specify: 상대 날짜, 자정 경계, 모호한 시각, 반복 일정, 목적지 수정, 이동수단, 준비 행동, 다회 확인 질문을 포함한 고정 한국어 평가셋을 구성한다. 후보마다 중요 필드 정확도, JSON Schema 검증, 질문 필요성, p50/p95 지연, 실패율, 1,000건 예상 비용을 같은 조건으로 기록한다.
 - Implement: M4A를 명시적으로 지원하는 Gemini Interactions API adapter, 인라인 base64 오디오, `store: false`, 최소 추론, 단일 JSON Schema 응답, 텍스트 transcript 원문 보존, `GEMINI_SCHEDULE_MODEL` 환경변수, provider/model/configured health 응답과 upstream 오류 매핑을 구현. 실기기에서 발견한 Android `audio/mp4; codecs=…`·`audio/x-m4a` 변형은 `audio/m4a`로 정규화하고, UTC 자정 경계의 상대 날짜 오해를 막기 위해 기기 시간대의 `localDate`를 별도 전송함. 앱의 명시적 적용 흐름은 유지함.
-- Pending: 음성 도우미의 구현·운영 왕복은 완료. 별도 P1인 고정 한국어 평가셋의 필드 정확도·p50/p95 지연·1,000건 예상 비용 기준선은 추가 측정해야 함.
+- Resolved (2026-07-28): 고정 한국어 텍스트 12건과 합성 M4A 1건에서 13/13 사례·33/33 필드, p50 1,899ms·p95 3,244ms, 평균 $0.000507/요청·$0.507/1,000건 기준선을 측정하고 `GEMINI_BENCHMARK.md`에 기록함.
 - Verify: Gemini endpoint·M4A MIME 정규화·현지 날짜 문맥·구조화 응답 테스트를 포함해 `npm run verify` 20 suites, 81/81과 360×800·390×844·430×932 시각·키보드 45/45 통과. 서울 리전 `assistant`를 재배포하고 `/health`에서 provider `gemini`, model `gemini-3.1-flash-lite`, configured true를 확인함. Android 12 `SM-N971N`에서 TalkBack 중지 상태로 사전 설명→Yuna 합성 한국어 녹음→전사·제안 표시→명시적 적용 왕복을 수행해 `2026-07-29`, `16:00`, 부산역, 선택된 지하철, 선물 포장 10분이 등록 초안에 반영됨을 확인했고 치명적 런타임 오류가 없었음. 첫 왕복에서 MIME 거부와 UTC 날짜 오해를 재현한 뒤 각각 회귀 테스트와 실기기 재시험으로 해소함. 앞선 서버 실호출의 텍스트·M4A 결과와 원본 오디오 비저장·검증 파일 즉시 삭제 조건도 유지함.
 - Reflect: API 단가만이 아니라 일정 오해의 사용자 비용을 함께 평가한다. 무료 tier의 데이터 처리 조건은 운영 판단 근거로 사용하지 않고 유료 운영 조건과 보존 정책을 확인한다.
 - Price snapshot (2026-07-28, USD/1M tokens unless noted): OpenAI `gpt-4o-transcribe` audio input/output $2.50/$10, `gpt-4o-mini-transcribe` $1.25/$5, `gpt-5.6-sol` text $5/$30, `gpt-5.6-luna` $1/$6, `gpt-4o-mini` $0.15/$0.60. Gemini `gemini-3.1-flash-lite` standard text/audio input $0.25/$0.50, output $1.50. Groq Whisper Large v3 Turbo $0.04/transcribed hour. 구현 시 공급자 공식 가격 페이지를 다시 확인한다.
@@ -246,26 +282,27 @@
 
 ## 다음 Ralph Loop 권장 항목
 
-1. 연결 폰 잠금 해제 후 백그라운드 안내 중지·task/저장 삭제 검증
-2. 실제 이동 중 화면 꺼짐 위치 event 갱신 확인
+1. 동의한 50~100명 Phase 0 참여자 모집과 비식별 결과 수집
+2. 세그먼트별 관심률·철회율·일정 완료율 분석과 결제 개발 게이트 판정
+3. Phase 0 참여 동의문·인터뷰 질문지·결과 취합 및 보관·삭제 절차 확정
 
-## 2026-07-27 Ralph Loop - NAVER 인증·백그라운드 실행 검증 (진행)
+## 2026-07-27 Ralph Loop - NAVER 인증·백그라운드 실행 검증 (완료)
 
 - Observe: NAVER 지도는 Client ID가 존재해도 Android 패키지 허용이 없어 401 격자 화면이었고, 백그라운드 위치는 `항상 허용` 전이라 실행 검증이 막혀 있었음.
 - Select: 외부 인증과 민감 권한 차단이 해소된 즉시 실제 지도 타일과 화면 꺼짐 서비스 실행을 우선 검증.
 - Specify: `TimeAgent` Client ID·Dynamic Map·`com.ontime.app`이 일치해야 하며, 실기기에서 타일·현위치·TMAP 경로가 표시돼야 함. 백그라운드 안내는 위치 service·세션·음성 결과를 남기고 끄면 모두 삭제해야 함.
 - Implement: NAVER Cloud Maps `TimeAgent` 서비스 환경에 `com.ontime.app`을 등록하고 앱을 cold start. 백그라운드 위치 권한 승인 후 기존 Journey 안내 세션을 재개.
 - Verify: Android 12 `SM-N971N`에서 NAVER 실제 타일·현위치·TMAP 경로선 표시, 401 로그 없음. `ACCESS_BACKGROUND_LOCATION=true`, task service, 15초 고정밀 위치 요청, AsyncStorage TMAP 세션과 `lastVoiceDelivery=spoken` 확인.
-- Pending: 기기가 정지해 화면 꺼짐 22초 동안 25m 조건의 새 위치 event는 없었음. 현재 잠금 인증 화면이므로 잠금 해제 후 안내 끄기→task 중지→세션 삭제와 실제 이동 시 갱신을 확인. TalkBack은 아직 꺼짐.
+- Resolved (2026-07-27): 화면을 끈 20초 동안 foreground 위치 서비스와 task가 유지됐고, 잠금 해제 후 안내 끄기에서 foreground 알림·TaskManager 등록·로컬 세션 삭제를 확인함. TalkBack 실제 탐색은 이후 사용자 요청으로 계획에서 취소.
 
-## 2026-07-27 Ralph Loop - 지도 스크롤·TalkBack 중복 음성 보완 (실기기 승인 진행)
+## 2026-07-27 Ralph Loop - 지도 스크롤·TalkBack 중복 음성 보완 (완료)
 
 - Observe: Android 지도 SurfaceView가 화면 중앙의 세로 스와이프를 소비해 지도 아래 `화면 꺼짐 안내 켜기` CTA에 자동/수동 접근하기 어려웠고, TalkBack 사용 시 앱 TTS와 화면 읽기가 중복될 수 있었음.
 - Select: 백그라운드 권한 검증을 막는 지도 스크롤과 실제 TalkBack 탐색 전에 제거 가능한 중복 음성을 우선 수정.
 - Specify: 기본 세로 스와이프는 화면을 이동하고, 사용자가 명시적으로 지도 조작을 켠 동안만 지도 이동·확대 제스처가 동작해야 함. 화면 읽기 서비스 활성 중에는 앱 TTS를 자동 재생하지 않고 다음 행동 변화는 live region으로 전달해야 함.
 - Implement: NAVER 지도 `화면 스크롤 우선/지도 조작` 토글과 gesture props, AccessibilityInfo 구독·TTS 중지, 다음 행동 live region, heading 역할을 구현. `BG-01` 권한 게이트 flow 추가.
 - Verify: `npm run verify` TypeScript/ESLint/Jest 64/64, 시각·키보드 39/39, Android `BG-01` TMAP 실제 경로→하단 CTA→시스템 `위치 액세스 권한` 화면 진입 통과. 현재 `ACCESS_BACKGROUND_LOCATION=false`, TalkBack 서비스 꺼짐을 읽기 전용 확인.
-- Pending: 연결 폰에서 사용자가 `항상 허용` 선택 후 foreground service·화면 꺼짐 위치/TTS·중지 삭제 검증. TalkBack 실제 초점 순서·상태 안내 검증은 사용자 요청으로 계획에서 취소.
+- Resolved (2026-07-27): `항상 허용` 후 foreground service·화면 꺼짐 task 유지·중지 삭제를 확인함. TalkBack 실제 초점 순서·상태 안내 검증은 사용자 요청으로 계획에서 취소.
 
 Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소를 사용하며 Geocoding과 TMAP 도보 경로 실호출 검증을 완료했다.
 
@@ -300,14 +337,14 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Reflect: 딥링크로 플랜 B를 먼저 열면 세션이 없어 선택 수단이 진행 화면에서 기본값으로 되돌아가는 결함을 발견해, 적용 시 세션 생성·알림 동기화까지 하나의 commit으로 보완.
 - Evidence: `tmp/ralph-loop/android-planb-tmap-route.png`, `tmp/ralph-loop/android-planb-taxi-confirm.png`, `tmp/ralph-loop/android-planb-persisted.xml`.
 
-## 2026-07-26 Ralph Loop - 백그라운드 위치·음성 기술 검증 (실기기 승인 대기)
+## 2026-07-26 Ralph Loop - 백그라운드 위치·음성 기술 검증 (완료)
 
 - Observe: 기존 Journey는 앱 active 복귀와 foreground 15초 갱신만 지원해 화면이 꺼지면 waypoint 음성이 중단됨.
 - Select: 상시 추적이 아니라 사용자가 Journey 화면에서 명시적으로 켠 이동 세션에 한해 Android foreground service를 유지.
 - Specify: 25m/15초 제한, 새 maneuver 중복 방지, ETA·거리 포함 한국어 TTS, 음성 오류 시 알림 fallback, 상태·최근 전달 결과 표시, 수동 중지·도착 자동 중지·로컬 데이터 삭제를 수용 기준으로 정의.
 - Implement: `expo-task-manager`, background session v1 런타임 검증/저장, 전역 location task, speech 완료/오류 처리, 알림 대체, Android 민감 권한·foreground service, Journey opt-in 카드와 권한 race 방지를 구현.
 - Verify: `npm run verify` typecheck/lint/Jest 52/52, `npx expo-doctor` 20/20, ARM64 Gradle 382 tasks 빌드 성공 및 APK 설치. Android 12에서 TMAP 실제 경로 상태의 opt-in UI와 위치 권한 `항상 허용` 시스템 화면, 미승인 복귀 fallback을 확인.
-- Pending: 사용자가 연결 폰에서 `항상 허용`을 직접 선택한 뒤 foreground-service 상단 알림, 백그라운드 위치 갱신 시각, 화면 꺼짐 TTS/알림 fallback, 끄기 후 task·저장 삭제를 최종 확인해야 완료.
+- Resolved (2026-07-27): 사용자가 `항상 허용`을 직접 선택한 뒤 foreground-service 상단 알림과 task 유지, 끄기 후 task·저장 삭제를 최종 확인함.
 - Evidence: `tmp/ralph-loop/android-background-journey-opt-in.png`, `tmp/ralph-loop/android-journey-bg-required2.xml`.
 
 ## 2026-07-26 Ralph Loop - Maestro 핵심 흐름 E2E (완료)

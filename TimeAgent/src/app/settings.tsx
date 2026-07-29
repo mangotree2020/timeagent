@@ -24,6 +24,14 @@ import {
   saveAppSettings,
 } from '@/lib/app-settings';
 import { getDevicePermissionSnapshot } from '@/lib/device-permissions';
+import {
+  PlusInterestState,
+  PlusOfferEligibility,
+  createEmptyPlusInterestState,
+  getPlusOfferEligibility,
+  loadPlusInterest,
+  plusPlanLabel,
+} from '@/lib/monetization';
 import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
 import { useSchedule } from '@/state/schedule-context';
 
@@ -33,6 +41,7 @@ const transports: PreferredTransport[] = ['도보', '버스', '지하철', '자�
 const bufferOptions: AppSettings['bufferMinutes'][] = [3, 5, 10];
 const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비'];
 const toneOptions: CoachTone[] = ['친근하게', '간결하게', '단호하게'];
+const emptyPlusEligibility: PlusOfferEligibility = { eligible: false, completedSchedules: 0, remainingSchedules: 3 };
 
 export default function SettingsScreen() {
   const { personalizationProfile, personalizationStatus, resetPersonalization, setPersonalizationEnabled } = useSchedule();
@@ -47,13 +56,15 @@ export default function SettingsScreen() {
   const [showLearningReset, setShowLearningReset] = useState(false);
   const [showAnalyticsReset, setShowAnalyticsReset] = useState(false);
   const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary>(() => summarizeAnalytics(createEmptyAnalyticsStore()));
+  const [plusEligibility, setPlusEligibility] = useState(emptyPlusEligibility);
+  const [plusInterest, setPlusInterest] = useState<PlusInterestState>(createEmptyPlusInterestState);
   const learnedStats = [...personalizationProfile.routines, ...personalizationProfile.transports];
   const learnedSamples = learnedStats.reduce((total, item) => total + item.sampleCount, 0);
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    Promise.all([loadAppSettings(AsyncStorage), getDevicePermissionSnapshot(), loadAnalyticsStore(AsyncStorage)])
-      .then(([saved, permissions, analytics]) => {
+    Promise.all([loadAppSettings(AsyncStorage), getDevicePermissionSnapshot(), loadAnalyticsStore(AsyncStorage), loadPlusInterest(AsyncStorage)])
+      .then(([saved, permissions, analytics, savedPlusInterest]) => {
         if (!active) return;
         settingsRef.current = saved;
         setSettings(saved);
@@ -61,6 +72,8 @@ export default function SettingsScreen() {
         setLocationPermission(permissions.location);
         setNotificationPermission(permissions.notifications);
         setAnalyticsSummary(summarizeAnalytics(analytics));
+        setPlusEligibility(getPlusOfferEligibility(analytics));
+        setPlusInterest(savedPlusInterest);
         setStatus('saved');
       })
       .catch(() => {
@@ -137,6 +150,26 @@ export default function SettingsScreen() {
           <Text accessibilityLiveRegion="polite" style={[styles.learningStatus, personalizationStatus === 'error' && styles.error]}>{personalizationStatus === 'loading' ? '학습 기록을 불러오는 중입니다' : personalizationStatus === 'saving' ? '학습 설정을 저장하는 중입니다' : personalizationStatus === 'error' ? '학습 설정을 저장하지 못했습니다' : '학습 설정이 저장됐습니다'}</Text>
         </Section>
 
+        <Section label="ON:TIME Plus · 사전 수요 검증">
+          <Setting
+            icon="ai"
+            title="Plus 미리보기"
+            detail={plusInterest.status === 'interested'
+              ? `관심 등록 · ${plusPlanLabel(plusInterest.plan)}`
+              : plusEligibility.eligible
+                ? '사전등록 가능 · 결제 없음'
+                : `일정 ${plusEligibility.remainingSchedules}회 더 완료하면 사전등록 가능`}
+            onPress={() => router.push('/plus')}
+          />
+          <Text style={styles.plusNote}>출시 후보 기능과 가격안에 대한 관심만 이 기기에 저장합니다. 현재 기능은 제한되지 않아요.</Text>
+          <Setting
+            icon="chart"
+            title="Phase 0 테스트 결과"
+            detail="비식별 집계 확인 · 내가 선택해서 공유"
+            onPress={() => router.push('/pilot-summary')}
+          />
+        </Section>
+
         <Section label="MVP 지표 · 이 기기">
           <View style={styles.metricIntro}><AppIcon name="chart" size={20} /><View style={{ flex: 1 }}><Text style={type.body}>제품 경험 측정</Text><Text style={type.caption}>일정 내용이나 위치는 보내지 않고 이 기기에 이벤트 수치만 저장합니다.</Text></View></View>
           <MetricRow label="첫 일정 생성 완료율" value={formatRate(analyticsSummary.scheduleCompletionRate)} detail={`${analyticsSummary.scheduleCompletions}/${analyticsSummary.scheduleStarts}회 완료`} />
@@ -145,6 +178,8 @@ export default function SettingsScreen() {
           <MetricRow label="지연안 적용 / 거절" value={`${formatRate(analyticsSummary.delayApplyRate)} / ${formatRate(analyticsSummary.delayRejectRate)}`} detail={`지연 제안 ${analyticsSummary.delayProposals}회`} />
           <MetricRow label="평균 단계 시간 오차" value={analyticsSummary.averageStepErrorMinutes === null ? '측정 대기' : `${analyticsSummary.averageStepErrorMinutes}분`} detail="계획과 실제 소요 시간의 절대 차이" />
           <MetricRow label="정시 도착률" value={formatRate(analyticsSummary.onTimeArrivalRate)} detail={`누적 이벤트 ${analyticsSummary.eventCount}개`} />
+          <MetricRow label="Plus 관심 / 철회" value={`${analyticsSummary.plusInterestSelections} / ${analyticsSummary.plusInterestWithdrawals}`} detail={`Plus 화면 확인 ${analyticsSummary.plusOfferViews}회`} />
+          <MetricRow label="Phase 0 결과 공유" value={`${analyticsSummary.pilotSummaryShares}회`} detail="사용자가 완료를 확인한 공유" />
           <DetailPanel>
             {!showAnalyticsReset ? <Button label="측정 데이터 초기화" variant="secondary" onPress={() => setShowAnalyticsReset(true)} /> : <View style={styles.resetPanel}><Text style={type.body}>이 기기의 MVP 측정 데이터를 삭제할까요?</Text><Text style={type.caption}>학습 기록과 일정은 유지되며 측정 지표만 초기화됩니다.</Text><View style={styles.resetActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => setShowAnalyticsReset(false)} /></View><View style={{ flex: 1 }}><Button label="지표 삭제" onPress={() => { setShowAnalyticsReset(false); void clearAnalyticsStore(AsyncStorage).then(() => setAnalyticsSummary(summarizeAnalytics(createEmptyAnalyticsStore()))); }} /></View></View></View>}
           </DetailPanel>
@@ -290,4 +325,5 @@ const styles = StyleSheet.create({
   saveStatus: { ...type.caption, textAlign: 'center' },
   error: { color: color.danger },
   data: { ...type.caption, textAlign: 'center', paddingHorizontal: space.xl },
+  plusNote: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.md },
 });

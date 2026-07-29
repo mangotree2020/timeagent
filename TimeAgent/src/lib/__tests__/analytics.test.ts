@@ -27,6 +27,9 @@ describe('analytics', () => {
       { id: '6', name: 'delay_applied', at: 50_000, properties: {} },
       { id: '7', name: 'step_completed', at: 51_000, properties: { plannedMinutes: 10, actualMinutes: 12 } },
       { id: '8', name: 'schedule_completed', at: 52_000, properties: { onTime: true } },
+      { id: '9', name: 'plus_offer_viewed', at: 53_000, properties: { eligible: true, completedSchedules: 3 } },
+      { id: '10', name: 'plus_interest_selected', at: 54_000, properties: { plan: 'annual', previousPlan: null } },
+      { id: '11', name: 'pilot_summary_shared', at: 55_000, properties: { segment: 'worker', completedSchedules: 1 } },
     ];
     expect(summarizeAnalytics(store)).toMatchObject({
       scheduleCompletionRate: 100,
@@ -36,6 +39,10 @@ describe('analytics', () => {
       delayRejectRate: 0,
       averageStepErrorMinutes: 2,
       onTimeArrivalRate: 100,
+      plusOfferViews: 1,
+      plusInterestSelections: 1,
+      plusInterestRate: 100,
+      pilotSummaryShares: 1,
     });
   });
 
