@@ -10,9 +10,9 @@
 | 구분 | 상태 | 내용 |
 |---|---|---|
 | 현재 단계 | P0·P1·P2 완료, P3 검증 준비 완료 | Plus 사전 수요와 비식별 Phase 0 결과 공유까지 구현 |
-| 현재 Ralph Loop | Phase 0 결과 공유 완료 | 사용자가 확인한 집계값만 시스템 공유창으로 전달 |
-| Android | 통과 | 기존 실기기 핵심 흐름과 API 34 공유 취소·완료 확인 통과 |
-| 자동 검증 | 통과 | TypeScript, ESLint, Jest 92/92, Expo Doctor 20/20, 시각·상호작용 72/72, Debug APK 빌드 |
+| 현재 Ralph Loop | Phase 0 배포 검증 완료 | 원격 푸시·ARM64 릴리스 APK·삼성폰 Plus/공유 흐름 통과 |
+| Android | 실기기 통과 | `SM-N971N`에 2026-07-30 릴리스 설치, Plus 등록·철회와 공유 취소·완료 확인 통과 |
+| 자동 검증 | 통과 | TypeScript, ESLint, Jest 92/92, Expo Doctor 20/20, 시각·상호작용 72/72, ARM64 Release APK 빌드 |
 | 랜딩 페이지 | 배포 완료 | 외부 공개 상태 |
 
 공개 랜딩 페이지: [TimeFlow Landing](https://timeflow-landing.wcshin.chatgpt.site)
@@ -82,7 +82,8 @@ P3의 제품 내 실험 도구는 완료했지만, 50~100명 파일럿과 결제
 - 설정에서 넓은 사용자 유형을 선택하고 일정·위치·음성 원문과 식별자를 제외한 집계 결과를 미리 확인
 - 공유 항목 동의 전 CTA 비활성화, 앱 서버 자동 전송·수신자 자동 선택 없음
 - Android 공유창 복귀 후 실제 전달 여부를 다시 확인하고 사용자 완료 확인 시에만 로컬 성공 지표 기록
-- Jest 92/92, 세 viewport 시각·상호작용 72/72, Android API 34 공유 취소·완료 분기와 Debug APK 빌드 통과
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, Android API 34와 삼성 `SM-N971N` 공유 취소·완료 분기 통과
+- 2026-07-30 ARM64 릴리스 APK를 삼성폰에 설치해 Plus 학생 연간 선택·등록·철회 전 유지·철회 완료와 치명적 로그 없음을 확인
 
 ### Google·Apple/iCloud·Android 기기 캘린더 일정 가져오기
 

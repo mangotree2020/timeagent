@@ -172,6 +172,16 @@
   - Given 공유 취소·오류가 발생함, When 화면으로 돌아오면, Then 성공으로 표시하지 않고 다시 시도할 수 있다.
   - [수익화 PRD](MONETIZATION_PRD.md)의 M0-06, 단위 테스트, 세 기준 화면, Android 공유창 취소·사용자 완료 확인을 검증했다.
 
+## 2026-07-30 Ralph Loop - Phase 0 배포·삼성폰 검증 (완료)
+
+- Observe: Phase 0 소스와 자동 검증은 완료됐지만 변경이 커밋되지 않았고 연결된 삼성폰에는 2026-07-28 APK가 설치돼 있어 최신 Plus·결과 공유 흐름을 직접 실행할 수 없었음.
+- Select: 문서 정합성 수정, 자동 검증 재실행, 커밋·푸시, 독립 실행 ARM64 APK 생성, 삼성폰 Plus·공유 수동 검증을 하나의 전달 루프로 종료.
+- Specify: Gemini 기준선의 중복 Pending 제거, P3 구현과 현장검증 상태 분리, Metro 없는 릴리스 실행, 동의 전 공유 비활성, 공유창 취소·완료 확인, Plus 3회 자격·명시 선택·등록·철회 전 유지·확인 후 삭제, 검증 데이터 원상 복원을 수용 기준으로 정의.
+- Implement: 문서에 P3 2/2와 실제 다음 작업을 반영하고 `3f768e6`을 원격 브랜치에 푸시. 현재 소스를 포함한 ARM64 release APK와 ZIP을 `artifacts/`에 생성해 `SM-N971N`에 업데이트 설치함.
+- Verify: `npm run verify` 23 suites·92/92, Expo Doctor 20/20, 360×800·390×844·430×932 시각·상호작용 72/72 통과. Gradle release 645 tasks와 APK 서명·내장 JS bundle·ARM64 ABI를 확인. 삼성 Android 12에서 공유 동의 전 CTA 비활성→시스템 공유창→`공유하지 않았어요` 취소 문구→재공유→`공유 완료 확인` 성공 문구를 통과. 검증용 완료 이벤트 3개로 Plus 학생 연간 명시 선택·등록·철회 확인 전 상태 유지·확인 후 미등록 복귀를 통과하고, 원래 AsyncStorage DB를 바이트 단위 일치로 복원한 뒤 릴리스 APK를 재설치. 치명적 React Native 로그 없음.
+- Reflect: P3 2/2는 제품 내 실험 도구 완료를 의미하며 수익화 가설 검증 완료를 뜻하지 않음. 다음 단계는 결제 구현이 아니라 동의문·인터뷰·보관·삭제 절차를 확정하고 50~100명 데이터를 수집하는 일임.
+- Evidence: commit `3f768e6`, `artifacts/ON_TIME-Samsung-arm64-v1.0.0.apk`, `artifacts/ON_TIME-Samsung-arm64-v1.0.0.apk.zip`, `artifacts/timeagent-pilot-share-samsung.png`, `artifacts/timeagent-pilot-confirm-samsung.png`. APK SHA-256 `95c0c307ee72a17693c234cc7970d0c94c3a9b08f8543ed905baafdd1b01d72b`.
+
 ## 2026-07-29 Ralph Loop - Phase 0 비식별 결과 공유 (완료)
 
 - Observe: Plus 관심 상태와 로컬 지표는 구현됐지만 50~100명 파일럿 참여자가 일정 원문을 노출하지 않고 결과를 제출하는 제품 내 경로가 없었음.
