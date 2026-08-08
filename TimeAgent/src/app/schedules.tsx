@@ -6,7 +6,7 @@ import { AppIcon } from '@/components/app-icon';
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
 import { color, radius, space } from '@/constants/design';
-import { demoSchedule } from '@/data/demo';
+import { ConfirmedSchedulePlan } from '@/lib/confirmed-plans';
 import {
   CalendarProviderKind,
   DeviceCalendarEvent,
@@ -28,18 +28,16 @@ type ProviderFilter = 'all' | CalendarProviderKind;
 const emptyPermission: DeviceCalendarPermission = { state: 'undetermined', canAskAgain: true };
 
 export default function SchedulesScreen() {
-  const params = useLocalSearchParams<{ e2eCalendar?: string }>();
+  const params = useLocalSearchParams<{ e2eCalendar?: string; tab?: string }>();
   const fixtureMode = __DEV__ && params.e2eCalendar === 'events';
-  const [tab, setTab] = useState<ScheduleTab>(fixtureMode ? '캘린더' : '내 일정');
+  const [tab, setTab] = useState<ScheduleTab>(fixtureMode || params.tab === 'calendar' ? '캘린더' : '내 일정');
   const [calendarView, setCalendarView] = useState<CalendarViewState>(fixtureMode ? 'ready' : 'checking');
   const [permission, setPermission] = useState<DeviceCalendarPermission>(fixtureMode ? { state: 'granted', canAskAgain: false } : emptyPermission);
   const [snapshot, setSnapshot] = useState<DeviceCalendarSnapshot | null>(fixtureMode ? createCalendarPreviewFixture() : null);
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<DeviceCalendarEvent | null>(null);
-  const { activePlan, activeSchedule, beginDraftWith } = useSchedule();
-  const schedule = activeSchedule ?? demoSchedule;
-  const prepStart = activePlan?.prepStart ?? demoSchedule.prepStart;
-  const departure = activePlan?.departure ?? demoSchedule.departure;
+  const { beginDraftWith, confirmedPlans, confirmedPlansStatus, selectConfirmedPlan } = useSchedule();
+  const upcomingPlans = confirmedPlans.filter((plan) => plan.state !== 'completed');
 
   const loadCalendars = useCallback(async () => {
     if (fixtureMode) {
@@ -74,6 +72,12 @@ export default function SchedulesScreen() {
       setCalendarView('error');
     }
   }, [fixtureMode, loadCalendars, permission.state]);
+
+  useEffect(() => {
+    if (fixtureMode || tab !== '캘린더' || calendarView !== 'checking') return;
+    const initialCheck = setTimeout(() => void checkCalendarAccess(), 0);
+    return () => clearTimeout(initialCheck);
+  }, [calendarView, checkCalendarAccess, fixtureMode, tab]);
 
   useEffect(() => {
     if (fixtureMode || tab !== '캘린더') return;
@@ -121,7 +125,7 @@ export default function SchedulesScreen() {
         </View>
         <Text accessibilityLiveRegion="polite" style={styles.tabDescription}>{tab} 화면입니다.</Text>
 
-        {tab === '내 일정' ? <UpcomingSchedule schedule={schedule} prepStart={prepStart} departure={departure} /> : null}
+        {tab === '내 일정' ? <UpcomingSchedules plans={upcomingPlans} status={confirmedPlansStatus} onSelect={(id) => { selectConfirmedPlan(id); router.push('/plan'); }} /> : null}
         {tab === '완료' ? <CompletedSchedule /> : null}
         {tab === '캘린더' ? <CalendarPanel
           calendarView={calendarView}
@@ -145,8 +149,19 @@ export default function SchedulesScreen() {
   );
 }
 
-function UpcomingSchedule({ schedule, prepStart, departure }: { schedule: Pick<typeof demoSchedule, 'title' | 'date' | 'appointmentTime' | 'destination'>; prepStart: string; departure: string }) {
-  return <><Text style={styles.date}>{schedule.date || '오늘'}</Text><Pressable accessibilityRole="button" accessibilityHint="준비 계획을 엽니다" onPress={() => router.push('/plan')}><Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label="준비 전" /><Text style={type.heading}>{schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{schedule.destination}</Text></View><Text style={styles.meta}>{prepStart} 준비 시작 · {departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.textMuted} style={styles.arrow} /></Card></Pressable><Button label="새 일정 만들기" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /></>;
+function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedulePlan[]; status: 'loading' | 'saving' | 'saved' | 'error'; onSelect: (id: string) => void }) {
+  if (status === 'loading') return <StateCard icon="calendar" title="저장된 계획을 불러오고 있어요" body="확정한 계획을 시간순으로 정리합니다." />;
+  return <>
+    {status === 'error' ? <StateCard icon="error" title="저장된 계획을 불러오지 못했어요" body="앱을 다시 열어 확인해 주세요. 새 계획은 입력 화면에 자동 저장됩니다." /> : null}
+    {!plans.length && status !== 'error' ? <StateCard icon="calendar" title="확정된 계획이 없어요" body="계획을 만든 뒤 계획 확정을 누르면 이곳에 저장됩니다." /> : null}
+    {plans.map((item) => <View key={item.id} style={styles.planGroup}>
+      <Text style={styles.date}>{item.schedule.date || '오늘'}</Text>
+      <Pressable accessibilityRole="button" accessibilityHint="저장된 준비 계획을 엽니다" onPress={() => onSelect(item.id)}>
+        <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View><Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.textMuted} style={styles.arrow} /></Card>
+      </Pressable>
+    </View>)}
+    <Button label="새 일정 만들기" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} />
+  </>;
 }
 
 function CompletedSchedule() {
@@ -172,9 +187,9 @@ type CalendarPanelProps = {
 
 function CalendarPanel(props: CalendarPanelProps) {
   if (props.calendarView === 'checking' || props.calendarView === 'loading') return <StateCard icon="calendar" title={props.calendarView === 'checking' ? '캘린더 연결 상태를 확인하고 있어요' : '향후 30일 일정을 불러오고 있어요'} body="기기에 있는 일정만 잠시 확인합니다." />;
-  if (props.calendarView === 'intro') return <><StateCard icon="calendar" title="기기 캘린더 일정을 확인할까요?" body="Google·Apple/iCloud·기기 캘린더의 향후 30일 일정을 읽습니다. 선택한 일정만 새 ON:TIME 초안으로 가져오며 원문은 서버에 저장하지 않습니다." /><Button label="캘린더 연결하기" onPress={props.onRequest} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'intro') return <><StateCard icon="calendar" title="기기 캘린더 일정을 확인할까요?" body="Google·Apple/iCloud·기기 캘린더의 향후 30일 일정을 읽습니다. 선택한 일정만 새 TimeAgent 초안으로 가져오며 원문은 서버에 저장하지 않습니다." /><Button label="캘린더 연결하기" onPress={props.onRequest} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
   if (props.calendarView === 'denied') return <><StateCard icon="error" title="캘린더 권한이 필요해요" body="권한을 다시 허용하거나 직접 일정을 만들 수 있습니다." /><Button label="권한 다시 요청" onPress={props.onRequest} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
-  if (props.calendarView === 'blocked' || (props.permission.state === 'blocked' && props.calendarView !== 'ready')) return <><StateCard icon="error" title="기기 설정에서 캘린더 권한을 켜 주세요" body="설정에서 ON:TIME의 캘린더 권한을 허용한 뒤 앱으로 돌아오면 자동으로 다시 확인합니다." /><Button label="기기 설정 열기" onPress={props.onSettings} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'blocked' || (props.permission.state === 'blocked' && props.calendarView !== 'ready')) return <><StateCard icon="error" title="기기 설정에서 캘린더 권한을 켜 주세요" body="설정에서 TimeAgent의 캘린더 권한을 허용한 뒤 앱으로 돌아오면 자동으로 다시 확인합니다." /><Button label="기기 설정 열기" onPress={props.onSettings} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
   if (props.calendarView === 'unavailable') return <><StateCard icon="calendar" title="이 기기에서는 캘린더 연결을 사용할 수 없어요" body="기기 캘린더 연결은 iOS·Android 개발 빌드에서 제공됩니다. 지금은 직접 일정을 등록해 주세요." /><Button label="직접 일정 만들기" onPress={props.onManual} /></>;
   if (props.calendarView === 'error') return <><StateCard icon="error" title="캘린더를 불러오지 못했어요" body="연결 상태를 확인한 뒤 다시 시도하거나 직접 등록해 주세요." /><Button label="다시 불러오기" onPress={props.onRefresh} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
 
@@ -210,7 +225,7 @@ const styles = StyleSheet.create({
   tabText: { color: color.textMuted, fontSize: 13, fontWeight: '700' },
   tabTextActive: { color: color.deepBlue, fontWeight: '900' },
   tabDescription: { ...type.caption, marginTop: -space.md },
-  date: { fontSize: 14, color: color.textMuted, fontWeight: '800', marginTop: space.sm },
+  planGroup: { gap: space.sm }, date: { fontSize: 14, color: color.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
   timeRail: { width: 54 }, time: { fontSize: 17, color: color.navy, fontWeight: '900' }, line: { width: 2, height: 70, backgroundColor: color.cyan, marginTop: 8, marginLeft: 18 },
   flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: color.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },

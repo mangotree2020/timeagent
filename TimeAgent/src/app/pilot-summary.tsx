@@ -53,7 +53,7 @@ export default function PilotSummaryScreen() {
     setStatus('sharing');
     try {
       const result = await Share.share({
-        title: 'ON:TIME Phase 0 테스트 결과',
+        title: 'TimeAgent Phase 0 테스트 결과',
         message: formatPilotSummaryText(summary),
       });
       if (result.action === Share.sharedAction) {

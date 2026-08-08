@@ -2,7 +2,10 @@ import { createDefaultScheduleDraft } from '@/lib/schedule-draft';
 import {
   applyVoiceSchedulePatch,
   describeVoiceScheduleChanges,
+  completeGuidedVoicePatch,
+  GUIDED_VOICE_QUESTIONS,
   normalizeVoiceScheduleReply,
+  resolveSpokenDateReference,
 } from '@/lib/voice-schedule-assistant';
 
 describe('voice schedule assistant domain', () => {
@@ -76,5 +79,17 @@ describe('voice schedule assistant domain', () => {
       { label: '약속 시간', before: '14:00', after: '15:20' },
       { label: '이동수단', before: 'AI 추천', after: '지하철' },
     ]));
+  });
+
+  it('asks only the four required guided questions in order', () => {
+    expect(GUIDED_VOICE_QUESTIONS.map((item) => item.field)).toEqual(['title', 'dateTime', 'destination', 'transport']);
+  });
+
+  it('uses today for time-only speech and the current week for a weekday', () => {
+    const saturday = new Date('2026-08-08T09:00:00+09:00').getTime();
+    expect(resolveSpokenDateReference('저녁 7시', saturday)).toBe('8월 8일 (오늘)');
+    expect(resolveSpokenDateReference('이번 주 토요일 저녁 7시', new Date('2026-08-03T09:00:00+09:00').getTime())).toBe('8월 8일 (토요일)');
+    expect(resolveSpokenDateReference('8월 19일 오후 2시', saturday)).toBe('8월 19일 (수요일)');
+    expect(completeGuidedVoicePatch('dateTime', '저녁 7시', { appointmentTime: '19:00' }, saturday)).toEqual({ appointmentTime: '19:00', date: '8월 8일 (오늘)' });
   });
 });

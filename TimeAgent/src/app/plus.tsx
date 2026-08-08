@@ -101,7 +101,7 @@ export default function PlusScreen() {
   return (
     <Screen>
       <Header
-        title="ON:TIME Plus"
+        title="TimeAgent Plus"
         eyebrow="결제 전 사전 수요 검증"
         right={<IconButton name="close" label="Plus 미리보기 닫기" onPress={() => router.back()} />}
       />

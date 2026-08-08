@@ -39,7 +39,7 @@ export async function requestNotificationPermission(): Promise<PermissionState> 
   try {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('on-time-schedule', {
-        name: 'ON:TIME 일정 알림',
+        name: 'TimeAgent 일정 알림',
         importance: Notifications.AndroidImportance.HIGH,
       });
     }

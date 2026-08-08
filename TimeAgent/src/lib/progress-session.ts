@@ -19,6 +19,7 @@ export type ScheduledProgressNotification = {
 export type ProgressSession = {
   version: typeof PROGRESS_SESSION_VERSION;
   sessionId: string;
+  confirmedPlanId?: string;
   state: 'active' | 'completed';
   schedule: ScheduleDraft;
   plan: SchedulePlan;
@@ -57,10 +58,12 @@ type StorageLike = {
 export function createProgressSession({
   schedule,
   plan,
+  confirmedPlanId,
   now = Date.now(),
 }: {
   schedule: ScheduleDraft;
   plan: SchedulePlan;
+  confirmedPlanId?: string;
   now?: number;
 }): ProgressSession {
   const currentIndex = Math.max(0, plan.timeline.findIndex((step) => step.status === 'current'));
@@ -73,6 +76,7 @@ export function createProgressSession({
   return {
     version: PROGRESS_SESSION_VERSION,
     sessionId: `${now}-${schedule.title}-${schedule.appointmentTime}`,
+    confirmedPlanId,
     state: current ? 'active' : 'completed',
     schedule,
     plan: { ...plan, timeline },
@@ -225,6 +229,7 @@ function isProgressSession(value: unknown): value is ProgressSession {
   const session = value as Partial<ProgressSession>;
   return session.version === PROGRESS_SESSION_VERSION
     && (typeof session.sessionId === 'string' || session.sessionId === undefined)
+    && (typeof session.confirmedPlanId === 'string' || session.confirmedPlanId === undefined)
     && (session.state === 'active' || session.state === 'completed')
     && isScheduleDraft(session.schedule)
     && isSchedulePlan(session.plan)

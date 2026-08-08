@@ -27,6 +27,7 @@ describe('app settings persistence', () => {
       bufferMinutes: 10,
       coachTone: '간결하게',
       notifications: false,
+      colorMode: 'dark',
     };
 
     await saveAppSettings(storage, settings);
@@ -42,5 +43,30 @@ describe('app settings persistence', () => {
     const storage = createMemoryStorage('{"version":99}');
 
     await expect(loadAppSettings(storage)).resolves.toEqual(createDefaultAppSettings());
+  });
+
+  test('migrates existing settings with gender selection left optional', async () => {
+    const legacy = { ...createDefaultAppSettings(), version: 1 };
+    delete (legacy as Partial<AppSettings>).preparationGender;
+    const storage = createMemoryStorage(JSON.stringify(legacy));
+
+    await expect(loadAppSettings(storage)).resolves.toEqual({
+      ...legacy,
+      version: 3,
+      preparationGender: 'unspecified',
+      colorMode: 'light',
+    });
+  });
+
+  test('migrates version two settings to the default light appearance', async () => {
+    const legacy = { ...createDefaultAppSettings(), version: 2 };
+    delete (legacy as Partial<AppSettings>).colorMode;
+    const storage = createMemoryStorage(JSON.stringify(legacy));
+
+    await expect(loadAppSettings(storage)).resolves.toEqual({
+      ...legacy,
+      version: 3,
+      colorMode: 'light',
+    });
   });
 });

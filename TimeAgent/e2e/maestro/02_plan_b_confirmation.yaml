@@ -1,4 +1,4 @@
-appId: com.ontime.app
+appId: com.timeagent.app
 name: B-01 플랜 B 근거와 확인 후 적용
 tags:
   - smoke
@@ -18,7 +18,7 @@ tags:
     visible: "플랜 B"
     timeout: 10000
 - assertVisible: "예상값"
-- assertVisible: "실시간 교통 조회 전 ON:TIME 기본 추정치"
+- assertVisible: "실시간 교통 조회 전 TimeAgent 기본 추정치"
 - scrollUntilVisible:
     element:
       text: ".*변경 내용 확인"

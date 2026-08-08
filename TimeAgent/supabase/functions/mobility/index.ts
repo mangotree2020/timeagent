@@ -20,6 +20,8 @@ type TmapFeature = {
 };
 
 const NAVER_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
+const NAVER_REVERSE_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
+const TMAP_POI_URL = "https://apis.openapi.sk.com/tmap/pois";
 const TMAP_PEDESTRIAN_URL = "https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1";
 
 function requiredSecret(name: string): string {
@@ -89,6 +91,108 @@ async function geocode(requestUrl: URL): Promise<Response> {
     : [];
 
   return jsonResponse({ places });
+}
+
+function queryCoordinate(requestUrl: URL): Coordinate | null {
+  const latitude = Number(requestUrl.searchParams.get("latitude"));
+  const longitude = Number(requestUrl.searchParams.get("longitude"));
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
+function stripHtml(value: unknown): string {
+  return String(value || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").trim();
+}
+
+function joinAddress(...parts: unknown[]): string {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
+}
+
+async function searchPlaces(requestUrl: URL): Promise<Response> {
+  const query = requestUrl.searchParams.get("query")?.trim();
+  if (!query) {
+    return jsonResponse({ error: { code: "INVALID_QUERY", message: "검색할 장소명을 입력해 주세요." } }, 400);
+  }
+
+  const upstreamUrl = new URL(TMAP_POI_URL);
+  upstreamUrl.searchParams.set("version", "1");
+  upstreamUrl.searchParams.set("format", "json");
+  upstreamUrl.searchParams.set("searchKeyword", query);
+  upstreamUrl.searchParams.set("count", "10");
+  upstreamUrl.searchParams.set("reqCoordType", "WGS84GEO");
+  upstreamUrl.searchParams.set("resCoordType", "WGS84GEO");
+  const near = queryCoordinate(requestUrl);
+  if (near) {
+    upstreamUrl.searchParams.set("centerLat", String(near.latitude));
+    upstreamUrl.searchParams.set("centerLon", String(near.longitude));
+    upstreamUrl.searchParams.set("radius", "20");
+  }
+  const upstream = await fetch(upstreamUrl, {
+    headers: { appKey: requiredSecret("TMAP_APP_KEY") },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!upstream.ok) return upstreamError("tmap", upstream.status);
+  const payload = await upstream.json();
+  const pois = payload?.searchPoiInfo?.pois?.poi;
+  const places = Array.isArray(pois) ? pois.flatMap((item: Record<string, unknown>) => {
+    const latitude = Number(item.frontLat ?? item.noorLat);
+    const longitude = Number(item.frontLon ?? item.noorLon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
+    const road = Array.isArray(item.newAddressList)
+      ? item.newAddressList[0]
+      : (item.newAddressList as { newAddress?: Record<string, unknown>[] } | undefined)?.newAddress?.[0];
+    return [{
+      name: stripHtml(item.name) || query,
+      roadAddress: stripHtml(road?.fullAddressRoad) || joinAddress(item.upperAddrName, item.middleAddrName, item.lowerAddrName, item.roadName, item.firstBuildNo, item.secondBuildNo),
+      jibunAddress: joinAddress(item.upperAddrName, item.middleAddrName, item.lowerAddrName, item.detailAddrName, item.firstNo, item.secondNo),
+      coordinate: { latitude, longitude },
+    }];
+  }) : [];
+  return jsonResponse({ places });
+}
+
+async function reverseGeocode(requestUrl: URL): Promise<Response> {
+  const selected = queryCoordinate(requestUrl);
+  if (!selected) {
+    return jsonResponse({ error: { code: "INVALID_COORDINATES", message: "지도에서 선택한 위치를 확인해 주세요." } }, 400);
+  }
+  const upstreamUrl = new URL(NAVER_REVERSE_GEOCODING_URL);
+  upstreamUrl.searchParams.set("coords", `${selected.longitude},${selected.latitude}`);
+  upstreamUrl.searchParams.set("orders", "roadaddr,addr");
+  upstreamUrl.searchParams.set("output", "json");
+  const upstream = await fetch(upstreamUrl, {
+    headers: {
+      "x-ncp-apigw-api-key-id": requiredSecret("NAVER_CLIENT_ID"),
+      "x-ncp-apigw-api-key": requiredSecret("NAVER_CLIENT_SECRET"),
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!upstream.ok) return upstreamError("naver", upstream.status);
+  const payload = await upstream.json();
+  const results: Record<string, unknown>[] = Array.isArray(payload?.results) ? payload.results : [];
+  const roadResult = results.find((item) => item.name === "roadaddr");
+  const addressResult = results.find((item) => item.name === "addr");
+  const roadRegion = roadResult?.region as Record<string, Record<string, unknown>> | undefined;
+  const addressRegion = addressResult?.region as Record<string, Record<string, unknown>> | undefined;
+  const land = (roadResult?.land || addressResult?.land || {}) as Record<string, unknown>;
+  const roadAddress = roadResult ? joinAddress(
+    roadRegion?.area1?.name, roadRegion?.area2?.name, roadRegion?.area3?.name,
+    land.name, land.number1, land.number2 ? `-${land.number2}` : "",
+  ).replace(/\s+-/g, "-") : "";
+  const jibunLand = (addressResult?.land || {}) as Record<string, unknown>;
+  const jibunAddress = addressResult ? joinAddress(
+    addressRegion?.area1?.name, addressRegion?.area2?.name, addressRegion?.area3?.name,
+    jibunLand.number1, jibunLand.number2 ? `-${jibunLand.number2}` : "",
+  ).replace(/\s+-/g, "-") : "";
+  return jsonResponse({
+    place: {
+      name: stripHtml(land.name) || "지도에서 지정한 위치",
+      roadAddress,
+      jibunAddress,
+      coordinate: selected,
+    },
+  });
 }
 
 async function walkingRoute(request: Request): Promise<Response> {
@@ -169,6 +273,8 @@ Deno.serve(async (request) => {
     const path = url.pathname.replace(/\/$/, "");
 
     if (request.method === "GET" && path.endsWith("/v1/geocode")) return await geocode(url);
+    if (request.method === "GET" && path.endsWith("/v1/places")) return await searchPlaces(url);
+    if (request.method === "GET" && path.endsWith("/v1/reverse-geocode")) return await reverseGeocode(url);
     if (request.method === "POST" && path.endsWith("/v1/routes/walk")) return await walkingRoute(request);
     if (request.method === "GET" && path.endsWith("/health")) {
       return jsonResponse({ status: "ok", service: "timeagent-mobility" });
@@ -190,4 +296,3 @@ Deno.serve(async (request) => {
     );
   }
 });
-

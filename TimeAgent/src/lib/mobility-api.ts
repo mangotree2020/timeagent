@@ -2,6 +2,7 @@ import {
   Coordinate,
   GeocodedPlace,
   GeocodingProvider,
+  PlaceSearchProvider,
   RouteManeuver,
   RoutePlan,
   RouteProvider,
@@ -43,7 +44,7 @@ export class MobilityApiError extends Error {
   }
 }
 
-export class SupabaseMobilityProvider implements GeocodingProvider, RouteProvider {
+export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchProvider, RouteProvider {
   private readonly baseUrl: string;
   private readonly fetcher: MobilityFetcher;
   private readonly timeoutMs: number;
@@ -86,6 +87,34 @@ export class SupabaseMobilityProvider implements GeocodingProvider, RouteProvide
       throw new MobilityApiError('주소 검색 응답 형식이 올바르지 않습니다.', 'INVALID_RESPONSE', false, 200);
     }
     return payload.places;
+  }
+
+  async searchPlaces(query: string, near?: Coordinate, signal?: AbortSignal): Promise<GeocodedPlace[]> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      throw new MobilityApiError('검색할 장소명을 입력해 주세요.', 'INVALID_QUERY', false, 400);
+    }
+    let path = `/v1/places?query=${encodeURIComponent(normalizedQuery)}`;
+    if (near) {
+      path += `&latitude=${encodeURIComponent(String(near.latitude))}&longitude=${encodeURIComponent(String(near.longitude))}`;
+    }
+    const payload = await this.requestJson(path, { method: 'GET' }, signal);
+    if (!isGeocodingResponse(payload)) {
+      throw new MobilityApiError('장소 검색 응답 형식이 올바르지 않습니다.', 'INVALID_RESPONSE', false, 200);
+    }
+    return payload.places;
+  }
+
+  async reverseGeocode(coordinate: Coordinate, signal?: AbortSignal): Promise<GeocodedPlace> {
+    const params = new URLSearchParams({
+      latitude: String(coordinate.latitude),
+      longitude: String(coordinate.longitude),
+    });
+    const payload = await this.requestJson(`/v1/reverse-geocode?${params.toString()}`, { method: 'GET' }, signal);
+    if (!isRecord(payload) || !isGeocodedPlace(payload.place)) {
+      throw new MobilityApiError('지도 위치의 주소 응답 형식이 올바르지 않습니다.', 'INVALID_RESPONSE', false, 200);
+    }
+    return payload.place;
   }
 
   async getWalkingRoute(request: WalkingRouteRequest): Promise<RoutePlan> {
@@ -176,11 +205,15 @@ function isErrorPayload(value: unknown): value is ErrorPayload {
 function isGeocodingResponse(value: unknown): value is { places: GeocodedPlace[] } {
   return isRecord(value)
     && Array.isArray(value.places)
-    && value.places.every((place) => isRecord(place)
-      && typeof place.name === 'string'
-      && typeof place.roadAddress === 'string'
-      && typeof place.jibunAddress === 'string'
-      && isCoordinate(place.coordinate));
+    && value.places.every(isGeocodedPlace);
+}
+
+function isGeocodedPlace(place: unknown): place is GeocodedPlace {
+  return isRecord(place)
+    && typeof place.name === 'string'
+    && typeof place.roadAddress === 'string'
+    && typeof place.jibunAddress === 'string'
+    && isCoordinate(place.coordinate);
 }
 
 function isRoutePlan(value: unknown): value is RoutePlan {

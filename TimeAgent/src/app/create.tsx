@@ -1,13 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Header, Screen, SectionTitle, type } from '@/components/app-ui';
 import { AppIcon, AppIconName, IconButton, iconForRoutine, iconForTransport } from '@/components/app-icon';
+import { DestinationPicker } from '@/components/destination-picker';
 import { color, radius, space } from '@/constants/design';
 import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
-import { GeocodedPlace } from '@/lib/journey';
-import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { addRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
 
@@ -37,6 +36,10 @@ export default function CreateScreen() {
   const nextFromAppointment = () => {
     if (!draft.title.trim() || !draft.date.trim() || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.appointmentTime)) {
       setPlanError('일정 이름·날짜와 약속 시간을 확인해 주세요. 시간은 00:00부터 23:59 사이로 입력합니다.');
+      return;
+    }
+    if (!draft.destination.trim() || !draft.destinationCoordinate) {
+      setPlanError('목적지를 검색 결과에서 선택하거나 지도에서 위치를 지정해 주세요.');
       return;
     }
     setPlanError('');
@@ -70,30 +73,7 @@ export default function CreateScreen() {
 }
 
 function AppointmentForm({ draft, onChange }: DraftFormProps) {
-  const provider = useMemo(() => createConfiguredMobilityProvider(), []);
-  const [places, setPlaces] = useState<GeocodedPlace[]>([]);
-  const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
-  const searchAddress = async () => {
-    setSearchStatus('loading');
-    try {
-      const nextPlaces = await provider.geocode(draft.destinationAddress);
-      setPlaces(nextPlaces);
-      setSearchStatus(nextPlaces.length > 0 ? 'success' : 'empty');
-    } catch {
-      setPlaces([]);
-      setSearchStatus('error');
-    }
-  };
-  const selectPlace = (place: GeocodedPlace) => {
-    onChange({
-      destinationAddress: place.roadAddress || place.jibunAddress,
-      destinationCoordinate: place.coordinate,
-    });
-    setPlaces([]);
-    setSearchStatus('success');
-  };
-
-  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><Field label="목적지" value={draft.destination} icon="location" onChangeText={(destination) => onChange({ destination })} /><Card style={styles.tip}><View style={styles.tipTitleRow}><AppIcon name="location" size={18} /><Text style={styles.tipTitle}>목적지 주소 확인</Text></View><TextInput accessibilityLabel="목적지 주소" value={draft.destinationAddress} onChangeText={(destinationAddress) => { onChange({ destinationAddress, destinationCoordinate: null }); setSearchStatus('idle'); setPlaces([]); }} style={[type.bodyMuted, styles.addressInput]} /><Button label={searchStatus === 'loading' ? '주소 확인 중' : '주소 확인'} disabled={searchStatus === 'loading' || !draft.destinationAddress.trim()} onPress={() => void searchAddress()} />{searchStatus === 'empty' ? <Text accessibilityRole="alert" style={styles.addressStatus}>일치하는 주소가 없습니다. 주소를 수정하거나 직접 입력해 주세요.</Text> : null}{searchStatus === 'error' ? <Text accessibilityRole="alert" style={[styles.addressStatus, styles.addressError]}>주소를 확인하지 못했습니다. 직접 입력한 주소로 계속 진행할 수 있습니다.</Text> : null}{searchStatus === 'success' && draft.destinationCoordinate ? <Text accessibilityLiveRegion="polite" style={styles.addressStatus}>목적지 좌표를 확인했습니다.</Text> : null}{places.map((place) => <Pressable key={`${place.coordinate.latitude}-${place.coordinate.longitude}`} accessibilityRole="button" accessibilityLabel={`${place.name} 주소 선택`} onPress={() => selectPlace(place)} style={styles.placeResult}><AppIcon name="location" size={18} /><View style={{ flex: 1 }}><Text style={styles.placeName}>{place.name}</Text><Text style={styles.placeAddress}>{place.roadAddress || place.jibunAddress}</Text></View></Pressable>)}</Card></View>;
+  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><DestinationPicker value={draft} onChange={onChange} /></View>;
 }
 
 function TransportForm({ draft, onChange }: DraftFormProps) {
@@ -114,7 +94,7 @@ function RoutineForm({ draft, onChange }: DraftFormProps) {
     setShowAddRoutine(false);
   };
 
-  return <View style={styles.form}><SectionTitle>무엇을 준비해야 하나요?</SectionTitle><Text style={type.bodyMuted}>최근 기록을 바탕으로 시간을 추천했어요. 필요한 시간을 조정할 수 있어요.</Text>{draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><Text style={[type.body, { flex: 1, fontWeight: '800' }]}>{item.label}</Text><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{item.minutes}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View></Card>)}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
+  return <View style={styles.form}><SectionTitle>무엇을 준비해야 하나요?</SectionTitle><Text style={type.bodyMuted}>설정한 기본 추천과 최근 기록을 시작점으로 보여드려요. 나에게 맞게 항목과 시간을 조정할 수 있어요.</Text>{draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><Text style={[type.body, { flex: 1, fontWeight: '800' }]}>{item.label}</Text><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{item.minutes}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View></Card>)}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
 }
 
 type DraftFormProps = {
@@ -130,7 +110,7 @@ const styles = StyleSheet.create({
   importNotice: { gap: space.sm, backgroundColor: color.ice, padding: space.lg }, importNoticeTitle: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, importNoticeHeading: { color: color.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' },
   steps: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.md },
   stepItem: { flex: 1, alignItems: 'center', gap: 5 }, stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted }, stepDotActive: { backgroundColor: color.deepBlue }, stepNumber: { color: color.textMuted, fontSize: 12, fontWeight: '900' }, stepNumberActive: { color: color.surface }, stepLabel: { fontSize: 11, color: color.textMuted }, stepLabelActive: { color: color.deepBlue, fontWeight: '800' },
-  form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: color.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: color.text, paddingVertical: 12 }, tip: { backgroundColor: '#E8F7FB', padding: space.lg, gap: space.md }, tipTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 3 }, tipTitle: { fontSize: 14, color: color.deepBlue, fontWeight: '900' }, addressInput: { minHeight: 48, paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.md, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border }, addressStatus: { ...type.caption, color: color.deepBlue, fontWeight: '700' }, addressError: { color: color.danger }, placeResult: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: color.surface, borderWidth: 1, borderColor: color.cyan }, placeName: { color: color.navy, fontSize: 14, lineHeight: 20, fontWeight: '800' }, placeAddress: { color: color.textMuted, fontSize: 13, lineHeight: 18 },
+  form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: color.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: color.text, paddingVertical: 12 },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, choice: { width: '31%', minHeight: 92, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, alignItems: 'center', justifyContent: 'center', gap: 8 }, choiceActive: { backgroundColor: color.navy, borderColor: color.navy }, choiceLabel: { fontSize: 13, color: color.textMuted, fontWeight: '700' }, choiceLabelActive: { color: color.surface }, segment: { marginTop: space.lg, flexDirection: 'row', borderRadius: radius.pill, backgroundColor: color.surfaceMuted, padding: 4 }, segmentActive: { backgroundColor: color.deepBlue },
   segmentOption: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' }, segmentText: { color: color.textMuted, fontSize: 12, fontWeight: '700' }, segmentTextActive: { color: color.surface, fontWeight: '800' },
   routine: { flexDirection: 'row', alignItems: 'center', padding: space.lg, gap: space.sm }, routineIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted }, minuteControls: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderRadius: radius.pill, backgroundColor: color.surfaceMuted }, minuteButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, minuteText: { minWidth: 36, textAlign: 'center', color: color.deepBlue, fontSize: 13, fontWeight: '800' }, addRoutine: { minHeight: 48, flexDirection: 'row', gap: space.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: color.cyan, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }, addRoutineText: { color: color.deepBlue, fontWeight: '800' },

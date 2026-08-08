@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(123 123) scale(.76)">
+    <g fill="none" stroke="#CDEBF7" stroke-linecap="round" stroke-width="38">
+      <path d="M290 250 L350 312"/>
+      <path d="M734 250 L674 312"/>
+      <path d="M365 805 L309 914" stroke-width="54"/>
+      <path d="M659 805 L715 914" stroke-width="54"/>
+    </g>
+    <path d="M170 250 C136 196 160 126 226 93 C296 58 377 76 421 129 L260 294 C222 289 190 273 170 250 Z" fill="#22C7E8"/>
+    <path d="M854 250 C888 196 864 126 798 93 C728 58 647 76 603 129 L764 294 C802 289 834 273 854 250 Z" fill="#22C7E8"/>
+    <circle cx="512" cy="565" r="300" fill="#22C7E8"/>
+    <circle cx="512" cy="565" r="252" fill="#FFFFFF"/>
+    <g fill="#B9E1F2">
+      <rect x="500" y="328" width="24" height="58" rx="12"/>
+      <rect x="500" y="744" width="24" height="58" rx="12"/>
+      <rect x="278" y="553" width="58" height="24" rx="12"/>
+      <rect x="688" y="553" width="58" height="24" rx="12"/>
+    </g>
+    <g fill="#03045E">
+      <rect x="421" y="410" width="28" height="44" rx="14"/>
+      <rect x="575" y="410" width="28" height="44" rx="14"/>
+    </g>
+    <polyline points="390,492 512,565 800,394" fill="none" stroke="#22C7E8" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M858 360 L778 356 L822 432 Z" fill="#22C7E8"/>
+  </g>
+</svg>

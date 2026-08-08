@@ -10,6 +10,10 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import CircleAlert from 'lucide-react-native/icons/circle-alert';
 import CircleCheckBig from 'lucide-react-native/icons/circle-check-big';
 import Clock3 from 'lucide-react-native/icons/clock-3';
+import CloudFog from 'lucide-react-native/icons/cloud-fog';
+import CloudLightning from 'lucide-react-native/icons/cloud-lightning';
+import CloudRain from 'lucide-react-native/icons/cloud-rain';
+import CloudSun from 'lucide-react-native/icons/cloud-sun';
 import Footprints from 'lucide-react-native/icons/footprints';
 import Home from 'lucide-react-native/icons/house';
 import MapPin from 'lucide-react-native/icons/map-pin';
@@ -20,8 +24,10 @@ import PackageCheck from 'lucide-react-native/icons/package-check';
 import Palette from 'lucide-react-native/icons/palette';
 import Plus from 'lucide-react-native/icons/plus';
 import Settings from 'lucide-react-native/icons/settings';
+import Search from 'lucide-react-native/icons/search';
 import Shirt from 'lucide-react-native/icons/shirt';
 import ShowerHead from 'lucide-react-native/icons/shower-head';
+import Snowflake from 'lucide-react-native/icons/snowflake';
 import Sparkles from 'lucide-react-native/icons/sparkles';
 import SunMedium from 'lucide-react-native/icons/sun-medium';
 import TrainFront from 'lucide-react-native/icons/train-front';
@@ -47,6 +53,11 @@ const icons = {
   error: CircleAlert,
   success: CircleCheckBig,
   time: Clock3,
+  weatherCloudy: CloudSun,
+  weatherFog: CloudFog,
+  weatherRain: CloudRain,
+  weatherSnow: Snowflake,
+  weatherStorm: CloudLightning,
   walk: Footprints,
   home: Home,
   location: MapPin,
@@ -58,10 +69,12 @@ const icons = {
   makeup: Palette,
   plus: Plus,
   settings: Settings,
+  search: Search,
   dress: Shirt,
   shower: ShowerHead,
   coach: Sparkles,
   routine: SunMedium,
+  weatherClear: SunMedium,
   subway: TrainFront,
   ai: WandSparkles,
   close: X,

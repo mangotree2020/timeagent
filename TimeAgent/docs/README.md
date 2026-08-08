@@ -1,4 +1,4 @@
-# ON:TIME 개발 현황
+# TimeAgent 개발 현황
 
 이 문서는 프로젝트 작업계획과 진척사항을 한눈에 확인하는 문서 목록이다.  
 세부 완료 조건과 검증 기록은 [실행 계획](EXECUTION_PLAN.md)을 기준으로 한다.
@@ -10,9 +10,9 @@
 | 구분 | 상태 | 내용 |
 |---|---|---|
 | 현재 단계 | P0·P1·P2 완료, P3 검증 준비 완료 | Plus 사전 수요와 비식별 Phase 0 결과 공유까지 구현 |
-| 현재 Ralph Loop | Phase 0 배포 검증 완료 | 원격 푸시·ARM64 릴리스 APK·삼성폰 Plus/공유 흐름 통과 |
-| Android | 실기기 통과 | `SM-N971N`에 2026-07-30 릴리스 설치, Plus 등록·철회와 공유 취소·완료 확인 통과 |
-| 자동 검증 | 통과 | TypeScript, ESLint, Jest 92/92, Expo Doctor 20/20, 시각·상호작용 72/72, ARM64 Release APK 빌드 |
+| 현재 Ralph Loop | 중앙 꼭지점·외곽 화살표·의인화 로고 완료 | 시계 중심에 체크 꼭지점을 고정하고 외곽 화살촉과 두 눈을 적용 |
+| Android | 실기기 통과 | `SM-N971N`에 최신 TimeAgent ARM64 릴리스 설치, 중앙축 로고·핵심 CTA 확인 |
+| 자동 검증 | 핵심 완료 | TypeScript, ESLint, Jest 92/92, 시각·상호작용 72/72, ARM64 Release APK 빌드; Expo Doctor 19/20은 SDK 패치 버전 정리 대기 |
 | 랜딩 페이지 | 배포 완료 | 외부 공개 상태 |
 
 공개 랜딩 페이지: [TimeFlow Landing](https://timeflow-landing.wcshin.chatgpt.site)
@@ -52,9 +52,11 @@
 - [x] 포그라운드 waypoint 음성 안내
 - [x] 백그라운드 복귀와 네트워크 오류 fallback
 - [x] 백그라운드 위치·음성 기술 검증
-- [x] 온보딩 3장과 비회원 첫 일정 흐름
+- [x] 온보딩 3장과 로그인 후 첫 일정 흐름
 - [x] Gemini Flash-Lite 음성 일정 도우미와 품질·지연·비용 기준선
 - [x] Google·Apple/iCloud·Android 기기 캘린더 조회와 명시적 일정 가져오기
+- [x] 앱 실행 Google 로그인 게이트·세션 복원·설정 로그아웃
+- [x] 선택형 성별 기준 새 일정 기본 준비 항목 추천
 
 ### P2 — 품질과 학습
 
@@ -77,6 +79,46 @@ P3의 제품 내 실험 도구는 완료했지만, 50~100명 파일럿과 결제
 
 ## 최근 완료 작업
 
+### 중앙 꼭지점·외곽 화살표·의인화 로고
+
+- 체크 꼭지점을 시계 원의 정확한 중심 좌표 `(512, 565)`에 고정
+- 긴 오른쪽 바늘의 화살촉이 시계 테두리를 자연스럽게 벗어나도록 구성
+- 바늘과 겹치지 않는 두 눈만 추가해 친근한 TimeAgent 캐릭터로 최소 의인화
+- 좌표와 크기를 반복 조정할 수 있도록 SVG 원본과 Android 안전영역 전용 원본 추가
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, ARM64 릴리스 645 tasks 및 삼성폰 설치 통과
+
+### 체크·화살표형 시계 바늘 통합
+
+- 알람시계 형태는 유지하고 왼쪽 바늘을 짧게, 오른쪽 바늘을 길게 만들어 명확한 체크 `✓`로 재구성
+- 긴 오른쪽 획 끝을 화살촉으로 마감해 완료와 다음 행동 의미를 별도 배지 없이 통합
+- 앱 아이콘, Android Adaptive foreground, 스플래시, 파비콘, 홈·온보딩 로고에 동일하게 반영
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, ARM64 릴리스 645 tasks 통과
+- 삼성 `SM-N971N` 업데이트 설치 후 작은 앱 내 로고와 치명적 로그 없음을 확인
+
+### 알람시계형 TimeAgent 로고 적용·재배포
+
+- 사용자가 제시한 알람시계에서 양쪽 벨·원형 본체·두 다리의 핵심 실루엣만 단순화
+- 시계 바늘 끝을 전진 화살표로 통합해 `지금 다음 행동`이라는 제품 의미를 형태로 표현
+- 공통 앱 아이콘, Android Adaptive foreground, 스플래시, 파비콘, 홈·온보딩 워드마크에 일관되게 적용
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, ARM64 릴리스 645 tasks 통과
+- 삼성 `SM-N971N` 업데이트 설치 후 새 로고와 `TimeAgent` UI 노드, 치명적 로그 없음을 확인
+
+### TimeAgent 앱 로고·재배포
+
+- 기존 시계·체크·전진 화살표 심벌과 `TimeAgent` 워드마크를 결합한 재사용 로고 컴포넌트 추가
+- 홈과 온보딩 상단에 적용하고 화면 읽기용 `TimeAgent 로고` 레이블 제공
+- 360×800에서도 로고·알림·일정·핵심 CTA가 겹치거나 잘리지 않음을 확인
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, ARM64 릴리스 645 tasks 통과
+- 삼성 `SM-N971N` 업데이트 설치 후 실제 홈 로고와 치명적 로그 없음을 확인
+
+### TimeAgent 이름·앱 아이콘 적용
+
+- 앱 표시 이름, 권한 설명, 알림 채널, 온보딩·코치·설정·Plus 문구를 `TimeAgent`로 통일
+- 시계·체크·전진 화살표를 결합한 네이비·시안 심벌을 공통 아이콘과 Android Adaptive Icon 전경에 적용
+- 출시 식별자는 `com.timeagent.app`으로 통일하고 `ontime` scheme과 저장 키는 유지
+- Jest 92/92, 세 viewport 시각·상호작용 72/72, ARM64 릴리스 645 tasks 통과
+- 삼성 `SM-N971N` 시스템 앱 정보에서 새 아이콘·`TimeAgent` 라벨, 앱 홈 실행과 치명적 로그 없음을 확인
+
 ### Phase 0 비식별 결과 공유
 
 - 설정에서 넓은 사용자 유형을 선택하고 일정·위치·음성 원문과 식별자를 제외한 집계 결과를 미리 확인
@@ -97,7 +139,7 @@ P3의 제품 내 실험 도구는 완료했지만, 50~100명 파일럿과 결제
 ### NAVER 지도 Android 인증·실기기 타일 검증
 
 - NAVER Cloud Maps `TimeAgent`의 Client ID가 앱 설정과 일치하고 Dynamic Map이 활성화된 것을 확인
-- Android 앱 패키지 `com.ontime.app`을 서비스 환경에 등록
+- Android 앱 패키지 `com.timeagent.app`을 서비스 환경에 등록
 - Android 12 `SM-N971N`에서 기존 `401 Unauthorized client`가 사라지고 NAVER 실제 지도 타일·현위치·TMAP 경로선·확대/축소 UI가 함께 표시되는 것을 확인
 - 실기기 경로 화면에서 TMAP 도보 약 160분·12km와 다음 행동 안내가 유지됨을 확인
 
@@ -177,11 +219,14 @@ P3의 제품 내 실험 도구는 완료했지만, 50~100명 파일럿과 결제
 - NAVER native map에 현위치·목적지·경로선·전체 경로 카메라 구현
 - 앱 복귀 재조회, 15초 위치 갱신, 오프라인·권한·서버 오류의 임시 경로와 텍스트 fallback 구현
 - TMAP maneuver별 한국어 음성 안내와 화면 음성 켜기/끄기 구현
-- NAVER Cloud Maps에 Android 패키지 `com.ontime.app`을 등록하고 실기기에서 실제 지도 타일 표시와 401 해소 확인
+- NAVER Cloud Maps에 Android 패키지 `com.timeagent.app`을 등록하고 실기기에서 실제 지도 타일 표시와 401 해소 확인
 
-### 온보딩 3장·비회원 첫 일정
+### Google 로그인과 온보딩 3장
 
-- 시간 역산, 지연 재계획, 지도·음성 가치를 3장으로 설명하고 로그인 없이 첫 일정 등록으로 연결
+- 앱 실행 시 Google 로그인 상태를 먼저 확인하고 미로그인 상태에서는 내부 라우트를 표시하지 않음
+- Android Credential Manager 기반 계정 선택, 취소·Play 서비스·네트워크·OAuth 설정 오류 안내와 설정 화면 로그아웃 연결
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`를 Web OAuth 클라이언트 ID로 설정하고 Google Cloud에 Android 패키지 `com.timeagent.app`과 앱 서명 SHA-1을 등록해야 실제 로그인이 활성화됨
+- 시간 역산, 지연 재계획, 지도·음성 가치를 3장으로 설명하고 로그인 후 첫 일정 등록으로 연결
 - 완료 marker 저장으로 앱 재실행 시 온보딩 미반복
 - Android 하단 시스템 내비게이션 겹침을 bottom safe area로 수정
 

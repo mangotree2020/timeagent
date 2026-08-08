@@ -90,7 +90,7 @@ export async function startBackgroundJourney({
         deferredUpdatesInterval: 15_000,
         pausesUpdatesAutomatically: true,
         foregroundService: {
-          notificationTitle: 'ON:TIME 이동 안내 사용 중',
+          notificationTitle: 'TimeAgent 이동 안내 사용 중',
           notificationBody: `${destinationName}까지 위치와 다음 행동을 안내합니다.`,
           notificationColor: '#0077B6',
           killServiceOnDestroy: false,
@@ -178,7 +178,7 @@ function speakInBackground(message: string) {
 async function showVoiceFallbackNotification(message: string, destinationName: string) {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(BACKGROUND_JOURNEY_NOTIFICATION_CHANNEL, {
-      name: 'ON:TIME 이동 음성 대체 알림',
+      name: 'TimeAgent 이동 음성 대체 알림',
       importance: Notifications.AndroidImportance.HIGH,
       sound: 'default',
     });

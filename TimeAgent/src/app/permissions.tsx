@@ -143,7 +143,7 @@ export default function PermissionsScreen() {
             onPress={() => {
               const notifications = !settings.notifications;
               updateSettings({ notifications });
-              setMessage(notifications ? 'ON:TIME 앱 알림을 켰습니다.' : '운영체제 권한은 유지하고 ON:TIME 앱 알림만 껐습니다.');
+              setMessage(notifications ? 'TimeAgent 앱 알림을 켰습니다.' : '운영체제 권한은 유지하고 TimeAgent 앱 알림만 껐습니다.');
             }}
           />
         ) : null}

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
 import { PropsWithChildren, useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Header, Screen, type } from '@/components/app-ui';
@@ -16,6 +16,7 @@ import {
 } from '@/lib/analytics';
 import {
   AppSettings,
+  AppColorMode,
   CoachTone,
   createDefaultAppSettings,
   loadAppSettings,
@@ -33,17 +34,24 @@ import {
   plusPlanLabel,
 } from '@/lib/monetization';
 import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
+import { PreparationGender, preparationGenderLabel } from '@/lib/preparation-profile';
+import { useAuth } from '@/state/auth-context';
 import { useSchedule } from '@/state/schedule-context';
+import { useAppTheme } from '@/state/theme-context';
 
-type DetailKey = 'location' | 'transport' | 'buffer' | 'routine' | 'tone';
+type DetailKey = 'appearance' | 'location' | 'transport' | 'buffer' | 'routine' | 'tone' | 'gender';
 
 const transports: PreferredTransport[] = ['도보', '버스', '지하철', '자가용', '택시'];
 const bufferOptions: AppSettings['bufferMinutes'][] = [3, 5, 10];
 const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비'];
 const toneOptions: CoachTone[] = ['친근하게', '간결하게', '단호하게'];
+const preparationGenderOptions: PreparationGender[] = ['unspecified', 'female', 'male'];
+const appearanceOptions: AppColorMode[] = ['light', 'dark'];
 const emptyPlusEligibility: PlusOfferEligibility = { eligible: false, completedSchedules: 0, remainingSchedules: 3 };
 
 export default function SettingsScreen() {
+  const { setMode } = useAppTheme();
+  const { deleteAccount, error: authError, signOut, status: authStatus, user } = useAuth();
   const { personalizationProfile, personalizationStatus, resetPersonalization, setPersonalizationEnabled } = useSchedule();
   const [settings, setSettings] = useState(createDefaultAppSettings);
   const settingsRef = useRef(settings);
@@ -55,6 +63,7 @@ export default function SettingsScreen() {
   const [notificationPermission, setNotificationPermission] = useState<PermissionState>('loading');
   const [showLearningReset, setShowLearningReset] = useState(false);
   const [showAnalyticsReset, setShowAnalyticsReset] = useState(false);
+  const [showAccountDeletion, setShowAccountDeletion] = useState(false);
   const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary>(() => summarizeAnalytics(createEmptyAnalyticsStore()));
   const [plusEligibility, setPlusEligibility] = useState(emptyPlusEligibility);
   const [plusInterest, setPlusInterest] = useState<PlusInterestState>(createEmptyPlusInterestState);
@@ -114,7 +123,35 @@ export default function SettingsScreen() {
   return (
     <View style={{ flex: 1 }}>
       <Screen>
-        <Header title="설정" eyebrow="내 생활에 맞게 ON:TIME을 조정하세요" />
+        <Header title="설정" eyebrow="내 생활에 맞게 TimeAgent를 조정하세요" />
+
+        <Section label="화면 모드">
+          <Setting icon="settings" title="화면 스타일" detail={settings.colorMode === 'dark' ? '다크 모드' : '화이트 모드'} expanded={expanded === 'appearance'} onPress={() => toggleDetail('appearance')} />
+          {expanded === 'appearance' ? <ChoicePanel description="화이트 모드가 기본이며 선택한 화면 모드는 이 기기에 저장됩니다." options={appearanceOptions} selected={settings.colorMode} label={(value) => value === 'dark' ? '다크 모드' : '화이트 모드'} onSelect={(colorMode) => { update({ colorMode }); setMode(colorMode); }} /> : null}
+        </Section>
+
+        <Section label="로그인 계정">
+          <View style={styles.accountRow}>
+            {user?.photo ? <Image accessibilityLabel={`${user.name} 프로필 사진`} source={{ uri: user.photo }} style={styles.profile} /> : <View accessibilityLabel="Google 계정 프로필" style={styles.profileFallback}><Text style={styles.profileInitial}>{user?.name.slice(0, 1) ?? 'G'}</Text></View>}
+            <View style={{ flex: 1 }}><Text style={styles.accountName}>{user?.name}</Text><Text style={type.caption}>{user?.email}</Text></View>
+          </View>
+          <View style={styles.accountAction}>
+            <Button label={authStatus === 'signingOut' ? '로그아웃 중…' : 'Google 계정 로그아웃'} variant="secondary" disabled={authStatus === 'signingOut'} onPress={() => void signOut()} />
+            {!showAccountDeletion ? (
+              <Button label="계정 연결 및 기기 데이터 삭제" variant="ghost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
+            ) : (
+              <View style={styles.resetPanel} accessibilityRole="alert">
+                <Text style={type.body}>TimeAgent와 Google 계정 연결을 해제하고 이 기기의 일정·위치·학습·설정을 모두 삭제할까요?</Text>
+                <Text style={type.caption}>삭제 후 복구할 수 없으며 Google 계정 자체와 기기 캘린더 원본은 삭제하지 않습니다.</Text>
+                <View style={styles.resetActions}>
+                  <View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => setShowAccountDeletion(false)} /></View>
+                  <View style={{ flex: 1 }}><Button label={authStatus === 'deleting' ? '삭제 중…' : '연결 및 데이터 삭제'} disabled={authStatus === 'deleting'} onPress={() => void deleteAccount()} /></View>
+                </View>
+              </View>
+            )}
+            {authError ? <Text accessibilityRole="alert" style={styles.error}>{authError}</Text> : null}
+          </View>
+        </Section>
 
         <Section label="기본 설정">
           <Setting icon="location" title="기본 출발 위치" detail={settings.defaultLocation} expanded={expanded === 'location'} onPress={() => toggleDetail('location')} />
@@ -139,6 +176,8 @@ export default function SettingsScreen() {
         </Section>
 
         <Section label="준비 루틴">
+          <Setting icon="routine" title="성별에 따른 기본 준비 항목" detail={preparationGenderLabel(settings.preparationGender)} expanded={expanded === 'gender'} onPress={() => toggleDetail('gender')} />
+          {expanded === 'gender' ? <ChoicePanel description="성별 선택은 필수가 아니며 새 일정의 시작 목록에만 적용돼요. 추천 항목과 시간은 일정마다 자유롭게 바꿀 수 있어요." options={preparationGenderOptions} selected={settings.preparationGender} label={(value) => value === 'female' ? '여성' : value === 'male' ? '남성' : '선택 안 함'} onSelect={(preparationGender) => update({ preparationGender })} /> : null}
           <Setting icon="routine" title="사용할 준비 루틴" detail={settings.routinePreset} expanded={expanded === 'routine'} onPress={() => toggleDetail('routine')} />
           {expanded === 'routine' ? <ChoicePanel options={routineOptions} selected={settings.routinePreset} onSelect={(routinePreset) => update({ routinePreset })} /> : null}
           <Setting icon="quick" title="빠른 준비" detail="총 22분 · 샤워와 필수 준비 중심" />
@@ -150,7 +189,7 @@ export default function SettingsScreen() {
           <Text accessibilityLiveRegion="polite" style={[styles.learningStatus, personalizationStatus === 'error' && styles.error]}>{personalizationStatus === 'loading' ? '학습 기록을 불러오는 중입니다' : personalizationStatus === 'saving' ? '학습 설정을 저장하는 중입니다' : personalizationStatus === 'error' ? '학습 설정을 저장하지 못했습니다' : '학습 설정이 저장됐습니다'}</Text>
         </Section>
 
-        <Section label="ON:TIME Plus · 사전 수요 검증">
+        <Section label="TimeAgent Plus · 사전 수요 검증">
           <Setting
             icon="ai"
             title="Plus 미리보기"
@@ -196,13 +235,18 @@ export default function SettingsScreen() {
           <Setting icon="location" title="위치 권한" detail={`${permissionStatusLabel(locationPermission)} · 거부 시 수동 출발지 사용`} onPress={() => router.push({ pathname: '/permissions', params: { focus: 'location' } })} />
         </Section>
 
+        <Section label="서비스 정보">
+          <Setting icon="settings" title="개인정보처리방침" detail="수집 정보·이용 목적·삭제 방법" onPress={() => router.push('/privacy')} />
+          <Setting icon="settings" title="이용약관" detail="서비스 이용과 안전 안내" onPress={() => router.push('/terms')} />
+        </Section>
+
         <Text accessibilityLiveRegion="polite" style={[styles.saveStatus, status === 'error' && styles.error]}>
           {status === 'loading' ? '설정을 불러오는 중입니다'
             : status === 'saving' ? '설정을 저장하는 중입니다'
               : status === 'error' ? '설정을 저장하지 못했습니다'
                 : '설정이 저장됐습니다'}
         </Text>
-        <Text style={styles.data}>ON:TIME은 일정 계산에 필요한 정보만 저장하며 설정에서 언제든 변경할 수 있어요.</Text>
+        <Text style={styles.data}>TimeAgent는 일정 계산에 필요한 정보만 저장하며 설정에서 언제든 변경할 수 있어요.</Text>
       </Screen>
       <BottomNav />
     </View>
@@ -230,14 +274,17 @@ function ChoicePanel<T extends string | number>({
   selected,
   onSelect,
   label = String,
+  description,
 }: {
   options: readonly T[];
   selected: T;
   onSelect: (value: T) => void;
   label?: (value: T) => string;
+  description?: string;
 }) {
   return (
     <DetailPanel>
+      {description ? <Text style={type.bodyMuted}>{description}</Text> : null}
       <View style={styles.choices}>
         {options.map((option) => {
           const active = option === selected;
@@ -326,4 +373,10 @@ const styles = StyleSheet.create({
   error: { color: color.danger },
   data: { ...type.caption, textAlign: 'center', paddingHorizontal: space.xl },
   plusNote: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.md },
+  accountRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm },
+  profile: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.surfaceMuted },
+  profileFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.ice, alignItems: 'center', justifyContent: 'center' },
+  profileInitial: { color: color.deepBlue, fontSize: 20, fontWeight: '900' },
+  accountName: { ...type.body, color: color.navy, fontWeight: '800' },
+  accountAction: { padding: space.sm, gap: space.sm },
 });

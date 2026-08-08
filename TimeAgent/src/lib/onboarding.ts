@@ -1,4 +1,5 @@
 export const ONBOARDING_STORAGE_KEY = '@on-time/onboarding-complete';
+export const ONBOARDING_COMPLETION_VERSION = '3';
 
 type StorageLike = {
   getItem: (key: string) => Promise<string | null>;
@@ -6,9 +7,9 @@ type StorageLike = {
 };
 
 export async function hasCompletedOnboarding(storage: StorageLike) {
-  return await storage.getItem(ONBOARDING_STORAGE_KEY) === '1';
+  return await storage.getItem(ONBOARDING_STORAGE_KEY) === ONBOARDING_COMPLETION_VERSION;
 }
 
 export async function completeOnboarding(storage: StorageLike) {
-  await storage.setItem(ONBOARDING_STORAGE_KEY, '1');
+  await storage.setItem(ONBOARDING_STORAGE_KEY, ONBOARDING_COMPLETION_VERSION);
 }

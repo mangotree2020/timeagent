@@ -1,5 +1,14 @@
 # 실행 계획
 
+## 2026-08-08 음성 일정 등록 개편 (완료)
+
+- [x] 홈의 일정 생성 플로팅 버튼을 마이크 아이콘과 파동 애니메이션으로 변경하고 음성 일정 화면에 직접 연결했다.
+- [x] `단계별로 묻기`는 약속 이름·시간·장소·교통수단만 순서대로 질문하며, 시간만 말하면 오늘, 요일은 이번 주, 특정 날짜는 해당 날짜로 보완한다.
+- [x] `한 번에 말하기`와 4개 필드 결과 확인 카드를 제공하고 `좋아, 준비 계획 만들어줘` 이후 기존 계획 확인·확정·다중 일정 저장 흐름을 재사용한다.
+- [x] 음성 화면 하단 우측의 `+` 버튼으로 텍스트 직접 등록으로 전환하며 마이크 거부·AI 연결 오류에서도 같은 대체 행동을 안내한다.
+- [x] 설정에 기본 화이트/선택형 다크 모드를 추가하고 선택값을 기기에 저장해 음성 화면의 배경·텍스트·버블·탭에 적용한다.
+- 검증: `npm run verify` 33 suites / 161 tests, Playwright 360×800·390×844·430×932에서 단계별 결과·한 번에 말하기·다크 모드·계획 저장 흐름 확인.
+
 ## P0 - 핵심 가치
 
 - [x] Expo Router + TypeScript 프로젝트 생성
@@ -82,7 +91,7 @@
 - [x] NAVER Maps 지도 adapter
   - `@mj-studio/react-native-naver-map` 2.9.0과 NAVER Maven 저장소를 Expo config plugin으로 연결하고 ARM64 APK 빌드·설치 완료.
   - 현위치 overlay, 목적지 marker, TMAP polyline, 전체 경로 camera 범위를 Android 실기기에서 확인.
-  - NAVER Cloud Maps `TimeAgent`의 Client ID·Dynamic Map 활성화를 확인하고 Android 패키지 `com.ontime.app`을 등록.
+  - NAVER Cloud Maps `TimeAgent`의 Client ID·Dynamic Map 활성화를 확인하고 출시 패키지 `com.timeagent.app`을 Android 허용 패키지로 저장함.
   - Android 12 `SM-N971N`에서 401 오류 해소와 실제 NAVER 타일·현위치·TMAP 경로선 표시를 확인.
 - [x] NAVER Geocoding Supabase Edge Function proxy
   - 서울 리전 `timeagent` 프로젝트와 `mobility/v1/geocode` 배포 완료.
@@ -171,6 +180,95 @@
   - Given 사용자가 유형을 선택하고 공유에 동의함, When 공유 CTA를 누르면, Then 운영체제 공유창을 열고 복귀 후 사용자가 공유 완료를 확인한 경우에만 로컬 성공 이벤트를 기록한다.
   - Given 공유 취소·오류가 발생함, When 화면으로 돌아오면, Then 성공으로 표시하지 않고 다시 시도할 수 있다.
   - [수익화 PRD](MONETIZATION_PRD.md)의 M0-06, 단위 테스트, 세 기준 화면, Android 공유창 취소·사용자 완료 확인을 검증했다.
+
+## 2026-08-05 Ralph Loop - 성별 기준 기본 준비 항목 (완료)
+
+- Observe: 모든 새 일정이 같은 `샤워·화장·옷 입기·짐 챙기기` 목록으로 시작해 사용자의 성별 기준에 따른 준비 차이를 설정할 방법이 없었음.
+- Select: 성별 선택을 필수 개인정보로 만들지 않고 `선택 안 함·여성·남성` 중 사용자가 직접 고른 기준을 새 일정의 시작 목록에만 적용하는 범위를 선택.
+- Specify: 여성은 `샤워·스킨케어·화장·헤어 정돈·옷 입기·짐 챙기기`, 남성은 `샤워·면도·헤어 정돈·옷 입기·짐 챙기기`, 선택 안 함은 기존 공통 추천을 사용. 변경 전 작성 중인 일정과 사용자가 수정한 준비 항목은 덮어쓰지 않고 각 일정에서 항목·시간을 계속 수정할 수 있어야 함.
+- Implement: 성별별 준비 목록을 순수 로직으로 분리하고 설정 저장 모델을 v2로 확장. 기존 v1 설정은 다른 값을 보존한 채 `선택 안 함`으로 마이그레이션함. 설정의 `성별에 따른 기본 준비 항목` 선택과 새 초안·캘린더 가져오기 초안 생성을 연결하고, 비동기 설정 조회 중 사용자가 이미 수정한 목록은 교체하지 않도록 보호함.
+- Verify: `npm run verify`에서 TypeScript·ESLint·Jest 26 suites·108/108 통과. 360×800·390×844·430×932 전체 시각·상호작용 87/87 통과하며 세 크기 모두 `남성` 저장→홈→새 일정→3단계의 `면도·헤어 정돈` 표시와 기존 `화장` 미표시를 확인함. ARM64 release 735 tasks 빌드 후 삼성 Android 12 `SM-N971N`에 업데이트 설치·독립 실행하고 치명적 React Native 로그가 없음을 확인함. Google OAuth 등록 전 로그인 gate 때문에 성별 화면의 Android 실기기 왕복은 인증 활성화 후 남은 수동 확인 항목임.
+- Evidence: `src/lib/preparation-profile.ts`, `src/lib/__tests__/preparation-profile.test.ts`, `src/lib/app-settings.ts`, `src/lib/schedule-draft.ts`, `src/state/schedule-context.tsx`, `src/app/settings.tsx`, `src/app/create.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/settings.png`, `e2e/visual/__screenshots__/*/create-step-3.png`, `artifacts/TimeAgent-gender-preparation-arm64-v1.0.0.apk`. APK SHA-256 `2c70950d56d960185db6683f94498fa16a4982169847af95933af5aef2bf7e46`.
+
+## 2026-08-06 Ralph Loop - 앱 실행 Google 로그인 (완료)
+
+- Observe: 앱을 처음 실행하면 로그인 없이 온보딩과 내부 라우트에 진입하며, 계정 상태 확인·세션 복원·로그아웃 경로가 없었음.
+- Select: 앱 실행을 Google 로그인으로 차단하고, 로그인 성공 후에만 기존 온보딩·홈 흐름을 유지하며 설정에서 계정 확인과 로그아웃을 제공하는 범위를 선택.
+- Specify: 미로그인 사용자는 딥링크를 포함한 모든 내부 화면 대신 로그인 화면만 봐야 함. 계정 선택 취소는 오류로 표시하지 않고, Play 서비스·네트워크·OAuth 설정 오류에는 가능한 다음 행동을 텍스트로 제공해야 함. 저장된 네이티브 세션은 재실행 시 복원하고 로그아웃 즉시 로그인 화면으로 돌아가야 함.
+- Implement: `react-native-nitro-google-signin`의 Android Credential Manager 명시적 계정 선택을 네이티브 adapter로 분리하고, 세션 판별·오류 문구 순수 로직, 전역 인증 context와 로그인 gate, 설정 계정 카드·로그아웃을 추가. OAuth 클라이언트 ID가 없는 빌드는 충돌하거나 우회하지 않고 설정 필요 상태와 비활성 CTA를 표시함. Web 클라이언트 ID 형식·Android 패키지·현재 debug 서명 SHA-1을 한 번에 확인하는 `npm run auth:doctor`도 추가함. 공개 Web 클라이언트 ID를 환경변수 우선·저장소 기본값 fallback으로 연결해 새 빌드에서도 재현되게 함. Google Cloud 프로젝트 `m4u4-9b513`에 출시 패키지 `com.timeagent.app`의 debug SHA-1 클라이언트를 저장하고 업로드 SHA-1 전용 `TimeAgent Android Upload` 클라이언트를 추가함.
+- Verify: `npm run auth:doctor` 통과. `npm run verify`에서 TypeScript·ESLint·Jest 26 suites·109/109 통과. 환경값이 포함된 ARM64 release 735 tasks 빌드와 삼성 Android 12 `SM-N971N` 업데이트 설치 성공. 실기기에서 미로그인 gate→Google 계정 로그인→홈 진입, 앱 강제 종료·재실행 후 세션 복원, 설정의 로그인 계정 표시, 로그아웃 즉시 gate 복귀, 계정 선택 취소 후 오류 없는 gate 유지, 동일 계정 재로그인→홈 복귀를 모두 확인했고 관련 치명적 React Native/Google Sign-In 로그가 없었음. 기존 360×800·390×844·430×932 전체 로그인 화면 시각·상호작용 84/84도 통과함.
+- Remaining: Android debug·업로드 APK 로그인용 OAuth 등록은 완료. 새 Google Play 개발자 계정과 앱을 만든 뒤 Play App Signing SHA-1용 Android OAuth 클라이언트를 추가해야 함. iOS 배포 시에는 iOS 클라이언트 ID와 reversed URL scheme 등록이 별도로 필요함.
+- Evidence: `src/lib/google-auth.ts`, `src/lib/google-auth-provider.native.ts`, `src/state/auth-context.tsx`, `src/components/auth-gate.tsx`, `src/app/settings.tsx`, `src/lib/__tests__/google-auth.test.ts`, `.env.example`, `scripts/google-auth-doctor.mjs`, `docs/HARNESS.md`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `artifacts/timeagent-google-login-configured.png`, `artifacts/timeagent-google-login-complete.png`, `android/app/build/outputs/apk/release/app-release.apk`. 최신 APK SHA-256 `dbd33eb6336217cdb10082d22f68cccc8848cdd3f8bc611a365e42163a9b10e4`.
+
+## 2026-08-05 Ralph Loop - 홈 당일 캘린더 일정 표시 (완료)
+
+- Observe: 홈은 다음 TimeAgent 일정 한 건만 고정 fixture로 보여주고, 이미 연결된 기기 캘린더의 당일 일정은 일정 탭까지 이동해야 확인할 수 있었음.
+- Select: 홈의 핵심 다음 일정·준비 CTA는 유지하면서, 바로 아래에 오늘과 겹치는 기기 캘린더 일정을 시간 상태와 함께 표시하는 범위를 선택.
+- Specify: 오늘 자정 구간과 겹치는 종일·여러 날 진행 중·당일 시각 일정을 포함하고, 전날 자정에 끝났거나 내일 시작하는 일정은 제외해야 함. 종일→진행 중→시작 시각 순으로 표시하며 권한 미허용·연결 불가·빈 일정·읽기 오류에도 연결·추가·재시도 행동을 제공해야 함.
+- Implement: 당일 일정 필터·정렬과 `종일`·`진행 중`·시각 포맷을 순수 로직으로 분리하고 Android 종일 일정의 UTC 날짜 경계를 보정. 홈에 `오늘 일정 N개` 목록, 캘린더 출처·장소·접근성 이름을 추가하고 앱 복귀 시 다시 조회하도록 연결. 홈 일정 카드와 `캘린더 보기`는 일정 화면의 캘린더 탭을 직접 열도록 보강함.
+- Verify: 당일 경계 단위 테스트를 포함해 `npm run verify` TypeScript·ESLint·Jest 24 suites·96/96 통과. 360×800·390×844·430×932 홈 시각·FAB 위치·당일 일정 이동 9/9 통과. ARM64 release 645 tasks 빌드 후 삼성 Android 12 `SM-N971N`에 업데이트 설치하고 실제 캘린더의 당일 일정 2개가 종일·진행 중으로 표시되며 전날 항목이 중복되지 않는지, 카드 선택 시 캘린더 탭이 열리는지, 치명적 React Native 로그가 없는지 확인함.
+- Reflect: 홈에서 다음 준비 행동을 먼저 유지하면서도 당일 전체 맥락을 한 번의 스크롤로 확인할 수 있음. 읽기 권한은 홈에서 자동 요청하지 않고 사용자가 캘린더 연결 화면에서 명시적으로 선택하도록 유지함.
+- Evidence: `src/lib/device-calendar.ts`, `src/lib/__tests__/device-calendar.test.ts`, `src/app/index.tsx`, `src/app/schedules.tsx`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-today-schedules-samsung.png`, `artifacts/TimeAgent-today-schedules-arm64-v1.0.0.apk`. APK SHA-256 `857b560aed3eb9d174eb7a8f89fe49e4ea60df1b97d1ff5a922ae75b96809f2b`.
+
+## 2026-08-05 Ralph Loop - 알림 아이콘 다음 행동 연결·실기기 검증 (완료)
+
+- Observe: 삼성 Android 12 `SM-N971N`에서 홈 상단 알림, 새 일정 추가, 하단 홈·일정·알림·설정 아이콘은 정상 동작했지만 알림 화면의 시계·코치·위치 아이콘 카드는 행동을 암시하면서도 눌러도 반응하지 않았음.
+- Select: 알림 화면의 세 카드만 해결 가능한 다음 행동으로 연결하고, 기존 전역 아이콘 동작과 사용자 저장 상태는 유지하는 범위를 선택.
+- Specify: 준비 시작 알림은 실시간 준비, 재계산 알림은 변경된 준비 계획, 위치 권한 알림은 위치 권한 설정으로 이동해야 함. 각 카드는 최소 44px 터치 영역, 텍스트 행동명, 화살표, 접근성 이름·힌트를 제공하고 색상만으로 동작을 전달하지 않아야 함.
+- Implement: 알림 행동과 목적지를 순수 매핑으로 분리하고, 세 알림 카드를 전체 영역 `Pressable`로 전환. `지금 준비 시작`, `변경된 계획 확인`, `위치 권한 설정` 문구와 오른쪽 화살표, 누름 피드백을 추가함.
+- Verify: 목적지 단위 테스트 3/3, `npm run verify` TypeScript·ESLint·Jest 24 suites·95/95 통과. 360×800·390×844·430×932 알림 화면과 세 목적지 이동 시각·상호작용 6/6 통과. ARM64 release 645 tasks 빌드 후 삼성폰에 업데이트 설치하고 세 카드가 각각 `실시간 준비`, `준비 계획이 완성됐어요`, `출발 위치 설정`으로 이동하며 치명적 React Native 로그가 없음을 확인함.
+- Reflect: 장식 아이콘과 행동 아이콘의 차이를 행동 문구·화살표·카드 전체 터치로 명확히 했고, 알림 자체가 지연 사실만 보여주는 대신 즉시 해결 화면으로 이어짐.
+- Evidence: `src/lib/alert-navigation.ts`, `src/lib/__tests__/alert-navigation.test.ts`, `src/app/alerts.tsx`, `e2e/visual/__screenshots__/*/alerts.png`, `artifacts/timeagent-alert-actions-samsung.png`, `artifacts/TimeAgent-alert-actions-arm64-v1.0.0.apk`. APK SHA-256 `514c7373b8958f6fd4a4c3734f51bd6c91ce427341ea786fc869c61362da6a20`.
+
+## 2026-07-30 Ralph Loop - 중앙 꼭지점·외곽 화살표·의인화 로고 (완료)
+
+- Observe: 체크·화살표형 바늘은 의미가 선명했지만 체크의 꼭지점이 시계 중심보다 아래에 있어 실제 시계 바늘의 축으로 읽히지 않았고, 알람시계의 캐릭터성도 약했음.
+- Select: 체크 꼭지점을 시계 원의 정확한 중심에 고정하고, 긴 바늘의 화살촉은 테두리 밖으로 돌출시키며, 눈 두 개만 추가한 최소 의인화를 선택.
+- Specify: 원 중심과 체크 꼭지점 좌표가 동일해야 하고, 화살표는 원을 벗어나되 오른쪽 벨·정사각형 안전영역과 충돌하지 않아야 함. 눈은 바늘과 겹치지 않고 작은 크기에서 사라져도 핵심 알람시계·체크·화살표 인지를 방해하지 않아야 함.
+- Implement: 내장 ImageGen 정밀 편집으로 알람시계·표정 방향을 탐색했으나 세 번의 편집이 중앙 좌표를 지키지 못해, 최종 자산은 재사용 가능한 SVG 원본으로 정밀 작성. 시계 중심 `(512, 565)`와 체크 꼭지점을 동일 좌표로 지정하고 외곽 화살촉·두 눈을 구성한 뒤 PNG 앱 아이콘·Adaptive foreground·스플래시·파비콘과 Android 밀도별 리소스로 출력함.
+- Verify: SVG 원본과 64px 축소본을 육안 확인하고 `npm run verify` TypeScript·ESLint·Jest 23 suites·92/92, 360×800·390×844·430×932 시각·상호작용 72/72 통과. Gradle ARM64 release 645 tasks 성공, APK 라벨 `TimeAgent`, ABI `arm64-v8a`, v2 서명을 확인. 삼성 Android 12 `SM-N971N` 업데이트 설치 후 홈 로고·핵심 CTA·`TimeAgent` UI 노드와 치명적 로그 없음을 확인함.
+- Reflect: 좌표 정확성이 필요한 핵심 심벌을 벡터 원본으로 전환해 이후 크기·색상 조정도 손실 없이 반복할 수 있음. 표정은 두 눈으로만 제한해 캐릭터성은 더하되 생산성 앱의 단순함을 유지함.
+- Evidence: `assets/images/timeagent-logo-source.svg`, `assets/images/timeagent-logo-foreground-source.svg`, `assets/images/icon.png`, `assets/images/android-icon-foreground.png`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-centered-face-logo-samsung.png`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk`. APK SHA-256 `94832e5a955ec3389e5eeb50326356f8ae463c6ea460a10b833353da16b19ee4`.
+
+## 2026-07-30 Ralph Loop - 체크·화살표형 시계 바늘 통합 (완료)
+
+- Observe: 알람시계형 로고의 기존 두 바늘은 `V` 형태로도 읽혀, 기존 브랜드가 가졌던 체크와 전진 화살표 의미가 작은 아이콘에서 충분히 선명하지 않았음.
+- Select: 알람시계 실루엣은 유지하면서 짧은 왼쪽 획과 긴 오른쪽 획을 하나의 체크로 연결하고, 긴 획 끝만 화살촉으로 마감하는 단일 바늘 형태를 선택.
+- Specify: 24~64px에서 먼저 체크 `✓`, 다음으로 우상향 화살표와 시계 바늘로 읽혀야 하며, 별도 배지·겹친 심벌 없이 한 획의 결합으로 표현해야 함. 양쪽 벨·원형 본체·두 다리와 Android adaptive 안전영역은 유지해야 함.
+- Implement: 내장 ImageGen 정밀 편집 모드로 기존 앱 아이콘의 바늘만 변경하고, 동일 형태의 크로마키 전경에서 알파를 추출해 앱 아이콘·Android foreground·스플래시·파비콘·앱 내부 로고에 반영. Android 밀도별 런처·스플래시 리소스도 갱신함.
+- Verify: `npm run verify` TypeScript·ESLint·Jest 23 suites·92/92, 360×800·390×844·430×932 시각·상호작용 72/72 통과. Gradle ARM64 release 645 tasks 성공, APK 라벨 `TimeAgent`, ABI `arm64-v8a`, v2 서명을 확인. 삼성 Android 12 `SM-N971N` 업데이트 설치 후 앱 내부 작은 로고에서 체크·화살표 바늘과 `TimeAgent` UI 노드, 치명적 로그 없음을 확인함.
+- Reflect: 짧은 왼쪽 획과 긴 오른쪽 획의 길이 차이로 체크 인지가 강화됐고, 화살촉은 별도 장식이 아니라 시계 바늘의 종점으로 통합됨. 현재 APK는 직접 설치용 debug keystore 서명이며 스토어 배포 전 운영 서명이 필요함.
+- Evidence: `assets/images/icon.png`, `assets/images/android-icon-foreground.png`, `assets/images/timeagent-alarm-logo.png`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-check-arrow-logo-samsung.png`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk`. APK SHA-256 `0310fa4b8632b6f623b0f581c7ab7ba0ea2c2e6b3e696ddb1f99234be1a2de0f`.
+
+## 2026-07-30 Ralph Loop - 알람시계형 TimeAgent 로고 적용·재배포 (완료)
+
+- Observe: 기존 시계·체크·화살표 조합은 앱의 시간 관리 의미는 전달했지만, 사용자가 제시한 양쪽 벨·원형 본체·두 다리의 친숙한 알람시계 형태가 충분히 드러나지 않았음.
+- Select: 첨부 참고 이미지의 핵심 실루엣만 단순화하고, 시계 바늘 하나를 전진 화살표로 마감해 `시간 확인 → 다음 행동 실행`이라는 TimeAgent 의미를 하나의 형태로 통합.
+- Specify: 글자 없이도 24px에서 알람시계로 인식되고, 양쪽 벨·원형 시계·두 다리가 형태로 구분되며, 네이비 배경과 시안·흰색의 명도 대비를 유지해야 함. Android adaptive mask 안에서 벨과 다리가 잘리지 않고 홈·온보딩 워드마크에는 `TimeAgent 로고` 접근성 이름을 유지해야 함.
+- Implement: 내장 ImageGen의 이미지 참고 모드로 네이비 정사각형 앱 아이콘과 크로마키 기반 투명 Android foreground를 생성하고, `icon.png`, adaptive foreground, splash, favicon, 앱 내부 전용 로고 자산에 반영. 워드마크는 이미지에 굽지 않고 기존 코드 기반 `TimeAgent` 텍스트를 유지함.
+- Verify: `npm run verify` TypeScript·ESLint·Jest 23 suites·92/92 통과. 360×800·390×844·430×932 시각·상호작용 72/72 통과 및 홈 기준 이미지 육안 검토. Gradle ARM64 release 645 tasks 성공, APK 라벨 `TimeAgent`, ABI `arm64-v8a`, v2 서명을 확인. 삼성 Android 12 `SM-N971N`에 업데이트 설치 후 홈의 새 알람시계 로고·핵심 CTA·하단 탐색과 `TimeAgent` UI 노드, 치명적 React Native 로그 없음을 확인함.
+- Reflect: 알람시계 실루엣과 전진 바늘이 색상 외 형태로도 의미를 전달하며 작은 앱 내 로고에서도 벨·원형 본체가 식별됨. 현재 APK는 직접 설치 검증용 debug keystore 서명이므로 스토어 배포 전 운영 키 서명이 필요함.
+- Evidence: `assets/images/icon.png`, `assets/images/android-icon-foreground.png`, `assets/images/splash-icon.png`, `assets/images/favicon.png`, `assets/images/timeagent-alarm-logo.png`, `src/components/app-logo.tsx`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-alarm-logo-samsung.png`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk`. APK SHA-256 `9c743c48a163175b920601e207f744f7b75ca60bcc36282c395e930e883eb86f`.
+
+## 2026-07-30 Ralph Loop - TimeAgent 앱 로고·재배포 (완료)
+
+- Observe: 런처 아이콘과 표시 이름은 TimeAgent로 정리됐지만, 앱 화면에서는 텍스트 이름만 사용해 아이콘 심벌과 제품명이 하나의 브랜드 로고로 연결되지 않았음.
+- Select: 기존 아이콘 심벌을 정확한 워드마크와 결합해 신규·기존 사용자가 모두 보는 온보딩과 홈 상단에 노출하고 삼성폰에 재배포하는 범위를 선택.
+- Specify: 360×800에서도 심벌·`TimeAgent` 이름·알림 버튼이 한 줄에서 겹치지 않고, 핵심 일정·CTA가 계속 보이며, 로고는 색상 외에도 아이콘 형태와 텍스트 이름으로 식별되고 화면 읽기에 `TimeAgent 로고`로 전달돼야 함.
+- Implement: 기존 1024px 아이콘을 36px 라운드 심벌로 사용하고 `Time` 네이비·`Agent` 딥블루 워드마크를 결합한 재사용 `AppLogo` 컴포넌트를 추가. 홈 상단과 온보딩 상단의 기존 텍스트 브랜드를 같은 로고 잠금형으로 교체함.
+- Verify: `npm run verify` TypeScript·ESLint·Jest 23 suites·92/92, 360×800·390×844·430×932 시각·상호작용 72/72 통과. Gradle ARM64 release 645 tasks 성공 후 삼성 Android 12 `SM-N971N`에 업데이트 설치하고 홈 로고·일정·CTA·하단 탐색 표시, `TimeAgent` UI 노드, 치명적 React Native 로그 없음을 확인함.
+- Reflect: 로고는 이미지에 글자를 굽지 않고 코드 기반 워드마크로 구현해 확대·현지화·접근성 품질을 유지함. 현재 APK는 직접 설치 검증용 debug keystore 서명이며 스토어 배포 전 운영 서명 전환이 필요함.
+- Evidence: `src/components/app-logo.tsx`, `src/app/index.tsx`, `src/app/onboarding.tsx`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-logo-home-samsung.png`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk`. APK SHA-256 `e216f50df1abbf08c38ad34ad614aacc038fa42ba10ceea4746608cd6b6711b9`.
+
+## 2026-07-30 Ralph Loop - TimeAgent 이름·앱 아이콘 적용 (완료)
+
+- Observe: Expo 표시 이름과 Android 런처 라벨은 `ON:TIME`이었고, iOS·Android 아이콘은 앱 가치와 무관한 Expo 기본 `A` 심벌이어서 실제 제품명 `TimeAgent`와 일치하지 않았음.
+- Select: 기존 설치·딥링크·저장 데이터 호환성을 유지하면서 사용자에게 보이는 이름과 런처 아이콘을 TimeAgent로 통일하는 한 가지 사용자 결과를 선택.
+- Specify: 앱 목록·시스템 앱 정보·권한 설명·앱 내 브랜드 문구에 `TimeAgent`가 표시되고, 아이콘은 작은 크기와 Android adaptive mask에서 시계·체크·전진 화살표가 형태로 구분되어야 함.
+- Implement: 네이비 `#03045E`·시안 `#00B4D8` 팔레트로 시간·다음 행동 심벌을 생성하고 1024px 공통 아이콘, 투명 Android foreground, splash, favicon으로 적용. Expo 이름·iOS 아이콘·Android adaptive background와 권한 설명, 앱 내 사용자 노출 문구, Maestro·시각 테스트 기대값을 TimeAgent로 변경함. 출시 패키지는 `com.timeagent.app`, Expo slug는 `on-time`, scheme은 `ontime`으로 통일함.
+- Verify: `npm run verify` TypeScript·ESLint·Jest 23 suites·92/92 통과. 360×800·390×844·430×932 시각·상호작용 72/72 재검증 통과. Oracle JDK 17·Node 24로 Gradle release 645 tasks를 완료하고 APK 라벨 `TimeAgent`, ARM64 전용 ABI를 확인. Android 12 삼성 `SM-N971N`에 `adb install -r` 업데이트 설치 후 시스템 앱 정보의 이름·새 아이콘, 홈 핵심 화면, `TimeAgent 코치`, 치명적 React Native 로그 없음까지 확인함.
+- Reflect: 아이콘과 사용자 노출 브랜드는 완료. Expo Doctor는 최신 SDK 57 패치 기대값 대비 15개 패키지가 한 패치 낮아 19/20이며 기능 회귀와 무관한 별도 의존성 유지보수 항목으로 남김. iOS 설정은 같은 1024px 아이콘을 가리키지만 iOS 실기기 런처 표시는 출시 전 추가 확인 대상임.
+- Evidence: `assets/images/icon.png`, `assets/images/android-icon-foreground.png`, `app.json`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk`, `artifacts/TimeAgent-Samsung-arm64-v1.0.0.apk.zip`, `artifacts/timeagent-icon-samsung.png`, `artifacts/timeagent-home-samsung.png`. APK SHA-256 `a063fb97f02bef4a65732ceb8f34167e6f066f9274f77f109f81940ff1d850f0`.
 
 ## 2026-07-30 Ralph Loop - Phase 0 배포·삼성폰 검증 (완료)
 
@@ -300,8 +398,8 @@
 
 - Observe: NAVER 지도는 Client ID가 존재해도 Android 패키지 허용이 없어 401 격자 화면이었고, 백그라운드 위치는 `항상 허용` 전이라 실행 검증이 막혀 있었음.
 - Select: 외부 인증과 민감 권한 차단이 해소된 즉시 실제 지도 타일과 화면 꺼짐 서비스 실행을 우선 검증.
-- Specify: `TimeAgent` Client ID·Dynamic Map·`com.ontime.app`이 일치해야 하며, 실기기에서 타일·현위치·TMAP 경로가 표시돼야 함. 백그라운드 안내는 위치 service·세션·음성 결과를 남기고 끄면 모두 삭제해야 함.
-- Implement: NAVER Cloud Maps `TimeAgent` 서비스 환경에 `com.ontime.app`을 등록하고 앱을 cold start. 백그라운드 위치 권한 승인 후 기존 Journey 안내 세션을 재개.
+- Specify: `TimeAgent` Client ID·Dynamic Map·`com.timeagent.app`이 일치해야 하며, 실기기에서 타일·현위치·TMAP 경로가 표시돼야 함. 백그라운드 안내는 위치 service·세션·음성 결과를 남기고 끄면 모두 삭제해야 함.
+- Implement: NAVER Cloud Maps `TimeAgent` 서비스 환경에 `com.timeagent.app`을 등록하고 앱을 cold start. 백그라운드 위치 권한 승인 후 기존 Journey 안내 세션을 재개.
 - Verify: Android 12 `SM-N971N`에서 NAVER 실제 타일·현위치·TMAP 경로선 표시, 401 로그 없음. `ACCESS_BACKGROUND_LOCATION=true`, task service, 15초 고정밀 위치 요청, AsyncStorage TMAP 세션과 `lastVoiceDelivery=spoken` 확인.
 - Resolved (2026-07-27): 화면을 끈 20초 동안 foreground 위치 서비스와 task가 유지됐고, 잠금 해제 후 안내 끄기에서 foreground 알림·TaskManager 등록·로컬 세션 삭제를 확인함. TalkBack 실제 탐색은 이후 사용자 요청으로 계획에서 취소.
 
@@ -325,7 +423,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Verify: `npm run verify` 44/44, `npx expo-doctor` 20/20, ARM64 debug APK 빌드 성공. Android 12 `SM-N971N`에서 `도보 · TMAP 경로`, 160분, 12km, 최신 상태 및 음성 on/off 접근성 상태를 확인했고 치명적 런타임 오류가 없음.
 - Reflect: 장거리 `11650m` 표기와 과도한 GPS 정확도 원, 출발점 과확대 문제를 발견해 km 표기·정확도 원 80m 상한·전체 경로 여백을 추가.
 - External blocker: NAVER 로그 `Authorization failed: [401] Unauthorized client`. 2026-07-27 Chrome의 기존 Maps Application 탭을 재확인했으나 콘솔 세션이 `Authentication failed`로 만료돼 로그인 갱신 후 Client ID의 Android 패키지 허용을 설정해야 함. 지도 실패 중에도 TMAP 경로선·현위치·텍스트 안내는 유지됨.
-- Evidence: `tmp/ralph-loop/android-tmap-live-route-polished.png`, 연결 기기 package `com.ontime.app`.
+- Evidence: `tmp/ralph-loop/android-tmap-live-route-polished.png`, 출시 package `com.timeagent.app`.
 
 ## 2026-07-26 Ralph Loop - 온보딩 3장·비회원 첫 일정 (완료)
 
@@ -508,7 +606,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - `npm run verify`: typecheck, lint, Jest 3/3 통과
 - `npm run web -- --port 8081`: Metro web/SSR bundle 성공
 - `curl http://localhost:8081`: 렌더된 HTML 응답 확인
-- Android 16 `SM-S931N`: `com.ontime.app` 개발 APK 빌드·설치·실행 성공
+- Android 16 `SM-S931N`: 이전 개발 패키지 빌드·설치·실행 성공; 출시 패키지 `com.timeagent.app` 재검증 필요
 - Android 실기기 홈/실시간 진행 화면 캡처 및 런타임 오류 로그 확인 완료
 - 남은 위험: 다른 기준 화면 크기와 네이티브 권한 동작은 아직 미실행
 
@@ -519,3 +617,141 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - 보안 결정: TMAP App Key는 서버 전용이며 앱은 프록시 endpoint만 호출
 - 준비 필요: NAVER Cloud Maps 애플리케이션 등록, TMAP API 상품/앱 등록, 허용 도메인·패키지 설정, 개발/운영 키 분리
 - 로컬 준비 상태: NAVER Maps Client ID와 TMAP 서버용 App Key를 `.env.local`에 설정 완료. TMAP 키는 앱 번들에서 참조하지 않고 서버 프록시에서만 사용한다.
+## 2026-08-06 출시 준비 Ralph Loop (준비 완료, 외부 차단)
+
+- Observe: 기존 Android `release`가 debug 키를 사용했고 versionCode가 Expo 설정에 명시되지 않았으며, Play 등록 문안·데이터 보안·백그라운드 위치 선언·공개 계정 삭제 URL이 준비되지 않았다. Play Console 계정은 2026-02-22 비활성화된 상태였다.
+- Select: Google Play Android 1.0 출시를 우선 대상으로 삼아 서명/AAB, 최소 권한, 계정 삭제, 정책 페이지, 스토어 자료, 제출 체크리스트를 한 묶음으로 준비한다.
+- Specify: release는 debug 키로 fallback하지 않아야 하고 targetSdk 36, 서명된 AAB, 계정 삭제와 정책 접근, 백그라운드 위치 명확한 고지, 512×512 아이콘·1024×500 그래픽·3개 이상 전화 스크린샷, 세 기준 화면 무잘림을 충족해야 한다.
+- Implement: macOS Keychain 기반 업로드 키 빌드와 debug-key fallback 방지 config plugin, versionCode/build number, `allowBackup=false`, 미사용 외부 저장소·오버레이·백그라운드 미디어 권한 제거, Google 접근 철회와 기기 데이터 삭제, 앱/웹 개인정보처리방침·약관·계정 삭제 페이지, Play 문안·선언·데이터 보안·체크리스트, 스토어 이미지 6장을 추가했다. Expo SDK 57 패치 버전도 권장 조합으로 정렬했다. JetBrains Runtime 17.0.9의 AArch64 C1 크래시를 피해 독립 JDK 17을 선택하도록 출시 스크립트를 보강했다.
+- Verify: `npm run verify` typecheck/ESLint/Jest 27 suites·110/110 통과, `npx expo-doctor` 20/20 통과, `npm run visual:test` 87/87 통과, 사이트 production build 성공. config plugin 회귀 테스트로 debug 빌드와 release 빌드의 서명 설정을 분리했다. 출시 package `com.timeagent.app`으로 release 760 tasks를 빌드하고 APK package·MainActivity, targetSdk 36, `allowBackup=false`, AAB/APK 서명, `arm64-v8a`·`armeabi-v7a`를 재검증했다. Android 14 에뮬레이터에 release APK를 설치해 `com.timeagent.app/.MainActivity` 독립 실행, Google 로그인 gate 표시, 치명적 Android/React Native 오류 없음을 확인했다. 삼성 Android 12 `SM-N971N`에는 같은 release APK를 설치해 `winddew71@gmail.com` Google 로그인, 첫 실행 온보딩 통과, 강제 종료·재실행 후 세션 복원과 홈 직행, 8월 7일 오늘 일정·다음 행동 표시, 설정의 로그인 계정 표시를 확인했으며 치명적 Android/React Native 오류는 없었다. 최신 AAB SHA-256은 `2d6421476fc9ccb766093a6105d272b493ad9d12f2defb95be9d55a95a6c5f83`, APK SHA-256은 `66c355d1cfb85cfd60afacf407f884d3349c161833ab477ff6c2536141af3e17`이다.
+- Reflect: 패키지 변경은 운영체제와 스토어에서 별도 앱으로 취급되므로 이전 패키지의 로컬 데이터는 자동 이전되지 않는다. Google OAuth의 debug·업로드 SHA-1 등록과 NAVER Cloud Maps의 `com.timeagent.app` 허용 패키지 저장은 완료했고 Play 앱 서명 SHA-1은 앱 생성 뒤 추가한다. 기존 Play 개발자 계정은 2026-02-22 미사용으로 해지됐다. 새 개인 Play Console 계정(`winddew71@gmail.com`, 개발자명 `신우철`, 계정 ID `5696577809125551196`) 생성과 신분증 제출은 완료됐으며 Google 신원 검토가 진행 중이다. 실제 Android 휴대기기 확인 항목은 미완료 목록에서 사라졌고, 승인 후 연락처 전화번호 인증 전까지 앱 만들기가 잠겨 있다. 정책 사이트는 `/privacy`·`/terms`·`/delete-account` 서버 렌더 4/4 검증 후 공개 Sites 버전 2로 운영 배포했으며 세 URL의 HTTP 200과 제목을 확인했다. 심사용 Google 계정과 백그라운드 위치 영상도 사람이 완료해야 한다.
+- Evidence: `artifacts/TimeAgent-v1.0.0-release.aab`, `artifacts/TimeAgent-v1.0.0-release.apk`, `artifacts/play-store/`, `tmp/timeagent-release-check.xml`, `tmp/timeagent-package-check.xml`, `docs/RELEASE_CHECKLIST.md`, `docs/DATA_SAFETY.md`, `docs/PLAY_DECLARATIONS.md`.
+
+## 2026-08-07 홈 시간대·Google 이름 인사 (완료)
+
+- Observe: 홈 상단 인사말이 `좋은 오후예요, 서연님`으로 하드 코딩되어 실제 시간과 로그인 사용자를 반영하지 못했다.
+- Select: 기기 현지 시각을 새벽·아침·오후·저녁으로 구분하고 Google 로그인 이름을 그대로 표시하되, 이름이 없을 때만 `사용자님`을 사용한다.
+- Specify: 0~5시는 `좋은 새벽이에요`, 6~11시는 `좋은 아침이에요`, 12~17시는 `좋은 오후예요`, 18~23시는 `좋은 저녁이에요`로 표시하며 앱이 열린 동안에도 분 단위로 시각을 갱신한다. Google 이름의 앞뒤 공백을 제거하고 이미 `님`으로 끝나는 이름에는 존칭을 중복하지 않는다.
+- Implement: 순수 계산 `createHomeGreeting`과 시간 경계 테스트를 추가하고 홈이 `AuthContext`의 Google 사용자 이름을 사용하도록 연결했다. 60초 시계 갱신으로 시간대 경계와 날짜 변경을 화면에 반영한다.
+- Verify: `npm run verify` 28 suites·119/119, `npm run visual:test` 360×800·390×844·430×932 전체 87/87, 서명 release 760 tasks를 통과했다. 삼성 Android 12 `SM-N971N`에 업데이트 설치 후 기존 `winddew71@gmail.com` 세션이 유지됐고 오전 홈에서 `좋은 아침이에요, WC Shin님`, 오늘 일정 4개가 표시됐으며 치명적 Android/React Native 오류는 없었다.
+- Evidence: `src/lib/home-greeting.ts`, `src/lib/__tests__/home-greeting.test.ts`, `src/app/index.tsx`, `artifacts/TimeAgent-v1.0.0-release.apk`, `artifacts/TimeAgent-v1.0.0-release.aab`.
+
+## 2026-08-07 Claude 참조 디자인 기반 UI 개선 (완료)
+
+- Observe: 제공된 `TimeAgent 앱.html`의 화면은 중립 회색 배경, 짙은 핵심 상태 카드, 절제된 파란색 강조, 상태별 성공·경고 배지, 활성 하단 탭 캡슐로 현재 앱보다 행동과 남은 시간이 더 빠르게 구분됐다. 기존 앱은 흰 카드와 큰 pill 형태가 반복되어 정보 위계가 평평했다.
+- Select: 기능과 접근성 계약은 유지하면서 공통 색상·반경·버튼·내비게이션을 먼저 통일하고, 홈의 다음 일정과 준비 시작 CTA를 가장 강한 시각 요소로 재구성한다.
+- Specify: 본문 16px과 44×44px 이상 터치 영역, 화면당 핵심 CTA 하나를 유지한다. 홈은 실제 Google 이름·현지 시간대 인사·당일 일정·준비 시작 시각을 그대로 사용하고, 360×800·390×844·430×932에서 가로 잘림 없이 핵심 CTA와 일정 목록을 제공해야 한다.
+- Implement: 배경을 `#F2F4F6`, 핵심 네이비를 `#0A0F1E`, 주요 파랑을 `#1B64DA`로 정리하고 카드 반경·그림자·버튼 모서리와 성공·경고 soft color를 통일했다. 하단 내비게이션은 활성 아이콘 캡슐과 색상 외 선택 상태를 유지했다. 홈 다음 일정 카드는 어두운 집중 카드로 바꾸고 일정 시각, 장소, 남은 시간, 지연/정시 상태, 준비 시작 시각, 단일 핵심 CTA를 한 위계로 묶었다.
+- Verify: `npm run verify` 28 suites·119/119 통과. 기준 이미지를 의도적으로 갱신한 뒤 `npm run visual:test` 360×800·390×844·430×932 전체 87/87을 통과했고 대표 홈·로그인·음성·진행 화면을 육안 점검했다. 업로드 키 서명 release 760 tasks가 성공했으며 삼성 Android 12 `SM-N971N`에 덮어쓰기 설치했다. 기존 Google 세션과 실제 사용자 `WC Shin`이 유지됐고 `좋은 아침이에요, WC Shin님`, 오늘 일정 4개, 새 어두운 다음 일정 카드와 준비 CTA가 잘림 없이 표시됐다.
+- Reflect: 참조안의 다크 테마 전체 전환 대신 행동 집중이 필요한 홈·실시간 진행 카드에만 어두운 면을 사용해 긴 일정 목록의 가독성과 기존 권한·오류 상태의 일관성을 보존했다. Play Console 업로드는 계정 신원 검토와 전화번호 인증 완료 후 진행한다.
+- Evidence: `src/constants/design.ts`, `src/components/app-ui.tsx`, `src/components/bottom-nav.tsx`, `src/app/index.tsx`, `e2e/visual/__screenshots__/`, `tmp/timeagent-design-home.png`, `artifacts/TimeAgent-v1.0.0-release.apk`, `artifacts/TimeAgent-v1.0.0-release.aab`.
+
+## 2026-08-07 로그인 전 온보딩 3장·Google 로그인 복구 (완료)
+
+- Observe: 인증 게이트가 전체 라우터를 먼저 막아 기존 온보딩은 Google 로그인과 홈 뒤에서만 실행될 수 있었다. Google 로그인 버튼도 설치된 인증 라이브러리의 권장 계정 탐색 단계를 건너뛰고 명시적 로그인 창만 호출했다.
+- Select: 첫 실행 순서를 `온보딩 3장 → Google 로그인 → 홈`으로 고정하고, 첨부 `TimeAgent 앱.html`의 세 핵심 가치와 시각 위계를 네이티브 화면에 맞춰 구현한다. Google 로그인은 저장 계정·신규 계정·명시적 로그인 순서로 안전하게 fallback한다.
+- Specify: 1장은 약속 시간 역산, 2장은 6분 지연 시 실시간 재계획, 3장은 음성 약속 등록을 설명한다. 각 화면은 건너뛰기·다음 또는 시작하기·페이지 상태를 제공하고 44×44px 이상 터치 영역을 유지한다. 첫 설치에서 시작하기 또는 건너뛰기는 반드시 Google 로그인으로 이동하며 로그인 성공 뒤에만 홈을 노출한다.
+- Implement: 라우터와 인증 앞에 `OnboardingGate`를 추가하고 재사용 가능한 `OnboardingFlow`로 3장을 구성했다. 홈 내부의 늦은 온보딩 리다이렉트를 제거했다. Google Credential Manager 흐름은 `signIn → createAccount → presentExplicitSignIn` fallback으로 보강하고, 로그인 창 시작·OAuth 설정·계정 선택 오류에 해결 행동을 포함한 한국어 안내를 추가했다.
+- Verify: `npm run verify` 28 suites·119/119 통과. `npm run visual:test`에서 온보딩 3장과 로그인 전환을 포함한 360×800·390×844·430×932 전체 90/90을 통과했다. 서명 arm64 release APK를 삼성 Android 12 `SM-N971N`에 덮어쓰기 설치하고 Google 계정 선택 창에서 `winddew71@gmail.com`을 선택했다. Credential Manager 성공 로그, 실제 온보딩 1→2→3 전환, 시작하기 뒤 홈의 `좋은 아침이에요, WC Shin님`과 오늘 일정 4개를 확인했으며 `DEVELOPER_ERROR`와 치명적 런타임 오류는 없었다.
+- Reflect: 새 온보딩 완료 marker를 버전 2로 올려 예전 온보딩을 본 기존 사용자도 업데이트 후 새 3장을 한 번만 보며, 완료 뒤에는 반복 노출되지 않는다. 로그아웃은 로그인 화면으로 돌아가고, 계정 연결 및 기기 데이터 삭제처럼 로컬 데이터를 지운 뒤 앱을 다시 시작하면 온보딩부터 다시 시작한다. Play 배포본은 Play App Signing SHA-1 등록 후 같은 로그인을 내부 테스트에서 재확인한다.
+- Evidence: `src/components/onboarding-gate.tsx`, `src/components/onboarding-flow.tsx`, `src/lib/google-auth-provider.native.ts`, `e2e/visual/__screenshots__/*/onboarding-*.png`, `tmp/timeagent-onboarding-device1.png`, `tmp/timeagent-home-after-auth.xml`, `artifacts/TimeAgent-onboarding-google-login-arm64-v1.0.0.apk` (SHA-256 `beb53f9bb4447128e2a265306117df65993efe63d13725f75ac07a1c700e1860`).
+
+## 2026-08-07 신규 Google 계정 자동 가입·로그인 (완료)
+
+- Accept: `Google로 계속하기`에서 기존 승인 계정뿐 아니라 휴대폰의 신규 Google 계정을 선택할 수 있다. 최초 인증 계정은 TimeAgent 회원으로 자동 등록되고 같은 인증 동작에서 로그인 세션이 생성되어 홈으로 바로 진입한다. 기존 회원은 중복 생성하지 않고 마지막 로그인 시각과 Google 프로필을 갱신한다. 로그아웃은 회원 레코드를 유지하고 세션만 지우며 계정 삭제는 선택 회원과 세션을 함께 지운다.
+- Implement: 로그인 버튼 흐름을 모든 기기 계정을 제공하는 `createAccount` 우선으로 변경하고 `presentExplicitSignIn`, `signIn` 순으로 fallback한다. Google 인증 성공 직후 로컬 회원 레지스트리와 활성 세션을 연속 저장하며 앱 재실행 시 해당 세션을 복원한다.
+- Verify: `npm run verify` typecheck/ESLint/Jest 28 suites·123/123 통과, `npm run visual:test` 360x800·390x844·430x932에서 90/90 통과. 출시 서명 AAB/APK 빌드 성공. Samsung Android `SM-S931N`에 기존 데이터를 유지해 설치하고 로그인 화면 실행, `Google로 계속하기`에서 기기의 기존·신규 Google 계정 3개가 함께 표시되는 Credential Manager 가입형 선택 화면을 확인했다. 계정 선택 전까지 치명적 Android/React Native 오류와 `DEVELOPER_ERROR`는 없었다. 실제 계정 선택은 개인정보 보호를 위해 사용자에게 남겨 두었다.
+- Evidence: `src/lib/google-auth.ts`, `src/lib/google-auth-provider.native.ts`, `src/state/auth-context.tsx`, `src/components/auth-gate.tsx`, `src/lib/__tests__/google-auth.test.ts`, `artifacts/timeagent-google-account-picker-all-accounts.png`, `artifacts/TimeAgent-google-auto-signup-arm64-v1.0.0.apk` (SHA-256 `4b6f2d1d7f10f5e452ede9603646433c191e6dfc5f1ab7d198a29817efa66b4d`), `android/app/build/outputs/bundle/release/app-release.aab` (SHA-256 `414eb5883953c454eafe4fc252e86170d8967f5379c70ffb7c1260bde97c9c54`).
+
+## 2026-08-07 Google 로그인 버튼 브랜드 표준 적용 (완료)
+
+- Accept: 로그인 CTA는 Google 공식 다색 G 마크, `Google 계정으로 로그인` 문구, 밝은 배경·표준 테두리, 최소 48dp 높이를 사용한다. Android/iOS는 Google 로그인 SDK가 제공하는 네이티브 브랜드 버튼을 사용하며 기존 신규 회원 자동 가입·로그인 동작을 유지한다. 비활성·진행 상태를 보조기술에 전달하고 화면당 핵심 CTA는 하나만 유지한다.
+- Implement: 네이티브는 `GoogleSignInButton`의 `wide` 312x48, `light`, 중앙 정렬 규격을 사용하고 `signInBehavior="none"`으로 기존 AuthProvider 가입 흐름에 연결했다. 웹 검증용 fallback은 같은 크기·색상·공식 G 벡터와 문구로 구성했다. 계정 안내 카드의 단색 `G`도 공식 다색 마크로 교체했다.
+- Verify: `npm run verify` typecheck/ESLint/Jest 28 suites·123/123 통과. 360x800·390x844·430x932 로그인 화면 시각 테스트 3/3 통과 및 390x844 결과 직접 확인. 출시 서명 arm64 APK 빌드·Samsung `SM-S931N` 덮어 설치 성공. 실제 기기에서 SDK 공식 G 마크·문구·밝은 버튼 렌더링을 직접 확인했고 UI 계층에서 `google-sign-in-button`이 enabled/clickable, `Google 계정으로 로그인` 접근성 라벨, `[72,1469][1008,1613]`(312x48dp) 터치 영역임을 확인했다. 앱 실행 중 치명적 Android/React Native 오류와 `DEVELOPER_ERROR`는 없었다.
+- Evidence: `src/components/google-auth-button.native.tsx`, `src/components/google-auth-button.tsx`, `src/components/google-g-logo.tsx`, `src/components/auth-gate.tsx`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `artifacts/timeagent-google-standard-button-samsung.png`, `artifacts/TimeAgent-google-standard-button-arm64-v1.0.0.apk` (SHA-256 `45dfea879a057e1805f4b2635aee188d4d36d7456e2c30d6350e547211777472`).
+
+## 2026-08-07 로그인 히어로·라운드 Google CTA 리디자인 (완료)
+
+- Accept: 첨부한 블루 TimeAgent 이미지를 바탕으로 한 히어로 비주얼을 로고 바로 아래 배치한다. 계정 연결 설명 카드와 별도 Google 버튼의 중복을 제거하고, 공식 다색 G 마크·명확한 문구·최소 44dp 터치 영역을 갖춘 라운드 로그인 버튼 하나를 핵심 CTA로 사용한다. 개인정보 안내는 버튼과 경쟁하지 않는 보조 문구로 제공한다.
+- Implement: 첨부 이미지의 스마트폰·시간 경로·네이비/시안 조명을 유지하되 중복 wordmark와 문자를 제거한 2:1 모바일 히어로를 built-in ImageGen으로 생성하고 1200px WebP 39KB로 최적화했다. 로그인 화면은 로고 → 24px 라운드 히어로 → 가치 문구 → 56px pill Google CTA → 보안 안내 순으로 재구성했다. 기존 계정 연결 카드를 제거하고 로딩·비활성·접근성 상태는 통합 CTA에 유지했다.
+- Verify: `npm run verify` typecheck/ESLint/Jest 28 suites·123/123 통과. 360x800·390x844·430x932 로그인 화면 시각 테스트 3/3 통과하고 최소 360x800 결과를 직접 확인했다. 출시 서명 arm64 APK 빌드와 Samsung `SM-S931N` 덮어 설치 성공. 실제 기기에서 히어로 이미지·라운드 CTA·보안 안내 렌더링과 기존 계정 연결 카드 제거를 직접 확인했다. UI 계층에서 `google-sign-in-button`은 enabled/clickable이며 `[60,1499][1020,1667]`의 56dp 터치 영역을 제공한다. 앱 실행 중 치명적 Android/React Native 오류와 `DEVELOPER_ERROR`는 없었다.
+- Evidence: `assets/images/timeagent-login-hero.webp`, `src/components/auth-gate.tsx`, `src/components/google-auth-button.tsx`, `src/components/google-auth-button.native.tsx`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `artifacts/timeagent-login-hero-rounded-google-samsung.png`, `artifacts/TimeAgent-login-hero-rounded-google-arm64-v1.0.0.apk` (SHA-256 `7a70a640c1c38ce8b7c7b5a31a3114a283d3b718cfc2bbb08571ba06cff57a95`).
+
+## 2026-08-07 로그인 전 온보딩 3장 재표시 복구 (완료)
+
+- Accept: 앱 업데이트 후에도 현재 온보딩을 보지 않은 사용자는 로그인 화면보다 먼저 3장을 순서대로 본다. 완료한 뒤에는 같은 버전에서 반복되지 않으며 마지막 장 다음에 리디자인된 Google 로그인 화면이 표시된다.
+- Implement: 온보딩 완료 버전을 `2`에서 `3`으로 갱신해 APK 덮어 설치로 남아 있던 구버전 완료값을 무효화했다. `OnboardingGate → AuthGate → 앱` 계층은 유지하고, v1·v2 완료 사용자는 v3 온보딩을 한 번 다시 보도록 마이그레이션 테스트를 보강했다. 시각 테스트의 완료 fixture도 v3으로 맞췄다.
+- Verify: 온보딩 상태 테스트 3/3, typecheck·ESLint 통과. 360x800·390x844·430x932에서 온보딩 3장과 다음 Google 로그인 화면을 검증하는 흐름 6/6 통과. 출시 서명 APK를 Samsung `SM-S931N`에 기존 데이터 유지 방식으로 설치한 뒤 실제 첫 화면이 온보딩 1장 `약속만 말해줘. 준비는 내가 할게.`로 표시되는 것을 확인했다. 치명적 Android/React Native 오류와 `DEVELOPER_ERROR`는 없었다.
+- Evidence: `src/lib/onboarding.ts`, `src/lib/__tests__/onboarding.test.ts`, `src/components/onboarding-gate.tsx`, `src/app/_layout.tsx`, `e2e/visual/app.visual.spec.mjs`, `artifacts/timeagent-onboarding-v3-samsung.png`, `artifacts/TimeAgent-onboarding-v3-login-hero-arm64-v1.0.0.apk` (SHA-256 `e800794833f97df11c82e4aef83d63c7579104431f14d04f5437087eff2d646d`).
+
+## 2026-08-07 로그인 원본 히어로·좌측 상단 로고 정렬 (완료)
+
+- Accept: 로그인 히어로는 사용자가 첨부한 1731x909 원본을 재생성·크롭·내용 변경 없이 그대로 사용한다. 두 번째 이미지의 TimeAgent 아이콘·wordmark는 안전 영역 안의 좌측 상단에 배치한다. 히어로에 포함된 브랜드와 가치 문구를 화면에서 반복하지 않고, 로그인 설명·라운드 Google CTA·보안 안내의 단순한 위계를 유지한다.
+- Implement: Desktop의 원본 `download.png`를 `timeagent-login-hero-original.png`로 그대로 복사해 양쪽 SHA-256 `4a631f4e15799d8ec958d75b1490f9afeab81a50dd47b5dd8e1e4bafff3f6544` 일치를 확인했다. 이미지는 원본 비율 `1731/909`와 `contain`으로 표시한다. 화면 정렬은 상단 시작으로 변경하고 36dp AppLogo를 좌측 상단에 고정했으며, 중복 `시간을 되찾는 첫 번째 단계` 제목을 제거하고 행동 안내 한 줄만 남겼다.
+- Verify: `npm run verify`의 28개 스위트·124개 테스트가 모두 통과했다. 360x800·390x844·430x932 로그인 화면 시각 테스트 3/3에서 원본 전체 표시, 좌측 상단 로고, 잘림 없음과 단일 CTA를 확인했다. arm64 출시 서명 APK 빌드 후 Samsung `SM-S931N`에 덮어 설치했고, 실제 기기 로그인 화면에서도 원본 이미지가 크롭 없이 표시되며 좌측 상단 로고·Google CTA·보안 안내가 화면 안에 모두 노출되는 것을 확인했다.
+- Evidence: `assets/images/timeagent-login-hero-original.png`, `src/components/auth-gate.tsx`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `artifacts/timeagent-onboarding-after-login-redesign.png`, `artifacts/TimeAgent-original-hero-top-left-logo-arm64-v1.0.0.apk` (SHA-256 `3e97d354ebbccddff881b6cff8f0d8122e51d5c50af722d763cf762b88e802c3`).
+
+## 2026-08-07 홈 현재 위치 날씨·준비 행동 (완료)
+
+- Accept: 홈 인사말 다음에 현재 위치 기준 날씨, 기온, 체감온도, 오늘 최고·최저, 강수확률 기반 준비 행동을 표시한다. 날씨 상태는 아이콘과 텍스트를 함께 사용하며 일정의 `지금 준비 시작` CTA보다 시각적으로 우선하지 않는다. 위치 권한 미승인, 로딩, 네트워크·서버 오류에서 이유와 해결 가능한 다음 행동을 제공한다.
+- Implement: 승인된 foreground 위치만 사용하고 홈 진입만으로 권한을 자동 요청하지 않는다. 위치는 약 1km 수준으로 반올림해 Open-Meteo Forecast API에 전달하며 현재·일간 필드 6개와 하루치 데이터만 요청한다. WMO 코드를 맑음·흐림·안개·비·눈·천둥 텍스트와 아이콘으로 변환하고, 강수·체감온도에 따라 우산·겉옷·물 등 준비 행동을 제안한다. CC BY 4.0 요구에 따라 날씨 카드에 44px 출처 링크를 제공하고 앱 개인정보처리방침과 Play 데이터 보안 초안을 갱신했다.
+- Verify: 공식 Open-Meteo 문서의 현재·일간 필드와 라이선스를 확인하고 부산 좌표의 실제 HTTPS 응답을 검증했다. `npm run verify` 29개 스위트·133/133, 날씨 순수 계산 9/9, 360x800·390x844·430x932 성공·권한 거부·오류 UI 9/9 통과. arm64 출시 서명 APK를 Samsung `SM-S931N`에 덮어 설치한 뒤 실제 위치에서 `맑음 29°`, 체감 `35°`, 최고 `29°`/최저 `27°`, 고온 준비 행동과 Open-Meteo 출처가 표시되는 것을 확인했다.
+- Evidence: `src/lib/weather.ts`, `src/lib/device-weather-provider.ts`, `src/lib/__tests__/weather.test.ts`, `src/app/index.tsx`, `src/app/privacy.tsx`, `docs/DATA_SAFETY.md`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-home-weather-samsung.png`, `artifacts/TimeAgent-home-weather-arm64-v1.0.0.apk` (SHA-256 `be43af292f75762871f4d7fa03b5bc14a80b0964699f537d67588666c183a863`).
+
+## 2026-08-07 Play Console 재확인·최신 출시 번들 준비 (진행 중)
+
+- Observe: Chrome의 기존 로그인 세션에서 `winddew71@gmail.com`과 개인 개발자 계정 `신우철`을 선택해 Console을 직접 확인했다. 계정 ID는 `5696577809125551196`으로 일치하며 상태는 `Google에서 신원 확인 중입니다`이다. 연락처 전화번호 인증은 신원 승인 전까지 잠겨 있고 `앱 만들기`도 비활성 상태다.
+- Implement: 승인 대기 중에도 업로드가 지연되지 않도록 홈 날씨까지 포함한 `versionCode 1` 출시 서명 AAB를 arm64-v8a·armeabi-v7a로 재생성하고, 실기기 검증 APK와 Play 등록 문안을 최신화했다. 개인 정보가 없는 390x844 시각 fixture로 Play 스토어의 `02-today-home.png`도 날씨 카드 포함 화면으로 교체했다.
+- Verify: Gradle `bundleRelease` 753 tasks 성공, AAB JAR 서명 검증 성공. 최신 AAB SHA-256은 `db852b29bbc510c85c3ad1afa34e2434bc38b983134aac57182dfebacea29683`, arm64 APK SHA-256은 `be43af292f75762871f4d7fa03b5bc14a80b0964699f537d67588666c183a863`이다.
+- Blocked next: Google 신원 승인 이메일 수신 → Console 연락처 전화번호 인증 → `앱 만들기` 활성화 순서가 필요하다. 승인 전에는 앱 생성·Play App Signing SHA-1 발급·AAB 업로드를 진행할 수 없다.
+- Evidence: `docs/RELEASE_CHECKLIST.md`, `docs/PLAY_STORE_LISTING.md`, `artifacts/TimeAgent-v1.0.0-release.aab`, `artifacts/TimeAgent-v1.0.0-release.apk`, `artifacts/play-store/phone/02-today-home.png` (SHA-256 `85418889333c064a6d94acaa38586c1315a0dc6592d354cd6048b5b5491f5b79`).
+
+## 2026-08-07 날씨 정확도·성능·비용 최적화 (부분 완료)
+
+- Accept: 한국에서는 GPS 좌표를 기상청 5km 격자로 변환해 초단기실황·최대 6시간 초단기예보를 우선한다. 반복 GPS와 API 호출을 줄이되 750m 이상 이동하면 갱신하고, 공급자 장애에도 마지막 성공값과 출처를 명확히 표시한다. 기상청 서비스키는 앱 번들에 포함하지 않는다.
+- Implement: GPS last-known 위치를 먼저 사용하고 필요할 때만 `Accuracy.High` 단발 측정을 수행한다. 앱 캐시는 10분 또는 750m 미만 이동에서 재사용하고, 요청 실패 시 최대 30분 성공값을 `최근 저장된 날씨`로 표시한다. 기상청 Lambert 격자 변환, 실황 40분 지연·예보 15분 지연 기준시각, SKY·PTY 상태, 6시간 내 다음 강수, 체감온도 계산을 순수 로직과 Supabase `weather` 함수로 구현했다. 서버는 8분 격자 캐시, 기상청 우선, Open-Meteo 자동 대체를 사용하며 앱은 서버 미설정 시 Open-Meteo로 직접 전환한다. 좌표는 약 1km 단위로 반올림하고 출처 링크를 공급자에 맞춰 표시한다.
+- Verify: 공공데이터포털 공식 단기예보 API의 5km 격자·초단기실황·6시간 예보·무료 개발 트래픽 10,000건 사양을 확인했다. 좌표/발표시각/거리/캐시/상태 단위 테스트를 포함해 `npm run verify` 30개 스위트·140/140 통과, 360x800·390x844·430x932 성공·권한·오류 UI 9/9 통과. Samsung `SM-S931N`에서 첫 조회 후 `맑음 29°`와 준비 행동이 표시되고 즉시 재실행 시 로딩 없이 캐시가 표시되는 것을 확인했다. 출시 서명 APK 설치와 AAB JAR 서명 검증도 성공했다.
+- Blocked: 기존 Supabase 프로젝트 `chpsoncuxjpgugowrydb`가 `INACTIVE`여서 weather 함수 배포가 404로 거절됐다. 프로젝트 재활성화, 공공데이터포털 단기예보 활용신청, `KMA_SERVICE_KEY` Secret 등록, `EXPO_PUBLIC_WEATHER_API_BASE_URL` 빌드 설정 전까지 실기기는 최적화된 Open-Meteo 대체 경로를 사용한다.
+- Evidence: `src/lib/kma-weather.ts`, `src/lib/__tests__/kma-weather.test.ts`, `src/lib/device-weather-provider.ts`, `supabase/functions/weather/index.ts`, `src/app/index.tsx`, `src/app/privacy.tsx`, `docs/CLIENT_SECRET_SETUP.md`, `docs/INTEGRATIONS.md`, `artifacts/timeagent-weather-optimized-samsung.png`, `artifacts/TimeAgent-v1.0.0-release.apk` (SHA-256 `8589acee7e6e26a40da775d1d8724813ab5b259276e62dd72b8df0e1269b1730`), `artifacts/TimeAgent-v1.0.0-release.aab` (SHA-256 `365eac1b44daaf74116ceed093ffc9866c34126af8e9ff8aded6875efb71bb83`).
+
+## 2026-08-07 홈 정보 구조·날씨 상세 리디자인 (완료)
+
+- Accept: 헤더는 실제 사용자 이름 기반 시간대 인사, 날짜·요일, 실제 당일 약속 수를 먼저 보여주고 우측에는 아이콘형 TimeAgent 로고만 둔다. 지연·우천·데이터 오류처럼 확인할 메시지가 있을 때 로고는 저모션 설정을 존중하며 짧게 흔들리고 `!` 배지와 텍스트 접근성 상태를 함께 제공한다. 로고를 누르면 알림으로 이동한다. 다음 약속 카드에는 약속·장소·준비 시작 상태와 `준비 계획 보기`, 단일 우선 CTA `지금 시작하기`를 배치한다. 홈 날씨에는 공급자 링크를 노출하지 않고 카드 전체 터치로 앱 내부 날씨 상세에 이동한다.
+- Implement: 첨부 화면의 정보 위계를 홈 디자인 시스템에 맞춰 헤더 → 다음 약속 → 준비 행동형 날씨 → 오늘 일정 순으로 단순화했다. 긴 Google 이름은 첫 이름만 사용해 작은 화면 줄바꿈을 방지한다. 아이콘형 `HomeLogoButton`은 확인 메시지 판단을 순수 로직으로 분리하고 1.8초 간격의 절제된 흔들림, 동작 줄이기 대응, 상태 배지를 구현했다. 날씨 상세 화면에는 현재 상태·체감·최고·최저·강수확률·준비 조언을 제공하고 공급자 출처는 상세 하단에만 배치했다. 권한·로딩·네트워크 오류의 해결 행동은 유지했다.
+- Verify: `npm run verify` typecheck·ESLint·Jest 31개 스위트, 144/144 통과. 홈 성공·권한·오류·날씨 상세 이동·메시지 로고 알림 이동을 360x800·390x844·430x932에서 15/15 통과했고 직접 시각 확인 결과 잘림·겹침이 없었다. 출시 서명 2-ABI APK/AAB 빌드 760 tasks 성공 및 AAB 서명 검증 완료. Samsung Android `SM-S931N`에 APK를 덮어 설치해 `좋은 오후예요, WOOCHUL님`, `8월 7일 금요일 · 오늘 약속 2개`, 다음 약속, 현재 위치 날씨를 확인했다. 우측 로고 터치 시 알림 화면 이동, 날씨 카드 터치 시 날씨 상세와 체감·최고·최저·강수확률·상세 전용 출처 표시를 확인했으며 치명적 React Native/Android 오류는 없었다.
+- Evidence: `src/app/index.tsx`, `src/app/weather.tsx`, `src/components/home-logo-button.tsx`, `src/components/app-logo.tsx`, `src/lib/home-attention.ts`, `src/lib/home-greeting.ts`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-home-redesign-samsung.png`, `artifacts/timeagent-weather-detail-samsung.png`, `artifacts/TimeAgent-v1.0.0-release.apk` (SHA-256 `3fc4a008d692c37f3433c7397f60365d599a9fb7b94305543e5e0a973d23c7df`), `artifacts/TimeAgent-v1.0.0-release.aab` (SHA-256 `447b07c04a21174488452fab00e1a64aa528aa38ec74a0009630decbec497e2c`).
+
+## 2026-08-07 홈 다음 약속 요약 카드 단순화 (완료)
+
+- Accept: 홈의 다음 약속 카드는 오늘 활성 일정의 제목·약속 시간·장소명만 간결하게 보여준다. 준비 시작 상태, 진행률, 개별 행동 버튼은 카드에서 숨기고 카드 전체를 누른 경우에만 상세 일정과 준비 계획을 연다.
+- Implement: 다음 약속을 하나의 44dp 이상 Pressable로 통합하고 `다음 약속 → 제목 → 시간·장소` 순서로 정보 위계를 단순화했다. 시간·장소는 아이콘과 텍스트를 함께 사용하고 두 줄 제목과 좁은 화면 줄바꿈을 허용했다. 카드의 접근성 이름에 제목·시간·장소를 포함하고 상세 계획 이동 힌트를 제공했다.
+- Verify: `npm run verify`의 TypeScript·ESLint·Jest 31개 스위트 144/144 통과. `npm run visual:test` 102/102 통과 및 360x800·390x844·430x932 홈 기준 이미지를 갱신해 잘림·가로 넘침이 없음을 확인했다. 카드 내부에 별도 버튼과 `준비 시작까지` 문구가 없고 카드 터치 후 `/plan`으로 이동하는 전용 상호작용 테스트 3/3을 통과했다. 출시 서명 APK/AAB 빌드 760 tasks 성공 후 Samsung `SM-N971N`에 APK를 덮어 설치했고, 실제 화면에서 `친구와 볼링`·`14:00`·`서면 볼링장`만 표시되며 카드 터치 후 `준비 계획이 완성됐어요` 상세 화면으로 이동하는 것을 확인했다.
+- Evidence: `src/app/index.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-simple-next-appointment.png`, `artifacts/timeagent-next-appointment-detail.png`, `android/app/build/outputs/apk/release/app-release.apk`, `android/app/build/outputs/bundle/release/app-release.aab`.
+
+## 2026-08-07 홈 날씨 실제 위치명 표시 (완료)
+
+- Accept: 홈 날씨 카드에는 일반 문구 `현재 위치` 대신 GPS 좌표를 역지오코딩한 구·하위 행정구역·도시·광역지역 순서의 실제 위치명을 표시한다. 위치명 조회가 실패해도 날씨 조회는 중단하지 않고 `주변 날씨`로 안전하게 대체한다. 카드를 누르면 같은 위치명을 기준으로 한 날씨 상세 화면을 연다.
+- Implement: `expo-location` 역지오코딩을 날씨 API 요청과 병렬 실행하고 위치명을 기존 10분 날씨 캐시에 함께 저장했다. 구버전 캐시에 위치명이 없으면 날씨 수집 시각은 바꾸지 않고 한 번만 위치명을 보강한다. 역지오코딩 응답의 우선순위 선택은 순수 함수와 단위 테스트로 분리했고, 캐시 스키마는 선택 필드로 유지해 이전 저장값과 호환되게 했다.
+- Verify: 날씨 관련 단위 테스트 18/18, `npm run verify`의 TypeScript·ESLint·Jest 31개 스위트 145/145, `npm run visual:test` 102/102 통과. 360x800·390x844·430x932 홈에서 `부산진구` fixture가 잘림 없이 표시되는 것을 확인했다. Samsung Android `SM-N971N`에 `com.timeagent.app` 로컬 debug 개발 빌드를 데이터 유지 방식으로 재설치하고 Metro로 실행해 실제 카드가 `해운대구 · 대체로 맑음 28°`로 표시되는 것과 터치 후 상세 헤더가 `해운대구 기준`으로 표시되는 것을 확인했다. 사용자 요청에 따라 출시용 APK/AAB 생성은 생략했다.
+- Evidence: `src/lib/weather.ts`, `src/lib/device-weather-provider.ts`, `src/lib/kma-weather.ts`, `src/lib/__tests__/weather.test.ts`, `src/app/index.tsx`, `src/app/weather.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `artifacts/timeagent-weather-location-name.png`, `artifacts/timeagent-weather-location-name.xml`, `artifacts/timeagent-weather-location-detail.png`, `artifacts/timeagent-weather-location-detail.xml`.
+
+## 2026-08-08 목적지 검색·지도 지정·최근 장소 재선택 (완료)
+
+- Accept: 일정 등록에서 장소명으로 내비게이션형 위치 목록을 검색해 하나를 선택하거나 지도에서 직접 위치를 지정한다. 확정한 목적지는 기기에 저장해 다음 일정에서 바로 재선택할 수 있다. 음성 일정도 AI가 추출한 장소명을 자동 적용하지 않고 같은 검색 목록 또는 지도에서 정확한 위치를 선택한 뒤에만 적용한다.
+- Implement: TMAP POI 검색 `/v1/places`, NAVER 역지오코딩 `/v1/reverse-geocode` 계약을 mobility 함수와 앱 provider에 추가했다. 공통 `DestinationPicker`는 검색 목록, 기존 선택 상태, 최근 장소 최대 8개, 지도 직접 지정과 서버 장애 시 좌표 선택 fallback을 제공한다. 일반 등록은 목적지 좌표가 없으면 다음 단계 대신 해결 행동을 보여주며, 음성 제안은 목적지 선택 전 적용 버튼을 비활성화한다.
+- Verify: 저장 장소 중복 제거·최근순·최대 8개, POI 검색·역지오코딩 앱 계약을 단위 테스트로 추가했고 `npm run verify` 32개 스위트·152/152가 통과했다. 검색 결과 선택→최근 장소 저장→입력 변경→최근 장소 재선택과 음성 제안의 선택 전 비활성·선택 후 적용 흐름을 자동화했으며, Metro를 선실행한 재검증에서도 360×800·390×844·430×932 전체 시각·상호작용 111/111과 신규 목적지 기준 이미지가 통과했다. arm64 출시 서명 APK 증분 빌드 735 tasks가 성공했고 SHA-256은 `7e946aad2e54ea6324084ffcf952387fc73c758b2bdb8b13a69c816168a3d78c`이다. Samsung Android 12 `SM-N971N`에 최종 APK를 덮어 설치해 `com.timeagent.app/.MainActivity`를 실행하고 NAVER 지도 렌더, 지도 탭 좌표 지정, 좌표 fallback 확정, 최근 장소 저장·재선택 표시를 수동 확인했다. Supabase `timeagent` 프로젝트를 `ACTIVE_HEALTHY`로 복구하고 기존 공개 설정을 유지한 mobility 최신 함수를 배포했다. 운영 endpoint에서 `서면 볼링장` TMAP POI 10건과 NAVER 역지오코딩 주소를 확인했으며, 같은 Samsung 기기에서 `킴스볼링 서면점` 실제 검색·선택·최근 장소 저장을 확인했다. 음성 제안에서는 `연산동 치과` 실제 목록에서 `연산반도치과의원`을 선택하기 전 적용 버튼이 비활성이고 선택 후 활성화되는 것, 적용 후 등록 초안에 제목·날짜·시간·장소명·주소·좌표가 유지되는 것까지 확인했다.
+- Evidence: `src/components/destination-picker.tsx`, `src/components/destination-map.native.tsx`, `src/lib/saved-places.ts`, `src/lib/mobility-api.ts`, `supabase/functions/mobility/index.ts`, `src/app/create.tsx`, `src/app/voice-schedule.tsx`, `src/lib/__tests__/saved-places.test.ts`, `src/lib/__tests__/mobility-api.test.ts`, `e2e/visual/__screenshots__/*/create-destination.png`, `tmp/timeagent-map-open.png`, `tmp/timeagent-map-selected2.png`, `tmp/timeagent-live-place-results-final.png`, `tmp/timeagent-live-place-selected-final.png`, `tmp/timeagent-voice-live-results.png`, `tmp/timeagent-voice-live-selected.png`, `tmp/timeagent-voice-applied.xml`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-08 계획 확정·다중 예약·시각 자동 시작 (완료)
+
+- Accept: AI 계획 작성 직후에는 실행하지 않고 `계획 확정`으로 예약을 저장한다. 하루에 여러 계획을 확정해 목록과 앱 재실행 뒤에도 유지한다. 각 계획은 준비 시작 시각 전에는 진행 세션을 만들지 않으며, 시각이 되면 앱이 활성 상태일 때 자동 실행하고 백그라운드에서는 로컬 알림과 앱 복귀 검사를 통해 실행 상태를 복구한다. 기존 `이 계획으로 시작` 수동 실행 CTA는 제거한다.
+- Implement: 확정 계획 v1 로컬 저장 모델, 날짜·자정 경계 계산, 복수 계획 정렬, due 계획 선택과 상태 전이를 순수 로직으로 분리했다. 계획 화면의 핵심 CTA를 `계획 확정`으로 바꾸고 일정 화면에 복수 예약을 표시한다. 앱 활성 타이머·복귀 검사와 계획별 시작 알림을 연결했으며, 진행 세션에 확정 계획 ID를 저장해 완료 상태까지 이어지게 했다. 상세·알림·Plan B 진입으로 시작 시각 전 수동 실행되는 우회 경로도 차단했다.
+- Verify: 확정 계획 저장·복원·복수 정렬·가장 이른 due 선택·자정 경계·잘못된 저장값을 Jest로 검증했다. `npm run verify`에서 TypeScript·ESLint·Jest 33개 스위트·157/157을 통과했다. 360×800·390×844·430×932에서 계획 확정 후 즉시 실행되지 않음, 두 번째 계획 동시 저장, 준비 시작 시각 전 대기와 시각 도달 후 자동 세션 생성을 포함한 시각·상호작용 117/117을 통과했다. 출시 서명 arm64 APK를 Samsung Android 12 `SM-N971N`에 덮어 설치하고 `계획 확정` CTA와 기존 수동 시작 CTA 제거를 확인했다. 준비 시작 시각이 지난 첫 계획은 사용자 조작 없이 `자동 실행 중`으로 바뀌었고, 진행 중에도 두 번째 계획을 확정해 목록에 두 건이 유지됐다. 앱 강제 종료·재실행 뒤에도 `자동 실행 중` 1건과 예약 1건이 함께 복원됐으며 치명적 React Native 오류가 없었다.
+- Evidence: `src/lib/confirmed-plans.ts`, `src/lib/confirmed-plan-notification-service.ts`, `src/lib/progress-session.ts`, `src/state/schedule-context.tsx`, `src/app/plan.tsx`, `src/app/schedules.tsx`, `src/app/progress.tsx`, `src/app/_layout.tsx`, `src/lib/__tests__/confirmed-plans.test.ts`, `e2e/visual/app.visual.spec.mjs`, `docs/HARNESS.md`, `tmp/timeagent-plan2.xml`, `tmp/timeagent-two-plans.xml`, `tmp/timeagent-two-plans-restored.xml`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-08 홈 확정 일정 목록 표시 (완료)
+
+- Accept: 홈에서 다음 약속 한 건뿐 아니라 사용자가 확정한 미완료 일정 전체를 확인한다. 각 항목은 약속 시간·날짜·제목·장소와 자동 시작 상태를 텍스트로 표시하며, 누르면 선택한 계획 상세를 연다.
+- Implement: 홈을 단일 `activeSchedule` 표시에서 확정 계획 저장소의 미완료 목록까지 사용하도록 연결했다. 다음 약속 요약은 유지하고 `등록한 일정 N개` 목록과 일정 화면 이동, 개별 계획 선택을 추가했다. 오래된 초안의 날짜 문자열 대신 확정된 실행 시각으로 `오늘·내일·M월 D일`을 계산해 잘림과 잘못된 날짜 표시를 함께 해결했다. 검증 중 발견한 Journey 권한 거부 fixture의 초기·비동기 경로 경합도 첫 렌더부터 같은 fallback 상태를 사용하도록 고정했다.
+- Verify: 확정 계획 두 건을 저장한 fixture에서 두 카드 표시, 두 번째 일정의 시간·장소, 선택한 계획 상세 이동을 검증했다. `npm run verify`의 TypeScript·ESLint·Jest 33개 스위트·158/158과 360×800·390×844·430×932 전체 시각·상호작용 120/120을 통과했다. 출시 서명 arm64 APK를 Samsung Android 12 `SM-N971N`에 설치해 기존 데이터가 유지된 홈에서 `등록한 일정 3개`, 세 카드의 시간·장소·실행 상태, 실제 실행 시각 기준 `오늘` 날짜가 표시되고 치명적 런타임 오류가 없음을 확인했다.
+- Evidence: `src/app/index.tsx`, `src/lib/confirmed-plans.ts`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/app/journey.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `tmp/timeagent-home-list-final.xml`, `tmp/timeagent-home-list.png`, `android/app/build/outputs/apk/release/app-release.apk`.

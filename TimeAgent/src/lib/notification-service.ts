@@ -52,7 +52,7 @@ export async function replaceProgressNotifications(
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(PROGRESS_NOTIFICATION_CHANNEL_ID, {
-        name: 'ON:TIME 일정 알림',
+        name: 'TimeAgent 일정 알림',
         importance: Notifications.AndroidImportance.HIGH,
       });
     }

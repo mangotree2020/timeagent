@@ -28,7 +28,7 @@ export function transportEvidenceDescription(evidence: TransportEvidence) {
   if (evidence.kind === 'actual-route') {
     return `TMAP이 확인한 도보 경로 · ${formatCalculatedAt(evidence.calculatedAt)} 갱신`;
   }
-  return '실시간 교통 조회 전 ON:TIME 기본 추정치';
+  return '실시간 교통 조회 전 TimeAgent 기본 추정치';
 }
 
 export function createActualWalkingAlternative({

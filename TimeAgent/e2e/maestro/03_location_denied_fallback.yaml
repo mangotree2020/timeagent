@@ -1,4 +1,4 @@
-appId: com.ontime.app
+appId: com.timeagent.app
 name: J-01 위치 거부 이동 안내 fallback
 tags:
   - fallback

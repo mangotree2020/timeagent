@@ -1,5 +1,5 @@
-appId: com.ontime.app
-name: H-01 비회원 첫 일정부터 실시간 준비까지
+appId: com.timeagent.app
+name: H-01 첫 일정 계획 확정과 예약 저장
 tags:
   - smoke
   - android
@@ -13,7 +13,7 @@ tags:
 - extendedWaitUntil:
     visible: "언제 준비해야 할지.*"
     timeout: 15000
-- assertVisible: "ON:TIME"
+- assertVisible: "TimeAgent"
 - tapOn: "다음"
 - assertVisible: "현재 속도에 맞춰.*"
 - tapOn: "다음"
@@ -42,7 +42,7 @@ tags:
     direction: DOWN
 - tapOn: "AI 계획 만들기"
 - extendedWaitUntil:
-    visible: "준비 계획이 완성됐어요"
+    visible: "준비 계획을 확인해 주세요"
     timeout: 10000
 - scrollUntilVisible:
     element:
@@ -51,15 +51,11 @@ tags:
 - assertVisible: "택시로 출발"
 - scrollUntilVisible:
     element:
-      text: "이 계획으로 시작"
+      text: "계획 확정"
     direction: DOWN
-- tapOn: "이 계획으로 시작"
+- assertNotVisible: "이 계획으로 시작"
+- tapOn: "계획 확정"
 - extendedWaitUntil:
-    visible: "실시간 준비"
+    visible: "확정된 계획"
     timeout: 10000
-- assertVisible: "현재.*"
-- scrollUntilVisible:
-    element:
-      text: "이동 경로 보기"
-    direction: DOWN
-- assertVisible: "이동 경로 보기"
+- assertVisible: ".*준비 시작.*자동 시작"

@@ -57,7 +57,7 @@ export function buildPilotSummary(
 
 export function formatPilotSummaryText(summary: PilotSummary) {
   return [
-    '[ON:TIME Phase 0 테스트 결과]',
+    '[TimeAgent Phase 0 테스트 결과]',
     `사용자 유형: ${summary.segmentLabel}`,
     `완료 일정: ${summary.completedSchedules}회`,
     `첫 일정 생성 완료율: ${formatRate(summary.scheduleCompletionRate)}`,

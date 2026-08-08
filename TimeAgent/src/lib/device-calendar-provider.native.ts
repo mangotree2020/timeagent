@@ -24,7 +24,7 @@ export const deviceCalendarProvider: DeviceCalendarProvider = {
     if (Platform.OS === 'android') {
       const result = await PermissionsAndroid.request(READ_CALENDAR, {
         title: '캘린더 일정 읽기',
-        message: 'ON:TIME이 향후 30일 일정을 보여주고 선택한 일정만 준비 계획으로 가져오도록 캘린더 읽기를 허용해 주세요.',
+        message: 'TimeAgent가 향후 30일 일정을 보여주고 선택한 일정만 준비 계획으로 가져오도록 캘린더 읽기를 허용해 주세요.',
         buttonPositive: '계속',
         buttonNegative: '나중에',
       });

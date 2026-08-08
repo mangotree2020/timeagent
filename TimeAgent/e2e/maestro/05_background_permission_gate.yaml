@@ -1,4 +1,4 @@
-appId: com.ontime.app
+appId: com.timeagent.app
 name: BG-01 백그라운드 위치 권한 게이트
 tags:
   - permission

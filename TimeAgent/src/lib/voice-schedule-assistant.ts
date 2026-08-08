@@ -25,6 +25,39 @@ export type VoiceScheduleChange = {
   after: string;
 };
 
+export type GuidedVoiceField = 'title' | 'dateTime' | 'destination' | 'transport';
+export const GUIDED_VOICE_QUESTIONS: { field: GuidedVoiceField; prompt: string }[] = [
+  { field: 'title', prompt: '안녕! 새 약속 잡아줄게. 무슨 약속이야?' },
+  { field: 'dateTime', prompt: '좋아. 언제 만나?' },
+  { field: 'destination', prompt: '어디서 만나?' },
+  { field: 'transport', prompt: '마지막! 어떻게 갈 거야?' },
+];
+
+export function resolveSpokenDateReference(text: string, now = Date.now()) {
+  const reference = new Date(now);
+  const explicit = /(\d{1,2})월\s*(\d{1,2})일/.exec(text);
+  let target = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  if (explicit) {
+    target = new Date(reference.getFullYear(), Number(explicit[1]) - 1, Number(explicit[2]));
+    if (target.getTime() < new Date(reference.getFullYear(), reference.getMonth(), reference.getDate()).getTime()) target.setFullYear(target.getFullYear() + 1);
+  } else if (text.includes('내일')) {
+    target.setDate(target.getDate() + 1);
+  } else {
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    const weekday = weekdays.findIndex((day) => text.includes(`${day}요일`));
+    if (weekday >= 0) target.setDate(target.getDate() + ((weekday - target.getDay() + 7) % 7));
+  }
+  const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  const dayDiff = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  const suffix = dayDiff === 0 ? '오늘' : dayDiff === 1 ? '내일' : `${['일', '월', '화', '수', '목', '금', '토'][target.getDay()]}요일`;
+  return `${target.getMonth() + 1}월 ${target.getDate()}일 (${suffix})`;
+}
+
+export function completeGuidedVoicePatch(field: GuidedVoiceField, transcript: string, patch: VoiceSchedulePatch, now = Date.now()) {
+  if (field !== 'dateTime' || patch.date) return patch;
+  return { ...patch, date: resolveSpokenDateReference(transcript, now) };
+}
+
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
 
 export function applyVoiceSchedulePatch(draft: ScheduleDraft, patch: VoiceSchedulePatch): ScheduleDraft {

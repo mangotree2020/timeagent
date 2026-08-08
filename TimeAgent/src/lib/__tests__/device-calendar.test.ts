@@ -1,8 +1,10 @@
 import {
   calendarEventToDraftPatch,
+  calendarEventsForLocalDay,
   classifyCalendarProvider,
   createCalendarPreviewFixture,
   formatCalendarEventTime,
+  formatTodayCalendarEventTime,
   groupCalendarEventsByDay,
   normalizeDeviceCalendarEvents,
   normalizeDeviceCalendars,
@@ -58,5 +60,23 @@ describe('device calendar domain', () => {
       destinationCoordinate: null,
     });
     expect(calendarEventToDraftPatch(fixture.events[1]).appointmentTime).toBe('');
+  });
+
+  it('keeps every event overlapping today and orders all-day, ongoing, then timed events', () => {
+    const calendars = normalizeDeviceCalendars([
+      { id: 'device', title: '내 캘린더', sourceName: 'Samsung', isLocalAccount: true },
+    ]);
+    const events = normalizeDeviceCalendarEvents([
+      { id: 'ended', calendarId: 'device', title: '어제 끝남', startDate: '2026-08-04T22:00:00+09:00', endDate: '2026-08-05T00:00:00+09:00' },
+      { id: 'ongoing', calendarId: 'device', title: '출장', startDate: '2026-08-03T09:00:00+09:00', endDate: '2026-08-06T18:00:00+09:00' },
+      { id: 'timed', calendarId: 'device', title: '저녁 약속', startDate: '2026-08-05T18:00:00+09:00', endDate: '2026-08-05T19:00:00+09:00' },
+      { id: 'all-day', calendarId: 'device', title: '재택근무', startDate: '2026-08-05T00:00:00+09:00', endDate: '2026-08-06T00:00:00+09:00', allDay: true },
+      { id: 'tomorrow', calendarId: 'device', title: '내일 회의', startDate: '2026-08-06T10:00:00+09:00', endDate: '2026-08-06T11:00:00+09:00' },
+    ], calendars);
+    const today = new Date('2026-08-05T15:00:00+09:00');
+    const result = calendarEventsForLocalDay(events, today);
+
+    expect(result.map((event) => event.id)).toEqual(['all-day', 'ongoing', 'timed']);
+    expect(result.map((event) => formatTodayCalendarEventTime(event, today))).toEqual(['종일', '진행 중', '18:00']);
   });
 });

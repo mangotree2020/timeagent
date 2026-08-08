@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ON:TIME",
+    "name": "TimeAgent",
     "slug": "on-time",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,25 +8,29 @@
     "scheme": "ontime",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.timeagent.app",
+      "buildNumber": "1",
+      "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "NSCalendarsUsageDescription": "ON:TIME이 기기에 연결된 캘린더에서 향후 일정을 보여주고 선택한 일정을 준비 계획으로 가져오도록 캘린더 접근을 허용해 주세요.",
-        "NSCalendarsFullAccessUsageDescription": "ON:TIME이 기기에 연결된 캘린더에서 향후 일정을 읽도록 캘린더 전체 접근을 허용해 주세요. 앱은 캘린더를 수정하거나 삭제하지 않습니다."
+        "NSCalendarsUsageDescription": "TimeAgent가 기기에 연결된 캘린더에서 향후 일정을 보여주고 선택한 일정을 준비 계획으로 가져오도록 캘린더 접근을 허용해 주세요.",
+        "NSCalendarsFullAccessUsageDescription": "TimeAgent가 기기에 연결된 캘린더에서 향후 일정을 읽도록 캘린더 전체 접근을 허용해 주세요. 앱은 캘린더를 수정하거나 삭제하지 않습니다."
       }
     },
     "android": {
-      "package": "com.ontime.app",
+      "package": "com.timeagent.app",
+      "versionCode": 1,
       "permissions": [
         "android.permission.READ_CALENDAR"
       ],
       "blockedPermissions": [
-        "android.permission.WRITE_CALENDAR"
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#03045E",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -35,12 +39,13 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-timeagent-release",
       "expo-router",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "ON:TIME이 출발 위치와 이동 시간을 계산하도록 현재 위치 사용을 허용해 주세요.",
-          "locationAlwaysAndWhenInUsePermission": "ON:TIME이 이동 중 화면이 꺼져도 다음 행동과 남은 시간을 안내하도록 위치 사용을 허용해 주세요.",
+          "locationWhenInUsePermission": "TimeAgent가 출발 위치와 이동 시간을 계산하도록 현재 위치 사용을 허용해 주세요.",
+          "locationAlwaysAndWhenInUsePermission": "TimeAgent가 이동 중 화면이 꺼져도 다음 행동과 남은 시간을 안내하도록 위치 사용을 허용해 주세요.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
@@ -83,9 +88,10 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "ON:TIME이 말한 약속 내용을 인식해 일정으로 제안하도록 마이크 사용을 허용해 주세요.",
+          "microphonePermission": "TimeAgent가 말한 약속 내용을 인식해 일정으로 제안하도록 마이크 사용을 허용해 주세요.",
           "recordAudioAndroid": true,
-          "enableBackgroundRecording": false
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
         }
       ],
       "expo-asset"

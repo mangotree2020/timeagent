@@ -46,7 +46,7 @@ describe('Phase 0 pilot summary', () => {
   it('formats a transparent report without raw schedule, location, identifier, or timestamps', () => {
     const text = formatPilotSummaryText(buildPilotSummary(fixtureAnalytics(), interest, 'student'));
 
-    expect(text).toContain('[ON:TIME Phase 0 테스트 결과]');
+    expect(text).toContain('[TimeAgent Phase 0 테스트 결과]');
     expect(text).toContain('사용자 유형: 학생');
     expect(text).toContain('완료 일정: 3회');
     expect(text).toContain('선택 가격안: 학생 연간');

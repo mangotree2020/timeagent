@@ -11,12 +11,13 @@ import { formatCountdown, shiftClock } from '@/lib/schedule';
 import { useSchedule } from '@/state/schedule-context';
 
 export default function ProgressScreen() {
-  const params = useLocalSearchParams<{ source?: string }>();
+  const params = useLocalSearchParams<{ source?: string; planId?: string }>();
   const {
     activePlan,
     activeSchedule,
     applyDelayProposal,
     completeCurrent,
+    confirmedPlansStatus,
     delayMinutes,
     draft,
     pendingDelayProposal,
@@ -33,15 +34,15 @@ export default function ProgressScreen() {
   const [showDelay, setShowDelay] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState('');
   const startRequested = useRef(false);
-  const schedule = activeSchedule ?? draft;
+  const schedule = progressSession?.schedule ?? activeSchedule ?? draft;
   const current = useMemo(() => timeline.find((step) => step.status === 'current'), [timeline]);
   const remaining = progressSession ? getProgressRemainingSeconds(progressSession, now) : 0;
   const stepDurationSeconds = Math.max(1, progressSession?.stepDurationSeconds ?? 1);
   useEffect(() => {
-    if (progressStatus === 'loading' || startRequested.current) return;
+    if (progressStatus === 'loading' || confirmedPlansStatus === 'loading' || startRequested.current) return;
     startRequested.current = true;
-    void startProgress(params.source === 'notification' ? 'notification' : 'direct');
-  }, [params.source, progressStatus, startProgress]);
+    void startProgress(params.source === 'notification' ? 'notification' : 'direct', params.planId);
+  }, [confirmedPlansStatus, params.planId, params.source, progressStatus, startProgress]);
   useEffect(() => {
     if (progressSession?.state === 'completed') router.replace('/complete');
   }, [progressSession?.state]);
@@ -54,6 +55,20 @@ export default function ProgressScreen() {
     };
   }, []);
   const delayedArrival = shiftClock(activePlan?.arrival ?? schedule.appointmentTime, delayMinutes);
+
+  if (progressStatus === 'loading' || confirmedPlansStatus === 'loading') {
+    return <Screen><Header title="실시간 준비" /><Card><Text style={type.heading}>확정 계획을 확인하는 중입니다</Text><Text style={type.bodyMuted}>저장된 계획과 시작 시각을 불러오고 있어요.</Text></Card></Screen>;
+  }
+
+  if (!progressSession) {
+    return (
+      <Screen>
+        <Header title="아직 시작 전이에요" eyebrow={`${schedule.appointmentTime} · ${schedule.destination}`} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.replace('/schedules')} />} />
+        <Card><Text style={type.heading}>준비 시작 시각까지 기다려 주세요</Text><Text style={type.bodyMuted}>확정한 계획은 준비 시작 시각에 자동으로 실행됩니다. 지금 눌러서 미리 시작하지 않아도 돼요.</Text></Card>
+        <Button label="확정 계획 보기" onPress={() => router.replace('/schedules')} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -96,8 +111,7 @@ export default function ProgressScreen() {
       <Button label="이동 경로 보기" variant="secondary" onPress={() => router.push('/journey')} />
       <Card><Timeline steps={timeline} compact /></Card>
       <Text accessibilityLiveRegion="polite" style={[styles.sessionStatus, progressStatus === 'error' && styles.sessionError]}>
-        {progressStatus === 'loading' ? '저장된 진행 상태를 불러오는 중입니다'
-          : progressStatus === 'saving' ? '현재 진행 상태를 저장하는 중입니다'
+        {progressStatus === 'saving' ? '현재 진행 상태를 저장하는 중입니다'
             : progressStatus === 'error' ? '진행 상태를 저장하지 못했습니다'
               : '현재 진행 상태가 자동 저장됐습니다'}
       </Text>

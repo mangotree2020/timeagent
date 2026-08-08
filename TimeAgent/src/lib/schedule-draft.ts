@@ -1,3 +1,5 @@
+import { defaultRoutinesForGender, PreparationGender } from './preparation-profile';
+
 export const SCHEDULE_DRAFT_STORAGE_KEY = '@on-time/schedule-draft';
 const SCHEDULE_DRAFT_VERSION = 1;
 
@@ -31,7 +33,7 @@ type StorageLike = {
   removeItem: (key: string) => Promise<unknown>;
 };
 
-export function createDefaultScheduleDraft(): ScheduleDraft {
+export function createDefaultScheduleDraft(preparationGender: PreparationGender = 'unspecified'): ScheduleDraft {
   return {
     version: SCHEDULE_DRAFT_VERSION,
     step: 0,
@@ -40,15 +42,10 @@ export function createDefaultScheduleDraft(): ScheduleDraft {
     appointmentTime: '14:00',
     destination: '서면 볼링장',
     destinationAddress: '부산진구 중앙대로 672',
-    destinationCoordinate: null,
+    destinationCoordinate: { latitude: 35.1531, longitude: 129.0597 },
     transport: 'AI 추천',
     priority: 'on-time',
-    routines: [
-      { id: 'shower', icon: 'shower', label: '샤워', minutes: 18 },
-      { id: 'makeup', icon: 'makeup', label: '화장', minutes: 12 },
-      { id: 'dress', icon: 'dress', label: '옷 입기', minutes: 8 },
-      { id: 'bag', icon: 'bag', label: '짐 챙기기', minutes: 5 },
-    ],
+    routines: defaultRoutinesForGender(preparationGender),
   };
 }
 

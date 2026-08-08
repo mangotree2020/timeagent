@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
@@ -9,16 +10,23 @@ import { createSchedulePlan, PlanStatus } from '@/lib/planning';
 import { useSchedule } from '@/state/schedule-context';
 
 export default function PlanScreen() {
-  const { activePlan, activeSchedule, draft, startProgress, useStandardPlan } = useSchedule();
-  const schedule = activeSchedule ?? draft;
-  const plan = activePlan ?? createSchedulePlan(schedule);
-  const begin = async () => {
-    await startProgress('plan');
-    router.replace('/progress');
+  const { activePlan, activeSchedule, confirmPendingPlan, confirmedPlansStatus, draft, pendingPlan, pendingSchedule, useStandardPlan } = useSchedule();
+  const [confirmError, setConfirmError] = useState('');
+  const schedule = pendingSchedule ?? activeSchedule ?? draft;
+  const plan = pendingPlan ?? activePlan ?? createSchedulePlan(schedule);
+  const isPending = !!pendingPlan && !!pendingSchedule;
+  const confirm = async () => {
+    try {
+      setConfirmError('');
+      await confirmPendingPlan();
+      router.replace('/schedules');
+    } catch {
+      setConfirmError('계획을 저장하지 못했습니다. 다시 시도해 주세요.');
+    }
   };
   return (
     <Screen>
-      <Header title="준비 계획이 완성됐어요" eyebrow="AI 계획 생성 결과" right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
+      <Header title={isPending ? '준비 계획을 확인해 주세요' : '확정된 준비 계획'} eyebrow={isPending ? '확정 전에는 자동 실행되지 않아요' : '준비 시작 시각에 자동으로 실행돼요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
       <Card dark style={styles.summary}>
         <StatusPill label={plan.status.label} tone={plan.status.tone} />
         <Text style={styles.summaryTitle}>{schedule.appointmentTime} 약속</Text>
@@ -39,7 +47,11 @@ export default function PlanScreen() {
       <Card style={styles.coach}><View style={styles.coachIcon}><AppIcon name="coach" size={18} /></View><Text style={[type.bodyMuted, { flex: 1 }]}>{coachMessage(plan.status, plan.departure, plan.arrival)}</Text></Card>
       <Text style={type.heading}>전체 타임라인</Text>
       <Card><Timeline steps={plan.timeline} /></Card>
-      <View style={styles.actions}><Button label="이 계획으로 시작" onPress={() => void begin()} /><View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={() => router.push('/create')} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View></View>
+      <View style={styles.actions}>
+        {isPending ? <Button label={confirmedPlansStatus === 'saving' ? '계획 저장 중…' : '계획 확정'} disabled={confirmedPlansStatus === 'saving'} onPress={() => void confirm()} /> : <Card style={styles.confirmed}><AppIcon name="check" size={20} iconColor={color.success} /><View style={{ flex: 1 }}><Text style={styles.confirmedTitle}>계획이 저장됐습니다</Text><Text style={type.caption}>{plan.prepStart}에 자동으로 준비를 시작하고 알림으로 알려드려요.</Text></View></Card>}
+        {isPending ? <View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={() => router.push('/create')} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View> : null}
+        {confirmError ? <Text accessibilityRole="alert" style={styles.error}>{confirmError}</Text> : null}
+      </View>
     </Screen>
   );
 }
@@ -53,5 +65,5 @@ function coachMessage(status: PlanStatus, departure: string, arrival: string) {
 }
 
 const styles = StyleSheet.create({
-  summary: { gap: space.md }, summaryTitle: { fontSize: 32, color: color.surface, fontWeight: '900' }, summaryBody: { fontSize: 15, color: color.ice }, metrics: { flexDirection: 'row', marginTop: space.sm, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,.18)' }, metricLabel: { fontSize: 11, color: color.ice, marginBottom: 4 }, metricValue: { fontSize: 19, color: color.surface, fontWeight: '900' }, personalized: { gap: space.md, borderWidth: 2, borderColor: color.success }, personalizedHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md }, adjustment: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: color.border }, adjustmentLabel: { color: color.navy, fontSize: 15, fontWeight: '800' }, adjustmentBefore: { color: color.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, adjustmentAfter: { color: color.deepBlue, fontSize: 16, fontWeight: '900' }, coach: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#E6F6FB', gap: space.md }, coachIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface }, actions: { gap: space.sm }, secondary: { flexDirection: 'row', gap: space.sm },
+  summary: { gap: space.md }, summaryTitle: { fontSize: 32, color: color.surface, fontWeight: '900' }, summaryBody: { fontSize: 15, color: color.ice }, metrics: { flexDirection: 'row', marginTop: space.sm, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,.18)' }, metricLabel: { fontSize: 11, color: color.ice, marginBottom: 4 }, metricValue: { fontSize: 19, color: color.surface, fontWeight: '900' }, personalized: { gap: space.md, borderWidth: 2, borderColor: color.success }, personalizedHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md }, adjustment: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: color.border }, adjustmentLabel: { color: color.navy, fontSize: 15, fontWeight: '800' }, adjustmentBefore: { color: color.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, adjustmentAfter: { color: color.deepBlue, fontSize: 16, fontWeight: '900' }, coach: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#E6F6FB', gap: space.md }, coachIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface }, actions: { gap: space.sm }, secondary: { flexDirection: 'row', gap: space.sm }, confirmed: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: color.successSoft, borderColor: color.success }, confirmedTitle: { color: color.navy, fontSize: 16, fontWeight: '900' }, error: { color: color.danger, fontSize: 13, textAlign: 'center' },
 });

@@ -49,6 +49,11 @@ export interface GeocodingProvider {
   geocode(query: string, signal?: AbortSignal): Promise<GeocodedPlace[]>;
 }
 
+export interface PlaceSearchProvider {
+  searchPlaces(query: string, near?: Coordinate, signal?: AbortSignal): Promise<GeocodedPlace[]>;
+  reverseGeocode(coordinate: Coordinate, signal?: AbortSignal): Promise<GeocodedPlace>;
+}
+
 export interface RouteProvider {
   getWalkingRoute(request: WalkingRouteRequest): Promise<RoutePlan>;
 }

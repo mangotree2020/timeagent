@@ -56,4 +56,18 @@ describe('schedule draft persistence', () => {
     await expect(loadScheduleDraft(storage)).resolves.toBeNull();
     expect(storage.removeItem).toHaveBeenCalledWith(SCHEDULE_DRAFT_STORAGE_KEY);
   });
+
+  test('uses the selected gender profile only for a new draft default', () => {
+    expect(createDefaultScheduleDraft('female').routines.map((item) => item.label)).toContain('스킨케어');
+    expect(createDefaultScheduleDraft('male').routines.map((item) => item.label)).toContain('면도');
+    expect(createDefaultScheduleDraft().routines.map((item) => item.label)).not.toContain('면도');
+  });
+
+  test('keeps the demo destination as a fully selected place', () => {
+    expect(createDefaultScheduleDraft()).toEqual(expect.objectContaining({
+      destination: '서면 볼링장',
+      destinationAddress: '부산진구 중앙대로 672',
+      destinationCoordinate: { latitude: 35.1531, longitude: 129.0597 },
+    }));
+  });
 });

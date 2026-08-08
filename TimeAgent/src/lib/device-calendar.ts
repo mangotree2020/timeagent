@@ -106,7 +106,9 @@ export function normalizeDeviceCalendarEvents(values: RawDeviceCalendarEvent[], 
     const start = new Date(event.startDate);
     const end = new Date(event.endDate);
     if (!calendar || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || event.status === 'canceled') return [];
-    const startDate = start.toISOString();
+    const allDay = Boolean(event.allDay);
+    const startDate = allDay ? `${rawCalendarDateKey(event.startDate, start)}T00:00:00.000Z` : start.toISOString();
+    const endDate = allDay ? `${rawCalendarDateKey(event.endDate, end)}T00:00:00.000Z` : end.toISOString();
     return [{
       id: event.id,
       occurrenceKey: `${event.id}:${startDate}`,
@@ -116,8 +118,8 @@ export function normalizeDeviceCalendarEvents(values: RawDeviceCalendarEvent[], 
       providerLabel: calendar.providerLabel,
       title: event.title?.trim() || '제목 없는 일정',
       startDate,
-      endDate: end.toISOString(),
-      allDay: Boolean(event.allDay),
+      endDate,
+      allDay,
       location: event.location?.trim() || '',
     }];
   }).sort(compareCalendarEvents);
@@ -129,6 +131,38 @@ export function upcomingCalendarRange(now = new Date(), days = 30) {
   const rangeEnd = new Date(rangeStart);
   rangeEnd.setDate(rangeEnd.getDate() + Math.max(1, Math.floor(days)));
   return { rangeStart, rangeEnd };
+}
+
+export function calendarEventsForLocalDay(events: DeviceCalendarEvent[], day = new Date()) {
+  const { rangeStart, rangeEnd } = upcomingCalendarRange(day, 1);
+  const start = rangeStart.getTime();
+  const end = rangeEnd.getTime();
+
+  return events
+    .filter((event) => {
+      if (event.allDay) {
+        const dayKey = localDateKey(day);
+        return event.startDate.slice(0, 10) <= dayKey && event.endDate.slice(0, 10) > dayKey;
+      }
+      return new Date(event.startDate).getTime() < end && new Date(event.endDate).getTime() > start;
+    })
+    .sort((left, right) => {
+      if (left.allDay !== right.allDay) return left.allDay ? -1 : 1;
+      const leftStart = new Date(left.startDate).getTime();
+      const rightStart = new Date(right.startDate).getTime();
+      const leftOngoing = leftStart < start;
+      const rightOngoing = rightStart < start;
+      if (leftOngoing !== rightOngoing) return leftOngoing ? -1 : 1;
+      if (leftStart !== rightStart) return leftStart - rightStart;
+      return left.title.localeCompare(right.title, 'ko');
+    });
+}
+
+export function formatTodayCalendarEventTime(event: DeviceCalendarEvent, day = new Date()) {
+  if (event.allDay) return '종일';
+  const { rangeStart } = upcomingCalendarRange(day, 1);
+  if (new Date(event.startDate).getTime() < rangeStart.getTime()) return '진행 중';
+  return localTime(new Date(event.startDate));
 }
 
 export function groupCalendarEventsByDay(events: DeviceCalendarEvent[]) {
@@ -173,6 +207,31 @@ export function createCalendarPreviewFixture(): DeviceCalendarSnapshot {
   return { calendars, events, rangeStart: '2026-07-28T00:00:00+09:00', rangeEnd: '2026-08-27T00:00:00+09:00' };
 }
 
+export function createTodayCalendarPreviewFixture(day = new Date()): DeviceCalendarSnapshot {
+  const calendars = normalizeDeviceCalendars([
+    { id: 'google-work', title: '회사', sourceName: 'Google', ownerAccount: 'work@gmail.com', color: '#4285F4' },
+    { id: 'device-personal', title: '개인', sourceName: 'Samsung', isLocalAccount: true, color: '#00B4D8' },
+  ]);
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  const meetingStart = new Date(start);
+  meetingStart.setHours(10, 30);
+  const meetingEnd = new Date(meetingStart);
+  meetingEnd.setHours(11, 20);
+  const dinnerStart = new Date(start);
+  dinnerStart.setHours(18, 0);
+  const dinnerEnd = new Date(dinnerStart);
+  dinnerEnd.setHours(19, 30);
+  const events = normalizeDeviceCalendarEvents([
+    { id: 'today-all-day', calendarId: 'device-personal', title: '재택근무', startDate: `${localDateKey(start)}T00:00:00`, endDate: `${localDateKey(end)}T00:00:00`, allDay: true },
+    { id: 'today-meeting', calendarId: 'google-work', title: '팀 점검 회의', startDate: meetingStart, endDate: meetingEnd, location: '온라인 회의실' },
+    { id: 'today-dinner', calendarId: 'device-personal', title: '저녁 약속', startDate: dinnerStart, endDate: dinnerEnd, location: '광안리' },
+  ], calendars);
+  return { calendars, events, rangeStart: start.toISOString(), rangeEnd: end.toISOString() };
+}
+
 function compareCalendarEvents(left: DeviceCalendarEvent, right: DeviceCalendarEvent) {
   const startDifference = new Date(left.startDate).getTime() - new Date(right.startDate).getTime();
   if (startDifference !== 0) return startDifference;
@@ -182,6 +241,14 @@ function compareCalendarEvents(left: DeviceCalendarEvent, right: DeviceCalendarE
 
 function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function rawCalendarDateKey(value: string | Date, parsed: Date) {
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
 }
 
 function localTime(date: Date) {

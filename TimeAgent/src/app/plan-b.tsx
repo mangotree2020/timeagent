@@ -20,7 +20,7 @@ import { useSchedule } from '@/state/schedule-context';
 const sortOptions: PlanBSort[] = ['정시 도착', '비용 우선', '걷기 최소'];
 
 export default function PlanBScreen() {
-  const { activeSchedule, applyRoute, draft, route } = useSchedule();
+  const { activeSchedule, applyRoute, draft, pendingSchedule, progressSession, route } = useSchedule();
   const [selected, setSelected] = useState<string>(
     () => alternatives.find((item) => item.title !== route)?.id ?? alternatives[0].id,
   );
@@ -29,7 +29,7 @@ export default function PlanBScreen() {
   const [walkingStatus, setWalkingStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [applying, setApplying] = useState(false);
-  const schedule = activeSchedule ?? draft;
+  const schedule = pendingSchedule ?? activeSchedule ?? draft;
   const choices = useMemo<TransportAlternative[]>(
     () => [...alternatives, ...(walkingChoice ? [walkingChoice] : [])].filter((item) => item.title !== route),
     [route, walkingChoice],
@@ -83,7 +83,7 @@ export default function PlanBScreen() {
     setApplying(true);
     try {
       await applyRoute(choice.title);
-      router.replace('/progress');
+      router.replace(progressSession?.state === 'active' ? '/progress' : '/plan');
     } finally {
       setApplying(false);
     }

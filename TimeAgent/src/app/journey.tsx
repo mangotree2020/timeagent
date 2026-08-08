@@ -40,12 +40,18 @@ export default function JourneyScreen() {
     () => getNextAppointmentAt(schedule.appointmentTime),
     [schedule.appointmentTime],
   );
-  const [journey, setJourney] = useState<JourneyState>(() => createJourneyState({
-    route: fixtureRoutePlan,
-    location: { ...fixtureLocation, capturedAt: Date.now() },
-    appointmentAt,
-  }));
-  const [loading, setLoading] = useState(true);
+  const [journey, setJourney] = useState<JourneyState>(() => {
+    const location = { ...fixtureLocation, capturedAt: Date.now() };
+    const initial = createJourneyState({
+      route: forcePermissionDenied
+        ? createFallbackWalkingRoute({ origin: location.coordinate, destination: fixtureRoutePlan.destination })
+        : fixtureRoutePlan,
+      location,
+      appointmentAt,
+    });
+    return forcePermissionDenied ? markJourneyUnavailable(initial, 'permission-denied') : initial;
+  });
+  const [loading, setLoading] = useState(!forcePermissionDenied);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [screenReaderState, setScreenReaderState] = useState<ScreenReaderState>('checking');
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundJourneyStatus>({ state: 'inactive', updatedAt: null, voiceDelivery: null });
@@ -240,7 +246,7 @@ export default function JourneyScreen() {
           onPress={() => void toggleBackgroundJourney()}
           accessibilityHint="운영체제의 항상 위치 허용이 필요하며 언제든 이 화면에서 중지할 수 있습니다"
         />
-        <Text style={styles.privacy}>위치 기록은 이 기기의 진행 세션에만 저장하고 안내를 끄면 즉시 삭제합니다. 백그라운드 TTS가 실패하면 같은 내용을 알림으로 전달합니다.</Text>
+        <Text style={styles.privacy}>TimeAgent는 사용자가 이 기능을 켠 동안 화면이 꺼지거나 앱을 사용하지 않는 백그라운드에서도 위치를 25m 또는 15초 간격으로 확인해 다음 행동과 도착 시간을 갱신합니다. 백그라운드 위치 기록은 이 기기의 진행 세션에만 저장하고 안내를 끄거나 도착하면 삭제하며 광고에 사용하거나 판매하지 않습니다. 음성 안내가 실패하면 같은 내용을 알림으로 전달합니다.</Text>
       </Card>
       <Button label="목적지 도착 확인" onPress={() => void confirmArrival()} />
       <Text style={styles.disclaimer}>현위치는 기기 위치 권한으로, 도보 경로·시간·거리는 TMAP 연동으로 갱신됩니다. 통신 실패 시 마지막 위치와 직선 임시 경로를 유지합니다.</Text>

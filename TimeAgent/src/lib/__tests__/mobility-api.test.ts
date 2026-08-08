@@ -31,6 +31,51 @@ describe('SupabaseMobilityProvider', () => {
     expect(places[0].coordinate.latitude).toBeCloseTo(37.5666);
   });
 
+  it('searches POIs by place name and returns a navigation-style result list', async () => {
+    const fetcher = jest.fn(async () => jsonResponse({
+      places: [
+        {
+          name: '서면 볼링센터',
+          roadAddress: '부산 부산진구 중앙대로 672',
+          jibunAddress: '부산 부산진구 부전동 227-2',
+          coordinate: { latitude: 35.1577, longitude: 129.0592 },
+        },
+        {
+          name: '삼정타워 볼링장',
+          roadAddress: '부산 부산진구 중앙대로 672 8층',
+          jibunAddress: '',
+          coordinate: { latitude: 35.1531, longitude: 129.0597 },
+        },
+      ],
+    }));
+    const provider = new SupabaseMobilityProvider({ baseUrl, fetcher });
+
+    const places = await provider.searchPlaces(' 서면 볼링장 ', { latitude: 35.16, longitude: 129.06 });
+
+    expect(places).toHaveLength(2);
+    expect(fetcher).toHaveBeenCalledWith(
+      `${baseUrl}/v1/places?query=${encodeURIComponent('서면 볼링장')}&latitude=35.16&longitude=129.06`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('reverse geocodes a map coordinate into a selectable place', async () => {
+    const place = {
+      name: '지도에서 지정한 위치',
+      roadAddress: '부산 해운대구 센텀서로 30',
+      jibunAddress: '부산 해운대구 우동 1468',
+      coordinate: { latitude: 35.1731, longitude: 129.127 },
+    };
+    const fetcher = jest.fn(async () => jsonResponse({ place }));
+    const provider = new SupabaseMobilityProvider({ baseUrl, fetcher });
+
+    await expect(provider.reverseGeocode(place.coordinate)).resolves.toEqual(place);
+    expect(fetcher).toHaveBeenCalledWith(
+      `${baseUrl}/v1/reverse-geocode?latitude=35.1731&longitude=129.127`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('calls the TMAP walking proxy and validates RoutePlan', async () => {
     const route = {
       provider: 'tmap',

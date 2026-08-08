@@ -9,16 +9,19 @@ import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Card, Header, Screen, SectionTitle, StatusPill, type } from '@/components/app-ui';
 import { AppIcon, IconButton } from '@/components/app-icon';
-import { color, radius, space } from '@/constants/design';
+import { Button } from '@/components/app-ui';
+import { VoicePulseButton } from '@/components/voice-pulse-button';
+import { radius, space } from '@/constants/design';
 import { canUseAppTts } from '@/lib/screen-reader-state';
 import { ScheduleDraft } from '@/lib/schedule-draft';
 import {
   applyVoiceSchedulePatch,
-  describeVoiceScheduleChanges,
+  completeGuidedVoicePatch,
+  GUIDED_VOICE_QUESTIONS,
   VoiceScheduleAssistantReply,
 } from '@/lib/voice-schedule-assistant';
 import {
@@ -28,58 +31,79 @@ import {
   VoiceScheduleInput,
 } from '@/lib/voice-schedule-api';
 import { useSchedule } from '@/state/schedule-context';
+import { useAppTheme } from '@/state/theme-context';
 
-type FlowStatus = 'intro' | 'ready' | 'recording' | 'processing' | 'proposal' | 'error';
+type VoiceMode = 'guided' | 'one-shot';
+type FlowStatus = 'ready' | 'recording' | 'processing' | 'result' | 'error';
+type ChatMessage = { id: string; role: 'assistant' | 'user'; text: string };
 
-const PROPOSAL_FIXTURE: VoiceScheduleAssistantReply = {
-  transcript: '내일 오전 10시 30분에 연산동 치과 가고 양치 5분 준비할래',
-  assistantMessage: '내일 오전 10시 30분 치과 일정으로 이해했어요.',
-  question: '정확한 주소를 알려주시면 이동 시간도 계산할 수 있어요.',
-  readyToApply: false,
-  patch: {
-    title: '치과 진료', date: '7월 28일 (내일)', appointmentTime: '10:30', destination: '연산동 치과',
-    routines: [{ id: 'voice-0', icon: 'routine', label: '양치', minutes: 5 }],
-  },
+const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
+  transcript: '지수랑 이번 주 토요일 저녁 7시에 홍대입구역 근처에서 지하철로 만날래',
+  assistantMessage: '다 됐어. 아래에서 확인해 줘.',
+  question: null,
+  readyToApply: true,
+  patch: { title: '지수랑 저녁 약속', date: '8월 8일 (토요일)', appointmentTime: '19:00', destination: '홍대입구역 근처', transport: '지하철' },
 };
 
 export default function VoiceScheduleScreen() {
-  const params = useLocalSearchParams<{ e2eState?: string }>();
-  const { draft, updateDraft } = useSchedule();
+  const params = useLocalSearchParams<{ e2eState?: string; e2eMode?: string }>();
+  const insets = useSafeAreaInsets();
+  const fixtureResult = params.e2eState === 'proposal' || params.e2eState === 'result';
+  const initialMode: VoiceMode = params.e2eMode === 'one-shot' ? 'one-shot' : 'guided';
+  const { draft, finalizeDraftWith } = useSchedule();
+  const { mode: colorMode, palette } = useAppTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 250);
-  const provider = useMemo(() => {
-    try { return createConfiguredVoiceScheduleProvider(); } catch { return null; }
-  }, []);
-  const conversationId = `schedule_${useId().replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-  const fixtureMode = params.e2eState === 'proposal';
-  const [status, setStatus] = useState<FlowStatus>(() => fixtureMode ? 'proposal' : 'intro');
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [typedText, setTypedText] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [reply, setReply] = useState<VoiceScheduleAssistantReply | null>(() => fixtureMode ? PROPOSAL_FIXTURE : null);
-  const [proposal, setProposal] = useState<ScheduleDraft | null>(() => fixtureMode ? applyVoiceSchedulePatch(draft, PROPOSAL_FIXTURE.patch) : null);
+  const provider = useMemo(() => { try { return createConfiguredVoiceScheduleProvider(); } catch { return null; } }, []);
+  const conversationId = `voice_${useId().replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>(initialMode);
+  const [status, setStatus] = useState<FlowStatus>(fixtureResult ? 'result' : 'ready');
+  const [guidedStep, setGuidedStep] = useState(fixtureResult ? 4 : 0);
+  const [messages, setMessages] = useState<ChatMessage[]>(fixtureResult ? [
+    { id: 'a0', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt },
+    { id: 'u0', role: 'user', text: '지수랑 저녁 약속이야' },
+    { id: 'a1', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[1].prompt },
+    { id: 'u1', role: 'user', text: '이번 주 토요일 저녁 7시' },
+    { id: 'a2', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[2].prompt },
+    { id: 'u2', role: 'user', text: '홍대입구역 근처' },
+    { id: 'a3', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[3].prompt },
+    { id: 'u3', role: 'user', text: '지하철로 갈게' },
+    { id: 'a4', role: 'assistant', text: '다 됐어. 아래에서 확인해 줘.' },
+  ] : initialMode === 'guided' ? [{ id: 'a0', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt }] : []);
+  const [proposal, setProposal] = useState<ScheduleDraft | null>(() => fixtureResult ? applyVoiceSchedulePatch(draft, RESULT_FIXTURE.patch) : null);
   const [history, setHistory] = useState<VoiceScheduleHistoryTurn[]>([]);
+  const [errorMessage, setErrorMessage] = useState('');
+  const seconds = Math.min(60, Math.ceil(recorderState.durationMillis / 1_000));
 
   useEffect(() => () => { void Speech.stop(); }, []);
+
+  const changeMode = (next: VoiceMode) => {
+    if (status === 'recording' || status === 'processing') return;
+    setVoiceMode(next);
+    setStatus('ready');
+    setProposal(null);
+    setGuidedStep(0);
+    setMessages(next === 'guided' ? [{ id: `a-${Date.now()}`, role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt }] : []);
+    setHistory([]);
+    setErrorMessage('');
+  };
 
   const startRecording = async () => {
     setErrorMessage('');
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        setPermissionDenied(true);
-        setStatus('ready');
-        setErrorMessage('마이크를 허용하지 않았습니다. 아래에 직접 입력하거나 기기 설정에서 권한을 바꿀 수 있어요.');
+        setStatus('error');
+        setErrorMessage('마이크 권한이 필요해요. 기기 설정에서 허용하거나 + 버튼으로 직접 등록해 주세요.');
         return;
       }
-      setPermissionDenied(false);
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record({ forDuration: 60 });
       setStatus('recording');
     } catch {
       setStatus('error');
-      setErrorMessage('녹음을 시작하지 못했습니다. 직접 입력하거나 다시 시도해 주세요.');
+      setErrorMessage('녹음을 시작하지 못했어요. 다시 누르거나 + 버튼으로 직접 등록해 주세요.');
     }
   };
 
@@ -89,148 +113,89 @@ export default function VoiceScheduleScreen() {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       const uri = recorder.uri ?? recorderState.url;
       if (!uri) throw new Error('missing recording');
-      const audio = await recordingToInput(uri);
-      await submitTurn(audio, '말한 일정');
+      await submitTurn(await recordingToInput(uri));
     } catch {
       setStatus('error');
-      setErrorMessage('녹음 내용을 확인하지 못했습니다. 직접 입력하거나 다시 녹음해 주세요.');
+      setErrorMessage('말한 내용을 확인하지 못했어요. 마이크를 다시 눌러 주세요.');
     }
   };
 
-  const submitTypedText = async () => {
-    const text = typedText.trim();
-    if (!text) return;
-    setTypedText('');
-    await submitTurn({ kind: 'text', text }, text);
-  };
-
-  const submitTurn = async (input: VoiceScheduleInput, userText: string) => {
+  const submitTurn = async (input: VoiceScheduleInput) => {
     setStatus('processing');
     setErrorMessage('');
     if (!provider) {
       setStatus('error');
-      setErrorMessage('AI 연결 주소가 설정되지 않았습니다. 수동 등록으로 돌아가 입력 내용을 유지할 수 있어요.');
+      setErrorMessage('AI 연결을 확인할 수 없어요. 잠시 후 다시 시도하거나 + 버튼으로 직접 등록해 주세요.');
       return;
     }
     try {
-      const baseDraft = proposal ?? draft;
-      const nextReply = await provider.submitTurn({
-        conversationId,
-        draft: baseDraft,
-        history,
-        input,
-      });
-      const nextProposal = applyVoiceSchedulePatch(baseDraft, nextReply.patch);
-      setReply(nextReply);
+      const base = proposal ?? draft;
+      const reply = await provider.submitTurn({ conversationId, draft: base, history, input });
+      const transcript = reply.transcript || '말한 내용';
+      const field = voiceMode === 'guided' ? GUIDED_VOICE_QUESTIONS[Math.min(guidedStep, 3)].field : null;
+      const patch = field ? completeGuidedVoicePatch(field, transcript, reply.patch) : reply.patch;
+      const nextProposal = applyVoiceSchedulePatch(base, patch);
       setProposal(nextProposal);
-      setHistory((previous) => [...previous, { role: 'user', text: input.kind === 'text' ? userText : nextReply.transcript }, { role: 'assistant', text: [nextReply.assistantMessage, nextReply.question].filter(Boolean).join(' ') }].slice(-8) as VoiceScheduleHistoryTurn[]);
-      setStatus('proposal');
-      if (await canUseAppTts()) {
-        await Speech.stop();
-        Speech.speak([nextReply.assistantMessage, nextReply.question].filter(Boolean).join(' '), { language: 'ko-KR', rate: 0.95 });
+      setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: reply.assistantMessage }].slice(-8) as VoiceScheduleHistoryTurn[]);
+      if (voiceMode === 'one-shot') {
+        setMessages([{ id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: '다 됐어. 아래에서 확인해 줘.' }]);
+        setStatus('result');
+        return;
       }
+      const nextStep = guidedStep + 1;
+      const nextQuestion = GUIDED_VOICE_QUESTIONS[nextStep]?.prompt;
+      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}-next`, role: 'assistant', text: nextQuestion ?? '다 됐어. 아래에서 확인해 줘.' }]);
+      setGuidedStep(nextStep);
+      setStatus(nextStep >= GUIDED_VOICE_QUESTIONS.length ? 'result' : 'ready');
+      if (await canUseAppTts()) Speech.speak(nextQuestion ?? '다 됐어. 아래에서 확인해 줘.', { language: 'ko-KR', rate: 0.96 });
     } catch (error) {
       setStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'AI 일정을 확인하지 못했습니다. 다시 시도해 주세요.');
+      setErrorMessage(error instanceof Error ? error.message : '음성 약속을 확인하지 못했어요. 다시 말해 주세요.');
     }
   };
 
-  const applyProposal = () => {
+  const createPlan = async () => {
     if (!proposal) return;
-    updateDraft({
-      title: proposal.title,
-      date: proposal.date,
-      appointmentTime: proposal.appointmentTime,
-      destination: proposal.destination,
-      destinationAddress: proposal.destinationAddress,
-      destinationCoordinate: proposal.destinationCoordinate,
-      transport: proposal.transport,
-      priority: proposal.priority,
-      routines: proposal.routines,
-    });
+    await finalizeDraftWith({ ...proposal, step: 2 });
     void Speech.stop();
-    router.back();
+    router.replace('/plan');
   };
 
-  const changes = proposal ? describeVoiceScheduleChanges(draft, proposal) : [];
-  const seconds = Math.min(60, Math.ceil(recorderState.durationMillis / 1_000));
-
   return (
-    <Screen safeBottom>
-      <Header title="음성으로 일정 만들기" eyebrow="말하면 AI가 확인 질문을 해요" right={<IconButton name="close" label="음성 일정 닫기" variant="plain" onPress={() => router.back()} />} />
-
-      {status === 'intro' ? <Card style={styles.introCard}>
-        <View style={styles.iconCircle}><AppIcon name="voice" size={30} /></View>
-        <Text style={type.heading}>마이크를 쓰는 이유</Text>
-        <Text style={type.body}>말한 약속을 글로 바꿔 일정 변경안으로 보여드려요. AI가 부족한 정보를 질문해도, 아래 적용 버튼을 누르기 전에는 현재 초안이 바뀌지 않습니다.</Text>
-        <Text style={type.bodyMuted}>녹음은 한 번에 최대 60초이며 응답 뒤 저장하지 않아요. 마이크를 허용하지 않아도 직접 입력할 수 있습니다.</Text>
-        <Button label="설명 확인하고 계속" onPress={() => setStatus('ready')} />
-      </Card> : null}
-
-      {status !== 'intro' ? <>
-        <Card style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <AppIcon name={status === 'recording' ? 'voice' : status === 'processing' ? 'ai' : 'calendar'} size={24} />
-            <View style={{ flex: 1 }}>
-              <Text accessibilityLiveRegion="polite" style={type.heading}>
-                {status === 'recording' ? `듣고 있어요 · ${seconds}초 / 60초`
-                  : status === 'processing' ? 'AI가 일정을 확인하고 있어요'
-                    : proposal ? '변경안을 확인해 주세요' : '약속 내용을 말해 주세요'}
-              </Text>
-              <Text style={type.bodyMuted}>{status === 'processing' ? '현재 초안은 그대로 유지됩니다.' : '날짜, 시간, 장소, 준비할 일을 함께 말하면 더 빨라요.'}</Text>
-            </View>
-          </View>
-          {status === 'recording'
-            ? <Button label="말하기 완료" onPress={() => void finishRecording()} />
-            : <Button label={proposal ? '추가로 말하기' : '말하기 시작'} variant={proposal ? 'secondary' : 'primary'} disabled={status === 'processing'} onPress={() => void startRecording()} />}
-        </Card>
-
-        {errorMessage ? <Card style={styles.errorCard}>
-          <Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>
-          {permissionDenied && Platform.OS !== 'web' ? <Button label="기기 설정에서 마이크 허용" variant="secondary" onPress={() => void Linking.openSettings()} /> : null}
-        </Card> : null}
-
-        {reply && proposal ? <>
-          <Card style={styles.conversationCard}>
-            <StatusPill label="음성 인식 내용" />
-            <Text style={type.body}>{reply.transcript}</Text>
-            <View style={styles.divider} />
-            <StatusPill label="AI 확인" tone={reply.question ? 'warning' : 'success'} />
-            <Text accessibilityLiveRegion="polite" style={type.body}>{reply.assistantMessage}</Text>
-            {reply.question ? <Text accessibilityLiveRegion="polite" style={styles.question}>{reply.question}</Text> : null}
-          </Card>
-          <View style={styles.sectionGap}><SectionTitle>현재 초안과 달라지는 내용</SectionTitle>
-            {changes.length ? changes.map((change) => <Card key={change.label} style={styles.changeCard}>
-              <Text style={styles.changeLabel}>{change.label}</Text>
-              <Text style={styles.before}>{change.before}</Text>
-              <Text style={styles.arrow}>→</Text>
-              <Text style={styles.after}>{change.after}</Text>
-            </Card>) : <Text style={type.bodyMuted}>아직 바뀌는 항목이 없습니다. 질문에 답해 일정을 구체화해 주세요.</Text>}
-          </View>
-        </> : null}
-
-        <View style={styles.textFallback}>
-          <SectionTitle>말하기 어렵다면 직접 입력</SectionTitle>
-          <TextInput
-            accessibilityLabel="AI에게 보낼 일정 내용"
-            multiline
-            placeholder="예: 내일 오후 3시 서울시청에서 회의, 지하철로 갈래"
-            placeholderTextColor={color.textMuted}
-            value={typedText}
-            onChangeText={setTypedText}
-            style={styles.textInput}
-          />
-          <Button label="입력한 내용 확인" variant="secondary" disabled={!typedText.trim() || status === 'processing' || status === 'recording'} onPress={() => void submitTypedText()} />
+    <View accessibilityLabel={`음성 일정 ${colorMode === 'dark' ? '다크' : '화이트'} 모드`} style={[styles.page, { backgroundColor: palette.background }]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top', 'right', 'bottom', 'left']}>
+        <View style={styles.content}>
+        <View style={styles.header}><IconButton name="close" label="음성 일정 닫기" variant="plain" iconColor={palette.text} onPress={() => router.back()} /><Text style={[styles.headerTitle, { color: palette.text }]}>새 약속</Text><View style={styles.headerSpacer} /></View>
+        <View style={[styles.tabs, { backgroundColor: palette.surfaceMuted, borderColor: palette.border }]}>
+          <ModeTab label="단계별로 묻기" selected={voiceMode === 'guided'} onPress={() => changeMode('guided')} palette={palette} />
+          <ModeTab label="한 번에 말하기" selected={voiceMode === 'one-shot'} onPress={() => changeMode('one-shot')} palette={palette} />
         </View>
 
-        {proposal ? <View style={styles.applyActions}>
-          <Text style={type.bodyMuted}>적용 전까지 등록 화면의 일정은 바뀌지 않습니다.</Text>
-          <Button label="이 일정에 적용" disabled={!changes.length || status === 'processing'} onPress={applyProposal} />
-          <Button label="제안 없이 수동 등록으로 돌아가기" variant="ghost" onPress={() => router.back()} />
-        </View> : <Button label="수동 등록으로 돌아가기" variant="ghost" onPress={() => router.back()} />}
-      </> : null}
-    </Screen>
+        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+          {voiceMode === 'one-shot' && !messages.length && status !== 'result' ? <View style={styles.oneShotIntro}><Text style={[styles.oneShotTitle, { color: palette.text }]}>약속을 한 번에{`\n`}말해줘</Text><Text style={[styles.example, { color: palette.textMuted, backgroundColor: palette.surface }]}>예시 · “토요일 저녁 7시에 홍대에서{`\n`}지수랑 저녁 약속”</Text></View> : null}
+          {messages.length ? <View style={styles.chat}>{messages.map((message) => <View key={message.id} style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage, { backgroundColor: message.role === 'user' ? palette.primary : palette.assistantBubble }]}><Text style={[styles.messageText, { color: message.role === 'user' || colorMode === 'dark' ? '#FFFFFF' : palette.text }]}>{message.text}</Text></View>)}</View> : null}
+          {status === 'result' && proposal ? <VoiceResult proposal={proposal} onCreate={() => void createPlan()} palette={palette} /> : null}
+          {errorMessage ? <View style={[styles.error, { backgroundColor: palette.surface, borderColor: '#C2413A' }]}><Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>{Platform.OS !== 'web' ? <Button label="마이크 권한 설정" variant="secondary" onPress={() => void Linking.openSettings()} /> : null}</View> : null}
+        </ScrollView>
+
+        {status !== 'result' ? <View style={styles.micArea}><VoicePulseButton active={status === 'recording'} size={72} label={status === 'recording' ? '말하기 완료' : '마이크로 답하기'} onPress={() => status === 'recording' ? void finishRecording() : void startRecording()} /><Text accessibilityLiveRegion="polite" style={[styles.micCaption, { color: palette.textMuted }]}>{status === 'recording' ? `듣고 있어요 · ${seconds}초` : status === 'processing' ? '말한 내용을 확인하고 있어요' : voiceMode === 'guided' ? '마이크를 누르고 대답해 줘' : '마이크를 누르고 한 번에 말해 줘'}</Text></View> : null}
+        </View>
+      </SafeAreaView>
+      <Pressable accessibilityRole="button" accessibilityLabel="텍스트로 직접 일정 등록" accessibilityHint="수동 일정 등록 화면으로 전환합니다" onPress={() => router.replace({ pathname: '/create', params: { new: '1' } })} style={({ pressed }) => [styles.manualFab, { backgroundColor: palette.primary, bottom: insets.bottom + 12 }, pressed && styles.pressed]}><AppIcon name="plus" size={28} iconColor="#FFFFFF" strokeWidth={2.8} /></Pressable>
+    </View>
   );
+}
+
+function ModeTab({ label, selected, onPress, palette }: { label: string; selected: boolean; onPress: () => void; palette: ReturnType<typeof useAppTheme>['palette'] }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={[styles.tab, selected && { backgroundColor: palette.primary }]}><Text style={[styles.tabText, { color: selected ? '#FFFFFF' : palette.textMuted }]}>{label}</Text></Pressable>;
+}
+
+function VoiceResult({ proposal, onCreate, palette }: { proposal: ScheduleDraft; onCreate: () => void; palette: ReturnType<typeof useAppTheme>['palette'] }) {
+  return <View accessibilityLabel="음성 약속 결과" style={[styles.result, { backgroundColor: palette.surface, borderColor: palette.border }]}><Text style={[styles.resultLead, { color: palette.primary }]}>이렇게 잡을게, 맞아?</Text><ResultRow label="약속" value={proposal.title} palette={palette} /><ResultRow label="일시" value={`${proposal.date} ${proposal.appointmentTime}`} palette={palette} /><ResultRow label="장소" value={proposal.destination} palette={palette} /><ResultRow label="이동" value={proposal.transport} palette={palette} /><Button label="좋아, 준비 계획 만들어줘" onPress={onCreate} /></View>;
+}
+
+function ResultRow({ label, value, palette }: { label: string; value: string; palette: ReturnType<typeof useAppTheme>['palette'] }) {
+  return <View style={styles.resultRow}><Text style={[styles.resultLabel, { color: palette.textMuted }]}>{label}</Text><Text style={[styles.resultValue, { color: palette.text }]}>{value || '확인 필요'}</Text></View>;
 }
 
 async function recordingToInput(uri: string): Promise<VoiceScheduleInput> {
@@ -241,27 +206,32 @@ async function recordingToInput(uri: string): Promise<VoiceScheduleInput> {
     if (!mimeType) throw new Error('unsupported recording format');
     return { kind: 'audio', base64, mimeType };
   } finally {
-    try { file.delete(); } catch { /* The OS may already have cleared the cache entry. */ }
+    try { file.delete(); } catch { /* OS cache may already be gone. */ }
   }
 }
 
 const styles = StyleSheet.create({
-  introCard: { gap: space.md },
-  iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: color.ice, alignItems: 'center', justifyContent: 'center' },
-  statusCard: { gap: space.lg },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  errorCard: { gap: space.md, borderColor: color.danger, backgroundColor: color.dangerSoft },
-  errorText: { ...type.body, color: color.danger, fontWeight: '700' },
-  conversationCard: { gap: space.md },
-  divider: { height: 1, backgroundColor: color.border },
-  question: { ...type.body, color: color.deepBlue, fontWeight: '800' },
-  sectionGap: { gap: space.sm },
-  changeCard: { padding: space.md, gap: 3 },
-  changeLabel: { ...type.caption, fontWeight: '800' },
-  before: { ...type.bodyMuted, textDecorationLine: 'line-through' },
-  arrow: { color: color.textMuted, fontSize: 16 },
-  after: { ...type.body, color: color.deepBlue, fontWeight: '800' },
-  textFallback: { gap: space.md },
-  textInput: { minHeight: 108, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, padding: space.lg, fontSize: 16, lineHeight: 24, color: color.text, textAlignVertical: 'top' },
-  applyActions: { gap: space.md },
+  page: { flex: 1 },
+  safe: { flex: 1 },
+  content: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center', paddingHorizontal: space.xl, paddingTop: space.xs, paddingBottom: space.sm, gap: space.md },
+  header: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerTitle: { fontSize: 20, lineHeight: 27, fontWeight: '900' }, headerSpacer: { width: 44 },
+  tabs: { minHeight: 48, flexDirection: 'row', borderRadius: radius.md, borderWidth: 1, padding: 3 },
+  tab: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
+  tabText: { fontSize: 14, fontWeight: '900' },
+  body: { flex: 1, minHeight: 0 }, bodyContent: { flexGrow: 1, paddingBottom: space.sm }, chat: { gap: space.md, paddingTop: space.lg },
+  message: { maxWidth: '82%', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: 18 },
+  assistantMessage: { alignSelf: 'flex-start', borderBottomLeftRadius: 5 }, userMessage: { alignSelf: 'flex-end', borderBottomRightRadius: 5 },
+  messageText: { fontSize: 15, lineHeight: 22, fontWeight: '700' },
+  oneShotIntro: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.xl },
+  oneShotTitle: { textAlign: 'center', fontSize: 25, lineHeight: 34, fontWeight: '900' },
+  example: { textAlign: 'center', fontSize: 14, lineHeight: 21, paddingHorizontal: space.xl, paddingVertical: space.md, borderRadius: radius.md },
+  result: { gap: space.sm, marginTop: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1 },
+  resultLead: { fontSize: 16, lineHeight: 22, fontWeight: '900', marginBottom: 2 },
+  resultRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  resultLabel: { width: 45, fontSize: 13, fontWeight: '700' }, resultValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '900' },
+  micArea: { alignItems: 'center', gap: space.sm, paddingBottom: space.sm }, micCaption: { fontSize: 13, fontWeight: '700' },
+  manualFab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', elevation: 10, boxShadow: '0 8px 22px rgba(27,100,218,0.35)' },
+  error: { gap: space.md, marginTop: space.lg, padding: space.lg, borderRadius: radius.md, borderWidth: 1 }, errorText: { color: '#C2413A', fontSize: 14, lineHeight: 21, fontWeight: '800' },
+  pressed: { opacity: 0.76, transform: [{ scale: 0.96 }] },
 });

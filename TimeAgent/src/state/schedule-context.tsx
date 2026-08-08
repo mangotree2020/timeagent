@@ -1,8 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
-import { initialTimeline, TimelineStep } from '@/data/demo';
+import { TimelineStep } from '@/data/demo';
 import { recordAnalyticsEvent } from '@/lib/analytics';
+import { loadAppSettings } from '@/lib/app-settings';
+import { scheduleConfirmedPlanStart } from '@/lib/confirmed-plan-notification-service';
+import {
+  addConfirmedPlan,
+  confirmSchedulePlan,
+  ConfirmedSchedulePlan,
+  findDueConfirmedPlan,
+  loadConfirmedPlans,
+  markConfirmedPlanState,
+  saveConfirmedPlans,
+} from '@/lib/confirmed-plans';
 import {
   clearScheduleDraft,
   createDefaultScheduleDraft,
@@ -47,6 +59,10 @@ type ScheduleContextValue = {
   draft: ScheduleDraft;
   activeSchedule: ScheduleDraft | null;
   activePlan: SchedulePlan | null;
+  pendingSchedule: ScheduleDraft | null;
+  pendingPlan: SchedulePlan | null;
+  confirmedPlans: ConfirmedSchedulePlan[];
+  confirmedPlansStatus: 'loading' | 'saving' | 'saved' | 'error';
   draftStatus: 'loading' | 'saving' | 'saved' | 'error';
   progressSession: ProgressSession | null;
   pendingDelayProposal: ProgressDelayProposal | null;
@@ -55,7 +71,7 @@ type ScheduleContextValue = {
   personalizationProfile: PersonalizationProfile;
   personalizationStatus: 'loading' | 'saving' | 'saved' | 'error';
   lastPersonalizationLearnedCount: number;
-  startProgress: (source?: 'plan' | 'notification' | 'direct') => Promise<void>;
+  startProgress: (source?: 'notification' | 'direct' | 'auto', confirmedPlanId?: string) => Promise<void>;
   proposeDelay: (minutes: number) => void;
   applyDelayProposal: () => Promise<void>;
   rejectDelayProposal: () => void;
@@ -66,6 +82,9 @@ type ScheduleContextValue = {
   beginDraft: (reset?: boolean) => void;
   beginDraftWith: (values: Partial<ScheduleDraft>) => void;
   finalizeDraft: () => Promise<void>;
+  finalizeDraftWith: (schedule: ScheduleDraft) => Promise<void>;
+  confirmPendingPlan: () => Promise<ConfirmedSchedulePlan>;
+  selectConfirmedPlan: (id: string) => void;
   useStandardPlan: () => void;
   setPersonalizationEnabled: (enabled: boolean) => Promise<void>;
   resetPersonalization: () => Promise<void>;
@@ -75,12 +94,16 @@ type ScheduleContextValue = {
 const ScheduleContext = createContext<ScheduleContextValue | null>(null);
 
 export function ScheduleProvider({ children }: PropsWithChildren) {
-  const [timeline, setTimeline] = useState(initialTimeline);
+  const [timeline, setTimeline] = useState<TimelineStep[]>([]);
   const [delayMinutes, setDelayMinutes] = useState(6);
   const [route, setRoute] = useState('지하철');
   const [draft, setDraft] = useState(createDefaultScheduleDraft);
   const [activeSchedule, setActiveSchedule] = useState<ScheduleDraft | null>(null);
   const [activePlan, setActivePlan] = useState<SchedulePlan | null>(null);
+  const [pendingSchedule, setPendingSchedule] = useState<ScheduleDraft | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<SchedulePlan | null>(null);
+  const [confirmedPlans, setConfirmedPlans] = useState<ConfirmedSchedulePlan[]>([]);
+  const [confirmedPlansStatus, setConfirmedPlansStatus] = useState<ScheduleContextValue['confirmedPlansStatus']>('loading');
   const [progressSession, setProgressSession] = useState<ProgressSession | null>(null);
   const [pendingDelayProposal, setPendingDelayProposal] = useState<ProgressDelayProposal | null>(null);
   const [progressStatus, setProgressStatus] = useState<ScheduleContextValue['progressStatus']>('loading');
@@ -93,7 +116,10 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   const draftWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const draftWriteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const newDraftRequested = useRef(false);
+  const draftRequestGeneration = useRef(0);
   const progressSessionRef = useRef<ProgressSession | null>(null);
+  const confirmedPlansRef = useRef<ConfirmedSchedulePlan[]>([]);
+  const confirmedPlansWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const personalizationRef = useRef(personalizationProfile);
   const progressWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const notificationWriteQueue = useRef<Promise<ProgressNotificationSyncResult | {
@@ -112,17 +138,36 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     now: currentClock(),
     personalization: createPlanPersonalization(personalizationRef.current, schedule),
   }), []);
+  const startNewDraft = useCallback((values: Partial<ScheduleDraft> = {}) => {
+    const generation = ++draftRequestGeneration.current;
+    const commonDraft = createDefaultScheduleDraft();
+    const initialRoutines = commonDraft.routines;
+    setPendingSchedule(null);
+    setPendingPlan(null);
+    setDraft({ ...commonDraft, ...values, step: 0 });
+    setDraftStatus('saving');
+    setDraftPhase('editing');
+    if (values.routines) return;
+    void loadAppSettings(AsyncStorage)
+      .then((settings) => {
+        if (draftRequestGeneration.current !== generation) return;
+        const recommendedRoutines = createDefaultScheduleDraft(settings.preparationGender).routines;
+        setDraft((current) => {
+          if (JSON.stringify(current.routines) !== JSON.stringify(initialRoutines)) return current;
+          return { ...current, routines: recommendedRoutines };
+        });
+      })
+      .catch(() => undefined);
+  }, []);
   const beginDraft = useCallback((reset = false) => {
     if (reset) {
       void recordAnalyticsEvent(AsyncStorage, 'draft_started');
       newDraftRequested.current = true;
-      setDraft(createDefaultScheduleDraft());
-      setDraftStatus('saving');
-      setDraftPhase('editing');
+      startNewDraft();
       return;
     }
     setDraftPhase((phase) => phase === 'finalized' ? 'editing' : phase);
-  }, []);
+  }, [startNewDraft]);
   const applyProgressState = useCallback((session: ProgressSession | null) => {
     progressSessionRef.current = session;
     setProgressSession(session);
@@ -133,6 +178,33 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     setDelayMinutes(session.delayMinutes);
     setRoute(session.route);
   }, []);
+  const applyConfirmedPlans = useCallback((plans: ConfirmedSchedulePlan[]) => {
+    confirmedPlansRef.current = plans;
+    setConfirmedPlans(plans);
+    if (progressSessionRef.current?.state === 'active') return;
+    const next = plans.find((plan) => plan.state === 'active')
+      ?? plans.find((plan) => plan.state === 'scheduled')
+      ?? [...plans].reverse().find((plan) => plan.state === 'completed');
+    if (!next) return;
+    setActiveSchedule(next.schedule);
+    setActivePlan(next.plan);
+    setTimeline(next.plan.timeline);
+    setRoute(next.schedule.transport);
+  }, []);
+  const persistConfirmedPlans = useCallback((plans: ConfirmedSchedulePlan[]) => {
+    setConfirmedPlansStatus('saving');
+    confirmedPlansWriteQueue.current = confirmedPlansWriteQueue.current
+      .catch(() => undefined)
+      .then(() => saveConfirmedPlans(AsyncStorage, plans));
+    confirmedPlansWriteQueue.current
+      .then(() => setConfirmedPlansStatus('saved'))
+      .catch(() => setConfirmedPlansStatus('error'));
+    return confirmedPlansWriteQueue.current;
+  }, []);
+  const commitConfirmedPlans = useCallback(async (plans: ConfirmedSchedulePlan[]) => {
+    applyConfirmedPlans(plans);
+    await persistConfirmedPlans(plans);
+  }, [applyConfirmedPlans, persistConfirmedPlans]);
   const persistProgress = useCallback((session: ProgressSession) => {
     setProgressStatus('saving');
     progressWriteQueue.current = progressWriteQueue.current
@@ -213,6 +285,20 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let active = true;
+    loadConfirmedPlans(AsyncStorage)
+      .then((plans) => {
+        if (!active) return;
+        applyConfirmedPlans(plans);
+        setConfirmedPlansStatus('saved');
+      })
+      .catch(() => {
+        if (active) setConfirmedPlansStatus('error');
+      });
+    return () => { active = false; };
+  }, [applyConfirmedPlans]);
+
+  useEffect(() => {
+    let active = true;
     loadPersonalizationProfile(AsyncStorage)
       .then((profile) => {
         if (!active) return;
@@ -244,21 +330,47 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     };
   }, [draft, draftPhase]);
 
-  const startProgress = useCallback(async (source: 'plan' | 'notification' | 'direct' = 'direct') => {
+  const startProgress = useCallback(async (
+    source: 'notification' | 'direct' | 'auto' = 'direct',
+    confirmedPlanId?: string,
+  ) => {
     if (progressStatus === 'loading') return;
     if (progressSessionRef.current?.state === 'active') {
       if (source === 'notification') void recordAnalyticsEvent(AsyncStorage, 'progress_started', { source });
       return;
     }
-    const schedule = activeSchedule ?? draft;
-    const plan = activePlan ?? createCurrentPlan(schedule);
-    const session = createProgressSession({ schedule, plan });
+    const stored = confirmedPlanId
+      ? confirmedPlansRef.current.find((item) => item.id === confirmedPlanId && item.state === 'scheduled') ?? null
+      : findDueConfirmedPlan(confirmedPlansRef.current);
+    if (!stored || stored.prepStartAt > Date.now()) return;
+    const session = createProgressSession({
+      schedule: stored.schedule,
+      plan: stored.plan,
+      confirmedPlanId: stored.id,
+    });
+    await commitConfirmedPlans(markConfirmedPlanState(confirmedPlansRef.current, stored.id, 'active'));
     await commitProgress(session);
     void recordAnalyticsEvent(AsyncStorage, 'progress_started', {
       source,
       scheduledNotifications: progressSessionRef.current?.scheduledNotifications.length ?? 0,
     });
-  }, [activePlan, activeSchedule, commitProgress, createCurrentPlan, draft, progressStatus]);
+  }, [commitConfirmedPlans, commitProgress, progressStatus]);
+
+  useEffect(() => {
+    if (confirmedPlansStatus === 'loading' || progressStatus === 'loading' || progressSession?.state === 'active') return;
+    const next = confirmedPlans.find((plan) => plan.state === 'scheduled');
+    if (!next) return;
+    const startWhenDue = () => void startProgress('auto', next.id);
+    const delay = Math.max(0, Math.min(next.prepStartAt - Date.now(), 2_147_000_000));
+    const timer = setTimeout(startWhenDue, delay);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') startWhenDue();
+    });
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [confirmedPlans, confirmedPlansStatus, progressSession?.state, progressStatus, startProgress]);
 
   const completeCurrent = useCallback(async () => {
     const current = progressSessionRef.current;
@@ -290,9 +402,16 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
           setPersonalizationStatus('error');
         }
       }
+      if (current.confirmedPlanId) {
+        await commitConfirmedPlans(markConfirmedPlanState(
+          confirmedPlansRef.current,
+          current.confirmedPlanId,
+          'completed',
+        ));
+      }
     }
     await commitProgress(next);
-  }, [applyPersonalizationProfile, commitProgress]);
+  }, [applyPersonalizationProfile, commitConfirmedPlans, commitProgress]);
 
   const proposeDelay = useCallback((minutes: number) => {
     const current = progressSessionRef.current;
@@ -320,16 +439,42 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   const applyRoute = useCallback(async (nextRoute: string) => {
     setPendingDelayProposal(null);
     const current = progressSessionRef.current;
+    if (!current && pendingSchedule) {
+      const nextSchedule = { ...pendingSchedule, transport: nextRoute as ScheduleDraft['transport'] };
+      const nextPlan = createCurrentPlan(nextSchedule);
+      setPendingSchedule(nextSchedule);
+      setPendingPlan(nextPlan);
+      setTimeline(nextPlan.timeline);
+      setRoute(nextRoute);
+      return;
+    }
     if (!current) {
-      const schedule = activeSchedule ?? draft;
-      const plan = activePlan ?? createCurrentPlan(schedule);
-      const next = updateProgressRoute(createProgressSession({ schedule, plan }), nextRoute);
-      await commitProgress(next);
+      // A confirmed plan must never become active through a route change.
+      // It will be started only by the scheduled-time checker.
       return;
     }
     const next = updateProgressRoute(current, nextRoute);
     await commitProgress(next);
-  }, [activePlan, activeSchedule, commitProgress, createCurrentPlan, draft]);
+  }, [commitProgress, createCurrentPlan, pendingSchedule]);
+
+  const finalizeSchedule = useCallback(async (schedule: ScheduleDraft) => {
+    const nextPlan = createCurrentPlan(schedule);
+    setDraft(schedule);
+    setPendingSchedule(schedule);
+    setPendingPlan(nextPlan);
+    setTimeline(nextPlan.timeline);
+    setDraftPhase('finalized');
+    try {
+      if (draftWriteTimer.current) clearTimeout(draftWriteTimer.current);
+      draftWriteTimer.current = null;
+      await draftWriteQueue.current.catch(() => undefined);
+      await saveScheduleDraft(AsyncStorage, schedule);
+      setDraftStatus('saved');
+    } catch {
+      setDraftStatus('error');
+    }
+    void recordAnalyticsEvent(AsyncStorage, 'draft_completed');
+  }, [createCurrentPlan]);
 
   const value = useMemo<ScheduleContextValue>(() => ({
     timeline,
@@ -338,6 +483,10 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     draft,
     activeSchedule,
     activePlan,
+    pendingSchedule,
+    pendingPlan,
+    confirmedPlans,
+    confirmedPlansStatus,
     draftStatus,
     progressSession,
     pendingDelayProposal,
@@ -364,38 +513,42 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     beginDraftWith(values) {
       void recordAnalyticsEvent(AsyncStorage, 'draft_started');
       newDraftRequested.current = true;
-      setDraft({ ...createDefaultScheduleDraft(), ...values, step: 0 });
-      setDraftStatus('saving');
-      setDraftPhase('editing');
+      startNewDraft(values);
     },
     async finalizeDraft() {
-      const nextPlan = createCurrentPlan(draft);
-      const currentProgress = progressSessionRef.current;
-      notificationGeneration.current += 1;
-      await cancelProgressNotifications(currentProgress);
-      progressSessionRef.current = null;
-      setProgressSession(null);
-      setPendingDelayProposal(null);
-      await removePersistedProgress();
-      setActiveSchedule(draft);
-      setActivePlan(nextPlan);
-      setTimeline(nextPlan.timeline);
-      setDraftPhase('finalized');
-      try {
-        if (draftWriteTimer.current) clearTimeout(draftWriteTimer.current);
-        draftWriteTimer.current = null;
-        await draftWriteQueue.current.catch(() => undefined);
-        await clearScheduleDraft(AsyncStorage);
-        setDraftStatus('saved');
-      } catch {
-        setDraftStatus('error');
-      }
-      void recordAnalyticsEvent(AsyncStorage, 'draft_completed');
+      await finalizeSchedule(draft);
+    },
+    finalizeDraftWith: finalizeSchedule,
+    async confirmPendingPlan() {
+      if (!pendingSchedule || !pendingPlan) throw new Error('확정할 계획이 없습니다.');
+      const confirmed = confirmSchedulePlan({ schedule: pendingSchedule, plan: pendingPlan });
+      const notification = await scheduleConfirmedPlanStart(confirmed);
+      const stored = notification.identifier
+        ? { ...confirmed, notificationIdentifier: notification.identifier }
+        : confirmed;
+      await commitConfirmedPlans(addConfirmedPlan(confirmedPlansRef.current, stored));
+      await clearScheduleDraft(AsyncStorage);
+      setPendingSchedule(null);
+      setPendingPlan(null);
+      setNotificationStatus(notification.status);
+      void recordAnalyticsEvent(AsyncStorage, 'draft_completed', { confirmed: true });
+      return stored;
+    },
+    selectConfirmedPlan(id) {
+      const selected = confirmedPlansRef.current.find((plan) => plan.id === id);
+      if (!selected) return;
+      setPendingSchedule(null);
+      setPendingPlan(null);
+      setActiveSchedule(selected.schedule);
+      setActivePlan(selected.plan);
+      setTimeline(selected.plan.timeline);
+      setRoute(selected.schedule.transport);
     },
     useStandardPlan() {
-      const schedule = activeSchedule ?? draft;
+      const schedule = pendingSchedule ?? activeSchedule ?? draft;
       const nextPlan = createSchedulePlan(schedule, { now: currentClock() });
-      setActivePlan(nextPlan);
+      if (pendingSchedule) setPendingPlan(nextPlan);
+      else setActivePlan(nextPlan);
       setTimeline(nextPlan.timeline);
     },
     async setPersonalizationEnabled(enabled) {
@@ -426,18 +579,21 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       const currentProgress = progressSessionRef.current;
       notificationGeneration.current += 1;
       await cancelProgressNotifications(currentProgress);
-      setTimeline(initialTimeline);
+      setTimeline([]);
       setDelayMinutes(6);
       setRoute('지하철');
       setActivePlan(null);
       setActiveSchedule(null);
+      setPendingPlan(null);
+      setPendingSchedule(null);
       progressSessionRef.current = null;
       setProgressSession(null);
       setPendingDelayProposal(null);
       setProgressStatus('saved');
       await removePersistedProgress();
+      await commitConfirmedPlans([]);
     },
-  }), [activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, completeCurrent, createCurrentPlan, delayMinutes, draft, draftStatus, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startProgress, timeline]);
+  }), [activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, commitConfirmedPlans, completeCurrent, confirmedPlans, confirmedPlansStatus, delayMinutes, draft, draftStatus, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;
 }
