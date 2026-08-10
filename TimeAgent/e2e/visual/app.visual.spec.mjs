@@ -107,6 +107,7 @@ test.beforeEach(async ({ page }) => {
 
 const screens = [
   { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘·내일 등록 약속 1개' },
+  { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 잡을게, 맞아?' },
@@ -145,6 +146,9 @@ for (const screen of screens) {
     await page.getByText(screen.ready, { exact: true }).waitFor({ state: 'visible' });
     if (screen.id === 'voice-schedule-one-shot') {
       await expect(page.getByText('새 약속', { exact: true })).toHaveCSS('color', 'rgb(25, 31, 40)');
+    }
+    if (screen.id === 'home-on-time-streak') {
+      await page.getByRole('button', { name: /연속 5회 정시 도착 중/ }).scrollIntoViewIfNeeded();
     }
     await expectVisual(page, screen.id);
   });
@@ -232,6 +236,16 @@ test('홈은 오늘·내일 캘린더 약속을 날짜와 시간 상태로 보�
   await page.getByRole('button', { name: /오늘 10:30, 팀 점검 회의/ }).click();
   await expect(page).toHaveURL(/\/schedules\?tab=calendar$/);
   await expect(page.getByText('캘린더 화면입니다.', { exact: true })).toBeVisible();
+});
+
+test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 이동함', async ({ page }) => {
+  await page.goto('/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5');
+  const badge = page.getByRole('button', { name: /연속 5회 정시 도착 중.*시간의 달인.*지난 일정 보기/ });
+  await expect(badge).toBeVisible();
+  await expect(badge.getByText("한 번만 더 하면 '시간의 달인' 뱃지야", { exact: true })).toBeVisible();
+  await badge.click();
+  await expect(page).toHaveURL(/\/schedules\?tab=past$/);
+  await expect(page.getByText('지난 일정 화면입니다.', { exact: true })).toBeVisible();
 });
 
 test('홈 다음 약속은 제목·시간·장소만 보여주고 카드 터치로 상세 일정에 진입함', async ({ page }) => {

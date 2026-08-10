@@ -12,7 +12,7 @@ import { Timeline } from '@/components/timeline';
 import { color, radius, space } from '@/constants/design';
 import { useSchedule } from '@/state/schedule-context';
 import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
-import { ConfirmedSchedulePlan, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
+import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
 import {
   DeviceCalendarEvent,
   calendarEventsForLocalDateRange,
@@ -35,7 +35,7 @@ type TodayCalendarStatus = 'checking' | 'ready' | 'permission-needed' | 'unavail
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
 
 export default function HomeScreen() {
-  const params = useLocalSearchParams<{ e2eCalendar?: string; e2eWeather?: string }>();
+  const params = useLocalSearchParams<{ e2eCalendar?: string; e2eWeather?: string; e2eStreak?: string }>();
   const calendarFixtureMode = __DEV__ && params.e2eCalendar === 'today';
   const weatherFixtureMode = __DEV__ && params.e2eWeather === 'ready';
   const weatherErrorFixtureMode = __DEV__ && params.e2eWeather === 'error';
@@ -54,6 +54,10 @@ export default function HomeScreen() {
     .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
   const homePlans = plansForLocalDateRange(confirmedPlans, today, 2)
     .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
+  const fixtureStreak = __DEV__ && params.e2eStreak ? Number(params.e2eStreak) : null;
+  const onTimeStreak = Number.isFinite(fixtureStreak) && fixtureStreak !== null
+    ? Math.max(0, Math.floor(fixtureStreak))
+    : currentOnTimeArrivalStreak(confirmedPlans);
   const nextTodayPlan = todayPlans.find((plan) => plan.state === 'active') ?? todayPlans[0] ?? null;
   const nextHomePlan = homePlans.find((plan) => plan.state === 'active') ?? homePlans[0] ?? null;
   const schedule = nextHomePlan?.schedule ?? null;
@@ -193,6 +197,11 @@ export default function HomeScreen() {
           onRetry={() => void loadTodayCalendar()}
         />
 
+        {onTimeStreak > 0 ? <OnTimeArrivalBadge
+          streak={onTimeStreak}
+          onPress={() => router.push({ pathname: '/schedules', params: { tab: 'past' } })}
+        /> : null}
+
         <SectionTitle action={schedule ? <Pressable onPress={() => router.push('/plan')}><Text style={styles.link}>전체 보기</Text></Pressable> : undefined}>오늘의 준비 계획</SectionTitle>
         {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
 
@@ -200,6 +209,30 @@ export default function HomeScreen() {
       <VoicePulseButton label="음성으로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} style={[styles.fab, { bottom: getHomeFloatingActionBottom(insets.bottom) - 8 }]} />
       <BottomNav />
     </View>
+  );
+}
+
+function OnTimeArrivalBadge({ streak, onPress }: { streak: number; onPress: () => void }) {
+  const remaining = Math.max(0, 6 - streak);
+  const detail = remaining === 0
+    ? '‘시간의 달인’ 뱃지를 달성했어요'
+    : remaining === 1
+      ? "한 번만 더 하면 '시간의 달인' 뱃지야"
+      : `${remaining}번 더 정시 도착하면 '시간의 달인' 뱃지야`;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`연속 ${streak}회 정시 도착 중. ${detail}. 지난 일정 보기`}
+      accessibilityHint="지난 일정의 완료 결과를 확인합니다"
+      onPress={onPress}
+      style={({ pressed }) => [styles.streakPressable, pressed && styles.todayEventPressed]}
+    >
+      <Card style={styles.streakCard}>
+        <View style={styles.streakIcon}><AppIcon name="achievement" size={24} iconColor="#FFFFFF" strokeWidth={2.4} /></View>
+        <View style={styles.streakCopy}><Text style={styles.streakTitle}>연속 {streak}회 정시 도착 중</Text><Text style={styles.streakDetail}>{detail}</Text></View>
+        <Text style={styles.streakLink}>보기</Text>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -347,5 +380,12 @@ const styles = StyleSheet.create({
   todayStateCopy: { flex: 1, gap: 4 },
   todayEmpty: { gap: space.md },
   todayStateIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
+  streakPressable: { minHeight: 44, borderRadius: radius.lg },
+  streakCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderColor: 'transparent' },
+  streakIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFB547', flexShrink: 0 },
+  streakCopy: { flex: 1, gap: 2 },
+  streakTitle: { color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  streakDetail: { color: color.textMuted, fontSize: 12, lineHeight: 18 },
+  streakLink: { minWidth: 44, minHeight: 44, textAlign: 'right', textAlignVertical: 'center', color: color.deepBlue, fontSize: 13, lineHeight: 44, fontWeight: '900' },
   fab: { position: 'absolute', right: 14, zIndex: 10 },
 });

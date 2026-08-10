@@ -778,6 +778,13 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Verify: 날짜 범위 단위 테스트 2건을 추가해 오늘·내일 포함, 모레 제외, 시간순 정렬과 날짜 레이블을 검증했다. `npm run verify` 33개 스위트·166/166 통과. 360×800·390×844·430×932에서 홈 기준 이미지와 오늘·내일 기기 약속·확정 약속 흐름 9/9가 통과했으며 가로 잘림이 없었다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 설치·실행했다. 실제 홈에서 날씨 아래 `오늘·내일 약속 4개`, 오늘 종일·오늘 20:00·내일 종일 항목의 날짜·시간순 표시를 확인했다. APK SHA-256은 `92102376e01f76460d770e32a8acc2f0abad39341a885726dd9e6c8676c6361b`이다.
 - Evidence: `src/lib/confirmed-plans.ts`, `src/lib/device-calendar.ts`, `src/app/index.tsx`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/lib/__tests__/device-calendar.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `docs/HARNESS.md`, `tmp/timeagent-today-tomorrow.png`, `android/app/build/outputs/apk/release/app-release.apk`.
 
+## 2026-08-10 홈 연속 정시 도착 배지 (완료)
+
+- Accept: 완료한 일정은 정시 여부·완료 시각·지연 분을 로컬 확정 일정에 보존한다. 홈의 `오늘·내일 약속` 목록 끝에는 최신 완료부터 지각 또는 미완료 기록 전까지의 연속 정시 도착 횟수를 색상과 텍스트로 함께 보여준다. 배지의 `보기`는 `지난 일정` 탭으로 이동하며 각 완료 일정은 `정시 도착/지각 도착/완료/미완료`를 텍스트로 구분한다. 완료 화면에서 홈으로 돌아가도 완료 기록을 삭제하지 않는다.
+- Implement: 확정 일정에 선택적 completion 결과를 추가하고 `completeConfirmedPlan`, `currentOnTimeArrivalStreak` 순수 계산을 구현했다. 홈 목록 하단에 주황색 다이아몬드 아이콘, `연속 N회 정시 도착 중`, 다음 뱃지 안내, `보기` 동작을 가진 44px 이상 터치 배지를 배치했다. 지난 일정 카드에는 저장된 정시 결과와 지연 분을 표시하고 완료 후 초기화 과정에서는 진행 세션만 제거하도록 수정했다.
+- Verify: 최신 연속 정시 2회 계산, 지각 이전 기록 제외, 미완료·결과 미상 기록에서 연속 중단을 단위 테스트로 검증했고 `npm run verify` 33개 스위트·170/170이 통과했다. 360×800·390×844·430×932에서 `연속 5회 정시 도착 중` 배지를 일정 목록 끝까지 스크롤해 기준 이미지로 확인했으며, 기준 비교와 `보기 → 지난 일정` 이동 6/6이 통과했다. 출시 서명 arm64 APK 735 tasks 빌드와 Samsung Android 12 `SM-N971N` 덮어 설치가 성공했다. 실기기 홈의 오늘·내일 일정과 기존 지난 일정 4건이 유지됐고 `지난 일정` 탭 전환, 미완료 텍스트 상태, 화면 잘림 없음과 치명적 런타임 오류 없음을 확인했다. 이 기기의 기존 4건은 모두 미완료여서 정시 배지는 노출하지 않으며, 다음 정시 완료부터 실제 저장 결과에 따라 표시된다. APK SHA-256은 `fac76cc1a1a6b90c1eb4df193e63fb84dfecf5b0e8104abebcb9d71076d87b59`이다.
+- Evidence: `src/lib/confirmed-plans.ts`, `src/state/schedule-context.tsx`, `src/app/index.tsx`, `src/app/schedules.tsx`, `src/lib/__tests__/confirmed-plans.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home-on-time-streak.png`, `docs/HARNESS.md`.
+
 ## 2026-08-10 AI 비서 자동 음성 대화 (완료)
 
 - Accept: 홈 마이크에서 음성 약속 화면을 열면 AI 비서가 즉시 첫 질문을 음성으로 안내하고 자동 녹음을 시작한다. 사용자는 매 단계마다 마이크를 눌러 시작하거나 종료하지 않아도 되며, 발화 뒤 침묵을 감지해 자동 제출하고 다음 질문을 말한 뒤 다시 듣는다. 단계별 모드는 약속 이름·날짜와 시간·장소·교통수단을 실제로 확인한 경우에만 다음 단계로 진행한다. 인사·감정·가벼운 잡담에는 친구처럼 짧고 자연스럽게 응답한 뒤 현재 질문으로 복귀하며 잡담을 일정 값으로 저장하지 않는다. 사용자는 마이크 버튼으로 즉시 제출하거나 `+`로 직접 등록할 수 있다.

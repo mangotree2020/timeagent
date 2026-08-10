@@ -8,6 +8,7 @@ import { loadAppSettings } from '@/lib/app-settings';
 import { scheduleConfirmedPlanStart } from '@/lib/confirmed-plan-notification-service';
 import {
   addConfirmedPlan,
+  completeConfirmedPlan,
   confirmSchedulePlan,
   ConfirmedSchedulePlan,
   findDueConfirmedPlan,
@@ -461,10 +462,14 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
         }
       }
       if (current.confirmedPlanId) {
-        await commitConfirmedPlans(markConfirmedPlanState(
+        await commitConfirmedPlans(completeConfirmedPlan(
           confirmedPlansRef.current,
           current.confirmedPlanId,
-          'completed',
+          {
+            completedAt: next.updatedAt,
+            onTime: next.delayMinutes <= next.plan.bufferMinutes,
+            delayMinutes: next.delayMinutes,
+          },
         ));
       }
     }
@@ -649,7 +654,6 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setPendingDelayProposal(null);
       setProgressStatus('saved');
       await removePersistedProgress();
-      await commitConfirmedPlans([]);
     },
   }), [activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, commitConfirmedPlans, completeCurrent, confirmedPlans, confirmedPlansStatus, delayMinutes, draft, draftStatus, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
 

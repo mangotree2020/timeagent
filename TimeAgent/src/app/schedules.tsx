@@ -30,7 +30,7 @@ const emptyPermission: DeviceCalendarPermission = { state: 'undetermined', canAs
 export default function SchedulesScreen() {
   const params = useLocalSearchParams<{ e2eCalendar?: string; tab?: string }>();
   const fixtureMode = __DEV__ && params.e2eCalendar === 'events';
-  const [tab, setTab] = useState<ScheduleTab>(fixtureMode || params.tab === 'calendar' ? '캘린더' : '내 일정');
+  const [tab, setTab] = useState<ScheduleTab>(params.tab === 'past' ? '지난 일정' : fixtureMode || params.tab === 'calendar' ? '캘린더' : '내 일정');
   const [calendarView, setCalendarView] = useState<CalendarViewState>(fixtureMode ? 'ready' : 'checking');
   const [permission, setPermission] = useState<DeviceCalendarPermission>(fixtureMode ? { state: 'granted', canAskAgain: false } : emptyPermission);
   const [snapshot, setSnapshot] = useState<DeviceCalendarSnapshot | null>(fixtureMode ? createCalendarPreviewFixture() : null);
@@ -175,10 +175,13 @@ function ClosedSchedules({ plans, status }: { plans: ConfirmedSchedulePlan[]; st
     {plans.map((item) => <Card key={item.id} style={styles.schedule}>
       <View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><Text style={styles.closedDate}>{new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(item.appointmentAt)}</Text></View>
       <View style={styles.flexContent}>
-        <StatusPill label={item.state === 'completed' ? '완료' : '미완료'} tone={item.state === 'completed' ? 'success' : 'warning'} />
+        <StatusPill
+          label={item.state === 'completed' ? item.completion?.onTime === true ? '정시 도착' : item.completion?.onTime === false ? '지각 도착' : '완료' : '미완료'}
+          tone={item.state === 'completed' ? item.completion?.onTime === false ? 'warning' : 'success' : 'warning'}
+        />
         <Text style={type.heading}>{item.schedule.title}</Text>
         <View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>
-        <Text style={styles.meta}>{item.state === 'completed' ? '준비 행동을 모두 완료한 일정' : '약속 시간까지 완료되지 않은 일정'}</Text>
+        <Text style={styles.meta}>{item.state === 'completed' ? item.completion ? `${item.completion.delayMinutes > 0 ? `${item.completion.delayMinutes}분 지연 기록` : '지연 없이 완료'} · 준비 행동 완료` : '준비 행동을 모두 완료한 일정' : '약속 시간까지 완료되지 않은 일정'}</Text>
       </View>
     </Card>)}
   </>;

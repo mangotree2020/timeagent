@@ -10,6 +10,7 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import CircleAlert from 'lucide-react-native/icons/circle-alert';
 import CircleCheckBig from 'lucide-react-native/icons/circle-check-big';
 import Clock3 from 'lucide-react-native/icons/clock-3';
+import Diamond from 'lucide-react-native/icons/diamond';
 import CloudFog from 'lucide-react-native/icons/cloud-fog';
 import CloudLightning from 'lucide-react-native/icons/cloud-lightning';
 import CloudRain from 'lucide-react-native/icons/cloud-rain';
@@ -53,6 +54,7 @@ const icons = {
   error: CircleAlert,
   success: CircleCheckBig,
   time: Clock3,
+  achievement: Diamond,
   weatherCloudy: CloudSun,
   weatherFog: CloudFog,
   weatherRain: CloudRain,

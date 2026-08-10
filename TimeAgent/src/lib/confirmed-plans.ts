@@ -15,6 +15,11 @@ export type ConfirmedSchedulePlan = {
   prepStartAt: number;
   confirmedAt: number;
   state: ConfirmedPlanState;
+  completion?: {
+    completedAt: number;
+    onTime: boolean;
+    delayMinutes: number;
+  };
   notificationIdentifier?: string;
 };
 
@@ -64,6 +69,29 @@ export function markConfirmedPlanState(
   state: ConfirmedPlanState,
 ) {
   return plans.map((plan) => plan.id === id ? { ...plan, state } : plan);
+}
+
+export function completeConfirmedPlan(
+  plans: ConfirmedSchedulePlan[],
+  id: string,
+  completion: NonNullable<ConfirmedSchedulePlan['completion']>,
+) {
+  return plans.map((plan) => plan.id === id ? { ...plan, state: 'completed' as const, completion } : plan);
+}
+
+export function currentOnTimeArrivalStreak(plans: ConfirmedSchedulePlan[]) {
+  const closed = plans
+    .filter((plan) => plan.state === 'completed' || plan.state === 'incomplete')
+    .sort((left, right) => (
+      (right.completion?.completedAt ?? right.appointmentAt)
+      - (left.completion?.completedAt ?? left.appointmentAt)
+    ));
+  let streak = 0;
+  for (const plan of closed) {
+    if (plan.state !== 'completed' || plan.completion?.onTime !== true) break;
+    streak += 1;
+  }
+  return streak;
 }
 
 export function plansForLocalDate(plans: ConfirmedSchedulePlan[], dateOrTimestamp: Date | number) {
@@ -183,6 +211,12 @@ function isConfirmedSchedulePlan(value: unknown): value is ConfirmedSchedulePlan
     && isFiniteNumber(value.prepStartAt)
     && isFiniteNumber(value.confirmedAt)
     && (value.state === 'scheduled' || value.state === 'active' || value.state === 'completed' || value.state === 'incomplete')
+    && (value.completion === undefined || (
+      isRecord(value.completion)
+      && isFiniteNumber(value.completion.completedAt)
+      && typeof value.completion.onTime === 'boolean'
+      && isFiniteNumber(value.completion.delayMinutes)
+    ))
     && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string');
 }
 

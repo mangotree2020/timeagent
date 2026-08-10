@@ -1,7 +1,9 @@
 import { createSchedulePlan } from '../planning';
 import { createDefaultScheduleDraft } from '../schedule-draft';
 import {
+  completeConfirmedPlan,
   confirmSchedulePlan,
+  currentOnTimeArrivalStreak,
   findDueConfirmedPlan,
   formatConfirmedPlanDate,
   loadConfirmedPlans,
@@ -115,6 +117,39 @@ describe('confirmed schedule plans', () => {
     expect(settled.find((plan) => plan.id === elapsed.id)?.state).toBe('incomplete');
     expect(settled.find((plan) => plan.id === completed.id)?.state).toBe('completed');
     expect(settled.find((plan) => plan.id === future.id)?.state).toBe('scheduled');
+  });
+
+  test('stores the arrival result and counts only the latest consecutive on-time completions', () => {
+    const first = planAt('첫 약속', '10:00', morning);
+    const late = planAt('늦은 약속', '11:00', morning + 1);
+    const third = planAt('세 번째 약속', '12:00', morning + 2);
+    const latest = planAt('최근 약속', '13:00', morning + 3);
+    let plans = [first, late, third, latest];
+
+    plans = completeConfirmedPlan(plans, first.id, { completedAt: morning + 10, onTime: true, delayMinutes: 0 });
+    plans = completeConfirmedPlan(plans, late.id, { completedAt: morning + 20, onTime: false, delayMinutes: 7 });
+    plans = completeConfirmedPlan(plans, third.id, { completedAt: morning + 30, onTime: true, delayMinutes: 0 });
+    plans = completeConfirmedPlan(plans, latest.id, { completedAt: morning + 40, onTime: true, delayMinutes: 1 });
+
+    expect(plans.find((plan) => plan.id === latest.id)).toMatchObject({
+      state: 'completed',
+      completion: { completedAt: morning + 40, onTime: true, delayMinutes: 1 },
+    });
+    expect(currentOnTimeArrivalStreak(plans)).toBe(2);
+  });
+
+  test('an incomplete or unknown completed result breaks the current arrival streak', () => {
+    const scheduled = planAt('정시 약속', '10:00', morning);
+    const onTime = completeConfirmedPlan([scheduled], scheduled.id, {
+      completedAt: morning + 10,
+      onTime: true,
+      delayMinutes: 0,
+    })[0];
+    const incomplete = { ...planAt('미완료 약속', '11:00', morning + 1), state: 'incomplete' as const, appointmentAt: morning + 20 };
+    const unknown = { ...planAt('이전 완료 약속', '09:00', morning - 1), state: 'completed' as const, appointmentAt: morning + 30 };
+
+    expect(currentOnTimeArrivalStreak([onTime, incomplete])).toBe(0);
+    expect(currentOnTimeArrivalStreak([onTime, unknown])).toBe(0);
   });
 
   test('does not rewrite plans before their appointment time', () => {
