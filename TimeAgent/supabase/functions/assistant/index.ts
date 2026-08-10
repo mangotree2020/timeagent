@@ -42,6 +42,7 @@ Deno.serve(async (request) => {
       history: body.history.slice(-MAX_HISTORY),
       input: body.input,
       clientContext: body.clientContext,
+      flowContext: body.flowContext,
     };
     const response = await geminiRequest(
       GEMINI_INTERACTIONS_URL,
@@ -122,12 +123,13 @@ function invalidResponse() {
   return new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
 }
 
-function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string; localDate: string } } {
+function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string; localDate: string }; flowContext: GeminiAssistantTurn["flowContext"] } {
   if (!isRecord(value)
     || typeof value.conversationId !== "string"
     || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.conversationId)
     || !isRecord(value.draft)
     || !isClientContext(value.clientContext)
+    || !isFlowContext(value.flowContext)
     || !Array.isArray(value.history)
     || value.history.length > 50
     || !value.history.every((turn) => isRecord(turn) && (turn.role === "user" || turn.role === "assistant") && validText(turn.text, 1_000))
@@ -139,6 +141,13 @@ function isRequestBody(value: unknown): value is { conversationId: string; draft
     && value.input.base64.length <= MAX_AUDIO_BASE64
     && typeof value.input.mimeType === "string"
     && normalizeGeminiAudioMimeType(value.input.mimeType) !== null;
+}
+
+function isFlowContext(value: unknown): value is GeminiAssistantTurn["flowContext"] {
+  if (!isRecord(value) || (value.mode !== "guided" && value.mode !== "one-shot")) return false;
+  const validFields = ["title", "dateTime", "destination", "transport"];
+  return (value.guidedField === undefined || (typeof value.guidedField === "string" && validFields.includes(value.guidedField)))
+    && (value.guidedPrompt === undefined || validText(value.guidedPrompt, 200));
 }
 
 function isClientContext(value: unknown): value is { nowIso: string; timezone: string; localDate: string } {

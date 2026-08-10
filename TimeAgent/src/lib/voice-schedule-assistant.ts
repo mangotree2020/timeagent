@@ -26,6 +26,7 @@ export type VoiceScheduleChange = {
 };
 
 export type GuidedVoiceField = 'title' | 'dateTime' | 'destination' | 'transport';
+export type VoiceActivityState = { heardSpeech: boolean; silenceSinceMs: number | null };
 export const GUIDED_VOICE_QUESTIONS: { field: GuidedVoiceField; prompt: string }[] = [
   { field: 'title', prompt: '안녕! 새 약속 잡아줄게. 무슨 약속이야?' },
   { field: 'dateTime', prompt: '좋아. 언제 만나?' },
@@ -56,6 +57,46 @@ export function resolveSpokenDateReference(text: string, now = Date.now()) {
 export function completeGuidedVoicePatch(field: GuidedVoiceField, transcript: string, patch: VoiceSchedulePatch, now = Date.now()) {
   if (field !== 'dateTime' || patch.date) return patch;
   return { ...patch, date: resolveSpokenDateReference(transcript, now) };
+}
+
+export function isGuidedVoiceFieldCaptured(field: GuidedVoiceField, patch: VoiceSchedulePatch) {
+  if (field === 'title') return Boolean(patch.title?.trim());
+  if (field === 'dateTime') return Boolean(patch.appointmentTime?.trim());
+  if (field === 'destination') return Boolean(patch.destination?.trim());
+  return Boolean(patch.transport);
+}
+
+export function voicePatchForGuidedField(field: GuidedVoiceField, patch: VoiceSchedulePatch): VoiceSchedulePatch {
+  if (field === 'title') return patch.title ? { title: patch.title } : {};
+  if (field === 'dateTime') return {
+    ...(patch.date ? { date: patch.date } : {}),
+    ...(patch.appointmentTime ? { appointmentTime: patch.appointmentTime } : {}),
+  };
+  if (field === 'destination') return {
+    ...(patch.destination ? { destination: patch.destination } : {}),
+    ...(patch.destinationAddress ? { destinationAddress: patch.destinationAddress } : {}),
+  };
+  return patch.transport ? { transport: patch.transport } : {};
+}
+
+export function updateVoiceActivity(
+  previous: VoiceActivityState,
+  metering: number | undefined,
+  durationMillis: number,
+  { speechThresholdDb = -55, minimumListeningMs = 600, trailingSilenceMs = 1_200 } = {},
+) {
+  if (metering === undefined || durationMillis < minimumListeningMs) {
+    return { state: previous, shouldFinish: false };
+  }
+  if (metering >= speechThresholdDb) {
+    return { state: { heardSpeech: true, silenceSinceMs: null }, shouldFinish: false };
+  }
+  if (!previous.heardSpeech) return { state: previous, shouldFinish: false };
+  const silenceSinceMs = previous.silenceSinceMs ?? durationMillis;
+  return {
+    state: { heardSpeech: true, silenceSinceMs },
+    shouldFinish: durationMillis - silenceSinceMs >= trailingSilenceMs,
+  };
 }
 
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];

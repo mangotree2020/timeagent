@@ -70,6 +70,7 @@ describe('SupabaseVoiceScheduleProvider', () => {
       draft: createDefaultScheduleDraft(),
       history: [{ role: 'assistant', text: '언제 만나는 약속인가요?' }],
       input: { kind: 'text', text: '내일 오전 열 시 반이야' },
+      flowContext: { mode: 'guided', guidedField: 'dateTime', guidedPrompt: '좋아. 언제 만나?' },
     });
 
     const [url, request] = fetcher.mock.calls[0];
@@ -78,6 +79,7 @@ describe('SupabaseVoiceScheduleProvider', () => {
     expect(JSON.parse(String(request.body))).toMatchObject({
       conversationId: 'device-session-1',
       input: { kind: 'text', text: '내일 오전 열 시 반이야' },
+      flowContext: { mode: 'guided', guidedField: 'dateTime' },
       clientContext: {
         nowIso: '2026-07-27T06:30:00.000Z',
         timezone: 'Asia/Seoul',

@@ -50,8 +50,9 @@
 ## P1 - 네이티브 핵심
 
 - [x] 새 일정 음성 AI 도우미
-  - Given 새 일정 등록을 시작함, When `음성으로 일정 만들기`를 누르면, Then 운영체제 마이크 팝업보다 먼저 음성을 사용하는 이유와 직접 입력 대체 경로를 보여준다.
-  - Given 마이크를 허용함, When 최대 60초의 약속 내용을 말하고 녹음을 마치면, Then 인식한 문장·AI 확인 문장·부족한 정보 질문·현재 일정 변경 제안을 텍스트로 함께 보여주고 화면 읽기를 사용하지 않을 때만 확인 문장을 음성으로 읽는다.
+  - Given 홈에서 음성 일정을 선택함, When 음성 화면이 열리면, Then AI 비서가 첫 질문을 말하고 별도의 마이크 시작 버튼 없이 자동으로 듣기 시작하며 직접 입력 `+` 대체 경로를 함께 보여준다.
+  - Given 마이크를 허용함, When 약속 내용을 말한 뒤 1.2초 이상 침묵하면, Then 앱이 자동으로 녹음을 마치고 인식한 문장·AI 확인 문장·부족한 정보 질문·현재 일정 변경 제안을 텍스트로 함께 보여주며 화면 읽기를 사용하지 않을 때만 확인 문장을 음성으로 읽는다.
+  - Given 사용자가 인사·감정·가벼운 잡담을 말함, When 현재 약속 질문에 필요한 정보가 포함되지 않으면, Then AI 비서는 친구처럼 짧게 공감한 뒤 같은 일정 질문으로 돌아오고 잡담을 일정 값으로 저장하거나 다음 단계로 넘기지 않는다.
   - Given AI가 일정 변경을 제안함, When 사용자가 `이 일정에 적용`을 누르기 전이거나 제안을 거절하면, Then 자동 저장 초안은 바뀌지 않는다.
   - Given 사용자가 변경 제안을 적용함, When 일정 등록 화면으로 돌아오면, Then 일정명·날짜·시간·목적지·이동수단·준비 행동 변경이 초안에 병합되고 목적지가 달라졌다면 기존 좌표를 초기화한다.
   - Given 일정 정보가 부족함, When AI 질문에 음성 또는 텍스트로 답하면, Then 직전 제안을 포함한 제한된 대화 문맥으로 제안을 보완하며 사용자가 적용하기 전에는 초안을 변경하지 않는다.
@@ -776,3 +777,10 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Implement: 확정 계획용 `plansForLocalDateRange`와 기기 캘린더용 `calendarEventsForLocalDateRange` 순수 함수를 추가했다. 홈 기기 캘린더 조회 기간을 1일에서 2일로 확장하고 제목·로딩·권한·오류·빈 상태 문구를 오늘·내일 범위로 통일했다. 각 캘린더 카드에는 `오늘/내일`과 `종일/진행 중/시각`을 두 줄로 표시하고, 다음 약속과 등록 약속 목록도 같은 이틀 범위를 사용한다. `오늘의 준비 계획`은 당일 계획만 유지한다.
 - Verify: 날짜 범위 단위 테스트 2건을 추가해 오늘·내일 포함, 모레 제외, 시간순 정렬과 날짜 레이블을 검증했다. `npm run verify` 33개 스위트·166/166 통과. 360×800·390×844·430×932에서 홈 기준 이미지와 오늘·내일 기기 약속·확정 약속 흐름 9/9가 통과했으며 가로 잘림이 없었다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 설치·실행했다. 실제 홈에서 날씨 아래 `오늘·내일 약속 4개`, 오늘 종일·오늘 20:00·내일 종일 항목의 날짜·시간순 표시를 확인했다. APK SHA-256은 `92102376e01f76460d770e32a8acc2f0abad39341a885726dd9e6c8676c6361b`이다.
 - Evidence: `src/lib/confirmed-plans.ts`, `src/lib/device-calendar.ts`, `src/app/index.tsx`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/lib/__tests__/device-calendar.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `docs/HARNESS.md`, `tmp/timeagent-today-tomorrow.png`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-10 AI 비서 자동 음성 대화 (완료)
+
+- Accept: 홈 마이크에서 음성 약속 화면을 열면 AI 비서가 즉시 첫 질문을 음성으로 안내하고 자동 녹음을 시작한다. 사용자는 매 단계마다 마이크를 눌러 시작하거나 종료하지 않아도 되며, 발화 뒤 침묵을 감지해 자동 제출하고 다음 질문을 말한 뒤 다시 듣는다. 단계별 모드는 약속 이름·날짜와 시간·장소·교통수단을 실제로 확인한 경우에만 다음 단계로 진행한다. 인사·감정·가벼운 잡담에는 친구처럼 짧고 자연스럽게 응답한 뒤 현재 질문으로 복귀하며 잡담을 일정 값으로 저장하지 않는다. 사용자는 마이크 버튼으로 즉시 제출하거나 `+`로 직접 등록할 수 있다.
+- Implement: `speaking → recording → processing` 연속 상태와 화면 최초 1회 자동 시작·모드 전환 세대 토큰·중복 제출 잠금을 추가했다. 녹음 metering에서 실제 음성을 감지한 뒤 1.2초 연속 침묵하면 자동 종료하며, 최대 60초 동안 발화가 감지되지 않으면 빈 녹음을 AI에 보내지 않고 재시도 안내를 표시한다. Samsung 실기기에서 발견한 AI 음성 에코 재입력을 막기 위해 TTS 완료 후 700ms의 오디오 해제 간격을 두고, 기기 거리에서도 발화를 잡도록 감지 기준을 -55dB로 조정했다. Gemini 요청에 guided/one-shot·현재 필드·현재 질문 문맥을 추가하고, 친구 같은 짧은 공감·잡담 후 일정 복귀·비답변 patch 금지·실제 필드 확인 시에만 진행하는 운영 역할을 배포했다. UI에는 `AI 비서 · 자동 음성 대화 · 켜짐`, 자동 듣기·말하기·처리 상태를 텍스트로 표시한다.
+- Verify: 필드 확인 전 단계 유지와 발화 후 침묵 자동 종료를 단위 테스트로 고정했고 `npm run verify` 33개 스위트·168/168이 통과했다. 운영 `assistant` 함수의 `/health`가 Gemini configured 상태를 반환했고 합성 잡담 `오늘 좀 지쳤어` 실호출에서 다정한 응답, 같은 약속 질문, 모든 일정 patch null을 확인했다. 실제 제목 답변에서는 제목 patch만 채워지고 다음 날짜 질문으로 이어졌다. 360×800·390×844·430×932에서 자동 듣기·단계별 결과·한 번에 말하기·다크 모드 시각 및 상호작용 15/15를 기준 갱신 후 재실행해 통과했다. 출시 서명 arm64 APK 빌드와 Samsung Android 12 `SM-N971N` 덮어 설치가 성공했고, 홈 마이크를 한 번 누른 뒤 별도의 화면 내 마이크 조작 없이 첫 안내 음성에서 `듣고 있어요`로 자동 전환되는 것을 확인했다. 실기기 과정에서 발견한 TTS 꼬리 에코는 안전 간격을 적용한 최종 APK에서 재현되지 않았고 치명적 Android·React Native 런타임 오류도 없었다. APK SHA-256은 `40738940d4bf2b8789948c2a66aefc9d4f281782ed7ef510062d287883a7d417`이다.
+- Evidence: `src/app/voice-schedule.tsx`, `src/lib/voice-schedule-assistant.ts`, `src/lib/voice-schedule-api.ts`, `supabase/functions/_shared/gemini-assistant.ts`, `supabase/functions/assistant/index.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `src/lib/__tests__/voice-schedule-api.test.ts`, `src/lib/__tests__/gemini-assistant.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/voice-schedule-*.png`, `docs/HARNESS.md`, `tmp/timeagent-ai-auto-listening-final.png`, `android/app/build/outputs/apk/release/app-release.apk`.

@@ -4,8 +4,10 @@ import {
   describeVoiceScheduleChanges,
   completeGuidedVoicePatch,
   GUIDED_VOICE_QUESTIONS,
+  isGuidedVoiceFieldCaptured,
   normalizeVoiceScheduleReply,
   resolveSpokenDateReference,
+  updateVoiceActivity,
 } from '@/lib/voice-schedule-assistant';
 
 describe('voice schedule assistant domain', () => {
@@ -91,5 +93,25 @@ describe('voice schedule assistant domain', () => {
     expect(resolveSpokenDateReference('이번 주 토요일 저녁 7시', new Date('2026-08-03T09:00:00+09:00').getTime())).toBe('8월 8일 (토요일)');
     expect(resolveSpokenDateReference('8월 19일 오후 2시', saturday)).toBe('8월 19일 (수요일)');
     expect(completeGuidedVoicePatch('dateTime', '저녁 7시', { appointmentTime: '19:00' }, saturday)).toEqual({ appointmentTime: '19:00', date: '8월 8일 (오늘)' });
+  });
+
+  it('advances a guided step only when the requested schedule field was actually captured', () => {
+    expect(isGuidedVoiceFieldCaptured('title', {})).toBe(false);
+    expect(isGuidedVoiceFieldCaptured('title', { title: '치과 진료' })).toBe(true);
+    expect(isGuidedVoiceFieldCaptured('dateTime', { date: '2026-08-11' })).toBe(false);
+    expect(isGuidedVoiceFieldCaptured('dateTime', { appointmentTime: '10:30' })).toBe(true);
+    expect(isGuidedVoiceFieldCaptured('destination', { destination: '연산동 치과' })).toBe(true);
+    expect(isGuidedVoiceFieldCaptured('transport', { transport: '지하철' })).toBe(true);
+  });
+
+  it('detects speech followed by sustained silence for hands-free turn completion', () => {
+    let activity = updateVoiceActivity({ heardSpeech: false, silenceSinceMs: null }, -65, 400);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -24, 900);
+    expect(activity.state.heardSpeech).toBe(true);
+    activity = updateVoiceActivity(activity.state, -60, 1_400);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -60, 2_650);
+    expect(activity.shouldFinish).toBe(true);
   });
 });

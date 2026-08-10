@@ -1,5 +1,5 @@
 import { ScheduleDraft } from '@/lib/schedule-draft';
-import { normalizeVoiceScheduleReply, VoiceScheduleAssistantReply } from '@/lib/voice-schedule-assistant';
+import { GuidedVoiceField, normalizeVoiceScheduleReply, VoiceScheduleAssistantReply } from '@/lib/voice-schedule-assistant';
 
 export type VoiceScheduleHistoryTurn = { role: 'user' | 'assistant'; text: string };
 export type VoiceScheduleInput =
@@ -11,6 +11,11 @@ export type VoiceScheduleTurnRequest = {
   draft: ScheduleDraft;
   history: VoiceScheduleHistoryTurn[];
   input: VoiceScheduleInput;
+  flowContext?: {
+    mode: 'guided' | 'one-shot';
+    guidedField?: GuidedVoiceField;
+    guidedPrompt?: string;
+  };
   signal?: AbortSignal;
 };
 
@@ -94,6 +99,7 @@ export class SupabaseVoiceScheduleProvider {
           draft: request.draft,
           history: request.history.slice(-8),
           input,
+          flowContext: request.flowContext ?? { mode: 'one-shot' },
           clientContext: {
             nowIso: now.toISOString(),
             timezone,
@@ -148,6 +154,14 @@ function validateRequest(request: VoiceScheduleTurnRequest) {
     if (!request.input.text.trim() || request.input.text.length > 2_000) throw invalidInput();
   } else if (!request.input.base64 || request.input.base64.length > 7_000_000 || !inferVoiceScheduleAudioMimeType('', request.input.mimeType)) {
     throw invalidInput();
+  }
+  if (request.flowContext) {
+    const validFields: GuidedVoiceField[] = ['title', 'dateTime', 'destination', 'transport'];
+    if ((request.flowContext.mode !== 'guided' && request.flowContext.mode !== 'one-shot')
+      || (request.flowContext.guidedField !== undefined && !validFields.includes(request.flowContext.guidedField))
+      || (request.flowContext.guidedPrompt !== undefined && (!request.flowContext.guidedPrompt.trim() || request.flowContext.guidedPrompt.length > 200))) {
+      throw invalidInput();
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 # 지도·경로 연동
 
-음성 일정 AI 연동은 [Client Secret 설정 가이드](CLIENT_SECRET_SETUP.md)의 `assistant` Edge Function 경계를 따른다. 앱은 최대 60초 오디오 또는 직접 입력 텍스트와 현재 초안·최근 8개 대화·상대 날짜 해석용 기기 시각·시간대·현지 날짜만 전송한다. Android M4A MIME 변형은 Gemini 요청 전에 `audio/m4a`로 정규화한다. 서버는 Gemini Interactions API의 `gemini-3.1-flash-lite` 인라인 오디오 입력과 JSON Schema 구조화 출력을 사용해 전사문과 일정 제안을 한 요청에서 반환한다. `store: false`로 요청하며 원본 오디오와 대화를 서버에 저장하거나 로그로 남기지 않는다. 앱은 제안을 자동 반영하지 않고 사용자의 `이 일정에 적용` 이후에만 초안을 변경한다.
+음성 일정 AI 연동은 [Client Secret 설정 가이드](CLIENT_SECRET_SETUP.md)의 `assistant` Edge Function 경계를 따른다. 앱은 최대 60초 오디오 또는 직접 입력 텍스트와 현재 초안·최근 8개 대화·상대 날짜 해석용 기기 시각·시간대·현지 날짜, 단계별/한 번에 모드와 현재 확인 필드만 전송한다. Android M4A MIME 변형은 Gemini 요청 전에 `audio/m4a`로 정규화한다. 서버는 Gemini Interactions API의 `gemini-3.1-flash-lite` 인라인 오디오 입력과 JSON Schema 구조화 출력을 사용해 전사문과 일정 제안을 한 요청에서 반환한다. 단계별 모드는 실제 필드 답변이 있을 때만 진행하고, 가벼운 잡담은 친구처럼 짧게 응답한 뒤 현재 일정 질문으로 복귀하며 patch에 넣지 않는다. `store: false`로 요청해 원본 오디오와 대화를 서버에 저장하거나 로그로 남기지 않는다.
 
 운영 함수 주소는 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/assistant`다. Gemini 전환 코드를 2026-07-28 배포하고 `GEMINI_API_KEY` 등록 후 `/health`, 한국어 텍스트, M4A 한국어 음성, JSON Schema 일정 제안 실호출을 확인했다. Android 12 `SM-N971N`에서도 음성 전사·제안 표시·명시적 적용과 KST 기준 상대 날짜를 확인했으며, 고정 평가셋의 품질·지연·비용 기준선도 기록했다.
 

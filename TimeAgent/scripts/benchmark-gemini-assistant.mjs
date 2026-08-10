@@ -54,7 +54,8 @@ for (const fixture of cases) {
           nowIso: '2026-07-27T18:30:00.000Z',
           timezone: 'Asia/Seoul',
           localDate: '2026-07-28'
-        }
+        },
+        flowContext: { mode: 'one-shot' }
       }),
       signal: AbortSignal.timeout(60_000)
     });

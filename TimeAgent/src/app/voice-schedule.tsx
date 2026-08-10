@@ -8,7 +8,7 @@ import {
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,6 +22,9 @@ import {
   applyVoiceSchedulePatch,
   completeGuidedVoicePatch,
   GUIDED_VOICE_QUESTIONS,
+  isGuidedVoiceFieldCaptured,
+  updateVoiceActivity,
+  voicePatchForGuidedField,
   VoiceScheduleAssistantReply,
 } from '@/lib/voice-schedule-assistant';
 import {
@@ -34,7 +37,7 @@ import { useSchedule } from '@/state/schedule-context';
 import { useAppTheme } from '@/state/theme-context';
 
 type VoiceMode = 'guided' | 'one-shot';
-type FlowStatus = 'ready' | 'recording' | 'processing' | 'result' | 'error';
+type FlowStatus = 'ready' | 'speaking' | 'recording' | 'processing' | 'result' | 'error';
 type ChatMessage = { id: string; role: 'assistant' | 'user'; text: string };
 
 const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
@@ -45,19 +48,23 @@ const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
   patch: { title: '지수랑 저녁 약속', date: '8월 8일 (토요일)', appointmentTime: '19:00', destination: '홍대입구역 근처', transport: '지하철' },
 };
 
+const TTS_RELEASE_DELAY_MS = 700;
+
 export default function VoiceScheduleScreen() {
   const params = useLocalSearchParams<{ e2eState?: string; e2eMode?: string }>();
   const insets = useSafeAreaInsets();
   const fixtureResult = params.e2eState === 'proposal' || params.e2eState === 'result';
+  const fixtureAutoListening = params.e2eState === 'auto-listening';
   const initialMode: VoiceMode = params.e2eMode === 'one-shot' ? 'one-shot' : 'guided';
   const { draft, finalizeDraftWith } = useSchedule();
   const { mode: colorMode, palette } = useAppTheme();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 250);
+  const recordingOptions = useMemo(() => ({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true }), []);
+  const recorder = useAudioRecorder(recordingOptions);
+  const recorderState = useAudioRecorderState(recorder, 150);
   const provider = useMemo(() => { try { return createConfiguredVoiceScheduleProvider(); } catch { return null; } }, []);
   const conversationId = `voice_${useId().replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(initialMode);
-  const [status, setStatus] = useState<FlowStatus>(fixtureResult ? 'result' : 'ready');
+  const [status, setStatus] = useState<FlowStatus>(fixtureResult ? 'result' : fixtureAutoListening ? 'recording' : 'ready');
   const [guidedStep, setGuidedStep] = useState(fixtureResult ? 4 : 0);
   const [messages, setMessages] = useState<ChatMessage[]>(fixtureResult ? [
     { id: 'a0', role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt },
@@ -73,22 +80,15 @@ export default function VoiceScheduleScreen() {
   const [proposal, setProposal] = useState<ScheduleDraft | null>(() => fixtureResult ? applyVoiceSchedulePatch(draft, RESULT_FIXTURE.patch) : null);
   const [history, setHistory] = useState<VoiceScheduleHistoryTurn[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
+  const mountedRef = useRef(true);
+  const autoStartedRef = useRef(false);
+  const flowGenerationRef = useRef(0);
+  const finishingRef = useRef(false);
+  const recordingStartedRef = useRef(false);
+  const voiceActivityRef = useRef({ heardSpeech: false, silenceSinceMs: null as number | null });
   const seconds = Math.min(60, Math.ceil(recorderState.durationMillis / 1_000));
 
-  useEffect(() => () => { void Speech.stop(); }, []);
-
-  const changeMode = (next: VoiceMode) => {
-    if (status === 'recording' || status === 'processing') return;
-    setVoiceMode(next);
-    setStatus('ready');
-    setProposal(null);
-    setGuidedStep(0);
-    setMessages(next === 'guided' ? [{ id: `a-${Date.now()}`, role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt }] : []);
-    setHistory([]);
-    setErrorMessage('');
-  };
-
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     setErrorMessage('');
     try {
       const permission = await requestRecordingPermissionsAsync();
@@ -99,15 +99,100 @@ export default function VoiceScheduleScreen() {
       }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
+      voiceActivityRef.current = { heardSpeech: false, silenceSinceMs: null };
+      finishingRef.current = false;
+      recordingStartedRef.current = true;
       recorder.record({ forDuration: 60 });
       setStatus('recording');
     } catch {
       setStatus('error');
-      setErrorMessage('녹음을 시작하지 못했어요. 다시 누르거나 + 버튼으로 직접 등록해 주세요.');
+      setErrorMessage('음성 대화를 시작하지 못했어요. 다시 시작하거나 + 버튼으로 직접 등록해 주세요.');
     }
-  };
+  }, [recorder]);
 
-  const finishRecording = async () => {
+  const speakThenListen = useCallback(async (text: string, generation = flowGenerationRef.current) => {
+    if (!mountedRef.current || generation !== flowGenerationRef.current) return;
+    if (await canUseAppTts()) {
+      setStatus('speaking');
+      await new Promise<void>((resolve) => {
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          resolve();
+        };
+        const fallback = setTimeout(finish, 8_000);
+        const finishAndClear = () => { clearTimeout(fallback); finish(); };
+        Speech.speak(text, { language: 'ko-KR', rate: 0.96, onDone: finishAndClear, onStopped: finishAndClear, onError: finishAndClear });
+      });
+      // Some Android devices keep the speaker path active briefly after onDone.
+      // Let that tail clear so the assistant does not record its own last words.
+      await new Promise<void>((resolve) => setTimeout(resolve, TTS_RELEASE_DELAY_MS));
+    }
+    if (mountedRef.current && generation === flowGenerationRef.current) await startRecording();
+  }, [startRecording]);
+
+  const submitTurn = useCallback(async (input: VoiceScheduleInput) => {
+    setStatus('processing');
+    setErrorMessage('');
+    if (!provider) {
+      setStatus('error');
+      setErrorMessage('AI 비서 연결을 확인할 수 없어요. 잠시 후 다시 시작하거나 + 버튼으로 직접 등록해 주세요.');
+      return;
+    }
+    try {
+      const base = proposal ?? draft;
+      const guidedQuestion = voiceMode === 'guided' ? GUIDED_VOICE_QUESTIONS[Math.min(guidedStep, 3)] : null;
+      const reply = await provider.submitTurn({
+        conversationId,
+        draft: base,
+        history,
+        input,
+        flowContext: {
+          mode: voiceMode,
+          ...(guidedQuestion ? { guidedField: guidedQuestion.field, guidedPrompt: guidedQuestion.prompt } : {}),
+        },
+      });
+      const transcript = reply.transcript || '말한 내용';
+      const fieldCaptured = guidedQuestion ? isGuidedVoiceFieldCaptured(guidedQuestion.field, reply.patch) : false;
+      const guidedPatch = guidedQuestion ? voicePatchForGuidedField(guidedQuestion.field, reply.patch) : reply.patch;
+      const patch = guidedQuestion && fieldCaptured
+        ? completeGuidedVoicePatch(guidedQuestion.field, transcript, guidedPatch)
+        : guidedPatch;
+      const nextProposal = applyVoiceSchedulePatch(base, patch);
+      setProposal(nextProposal);
+      if (voiceMode === 'one-shot') {
+        const assistantText = reply.assistantMessage || '다 됐어. 아래에서 확인해 줘.';
+        setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: assistantText }].slice(-8) as VoiceScheduleHistoryTurn[]);
+        setMessages([{ id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: assistantText }]);
+        setStatus('result');
+        return;
+      }
+      const nextStep = fieldCaptured ? guidedStep + 1 : guidedStep;
+      const nextQuestion = GUIDED_VOICE_QUESTIONS[nextStep]?.prompt;
+      const assistantText = appendAssistantPrompt(
+        reply.assistantMessage,
+        nextQuestion ?? '다 됐어. 아래에서 확인해 줘.',
+        reply.question,
+      );
+      setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: assistantText }].slice(-8) as VoiceScheduleHistoryTurn[]);
+      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}-next`, role: 'assistant', text: assistantText }]);
+      setGuidedStep(nextStep);
+      if (nextStep >= GUIDED_VOICE_QUESTIONS.length) {
+        setStatus('result');
+      } else {
+        void speakThenListen(assistantText);
+      }
+    } catch (error) {
+      setStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'AI 비서가 말을 확인하지 못했어요. 다시 시작해 주세요.');
+    }
+  }, [conversationId, draft, guidedStep, history, proposal, provider, speakThenListen, voiceMode]);
+
+  const finishRecording = useCallback(async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    recordingStartedRef.current = false;
     try {
       if (recorderState.isRecording) await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
@@ -116,43 +201,74 @@ export default function VoiceScheduleScreen() {
       await submitTurn(await recordingToInput(uri));
     } catch {
       setStatus('error');
-      setErrorMessage('말한 내용을 확인하지 못했어요. 마이크를 다시 눌러 주세요.');
+      setErrorMessage('말한 내용을 확인하지 못했어요. AI 음성 대화를 다시 시작해 주세요.');
+    } finally {
+      finishingRef.current = false;
     }
-  };
+  }, [recorder, recorderState.isRecording, recorderState.url, submitTurn]);
 
-  const submitTurn = async (input: VoiceScheduleInput) => {
-    setStatus('processing');
-    setErrorMessage('');
-    if (!provider) {
-      setStatus('error');
-      setErrorMessage('AI 연결을 확인할 수 없어요. 잠시 후 다시 시도하거나 + 버튼으로 직접 등록해 주세요.');
-      return;
+  const changeMode = useCallback(async (next: VoiceMode) => {
+    if (next === voiceMode || status === 'processing') return;
+    const generation = ++flowGenerationRef.current;
+    await Speech.stop();
+    if (recorder.isRecording) {
+      recordingStartedRef.current = false;
+      try { await recorder.stop(); } catch { /* The recorder may already be stopping. */ }
+      const uri = recorder.uri;
+      if (uri) try { new File(uri).delete(); } catch { /* Cache may already be gone. */ }
     }
-    try {
-      const base = proposal ?? draft;
-      const reply = await provider.submitTurn({ conversationId, draft: base, history, input });
-      const transcript = reply.transcript || '말한 내용';
-      const field = voiceMode === 'guided' ? GUIDED_VOICE_QUESTIONS[Math.min(guidedStep, 3)].field : null;
-      const patch = field ? completeGuidedVoicePatch(field, transcript, reply.patch) : reply.patch;
-      const nextProposal = applyVoiceSchedulePatch(base, patch);
-      setProposal(nextProposal);
-      setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: reply.assistantMessage }].slice(-8) as VoiceScheduleHistoryTurn[]);
-      if (voiceMode === 'one-shot') {
-        setMessages([{ id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: '다 됐어. 아래에서 확인해 줘.' }]);
-        setStatus('result');
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    setVoiceMode(next);
+    setStatus('ready');
+    setProposal(null);
+    setGuidedStep(0);
+    setMessages(next === 'guided' ? [{ id: `a-${Date.now()}`, role: 'assistant', text: GUIDED_VOICE_QUESTIONS[0].prompt }] : []);
+    setHistory([]);
+    setErrorMessage('');
+    if (Platform.OS !== 'web') void speakThenListen(initialAssistantPrompt(next), generation);
+  }, [recorder, speakThenListen, status, voiceMode]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      flowGenerationRef.current += 1;
+      void Speech.stop();
+      if (recorder.isRecording) void recorder.stop();
+    };
+  }, [recorder]);
+
+  useEffect(() => {
+    if (autoStartedRef.current || fixtureResult || fixtureAutoListening || Platform.OS === 'web') return;
+    autoStartedRef.current = true;
+    const generation = ++flowGenerationRef.current;
+    void speakThenListen(initialAssistantPrompt(initialMode), generation);
+  }, [fixtureAutoListening, fixtureResult, initialMode, speakThenListen]);
+
+  useEffect(() => {
+    if (status !== 'recording' || fixtureAutoListening) return;
+    const activity = updateVoiceActivity(voiceActivityRef.current, recorderState.metering, recorderState.durationMillis);
+    voiceActivityRef.current = activity.state;
+    if (activity.shouldFinish) void finishRecording();
+  }, [finishRecording, fixtureAutoListening, recorderState.durationMillis, recorderState.metering, status]);
+
+  useEffect(() => {
+    if (status === 'recording'
+      && recordingStartedRef.current
+      && !recorderState.isRecording
+      && (recorderState.url || recorder.uri)) {
+      if (!voiceActivityRef.current.heardSpeech) {
+        recordingStartedRef.current = false;
+        const uri = recorderState.url || recorder.uri;
+        if (uri) try { new File(uri).delete(); } catch { /* Cache may already be gone. */ }
+        void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        setStatus('error');
+        setErrorMessage('목소리를 듣지 못했어요. 다시 시작하거나 + 버튼으로 직접 등록해 주세요.');
         return;
       }
-      const nextStep = guidedStep + 1;
-      const nextQuestion = GUIDED_VOICE_QUESTIONS[nextStep]?.prompt;
-      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}-next`, role: 'assistant', text: nextQuestion ?? '다 됐어. 아래에서 확인해 줘.' }]);
-      setGuidedStep(nextStep);
-      setStatus(nextStep >= GUIDED_VOICE_QUESTIONS.length ? 'result' : 'ready');
-      if (await canUseAppTts()) Speech.speak(nextQuestion ?? '다 됐어. 아래에서 확인해 줘.', { language: 'ko-KR', rate: 0.96 });
-    } catch (error) {
-      setStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : '음성 약속을 확인하지 못했어요. 다시 말해 주세요.');
+      void finishRecording();
     }
-  };
+  }, [finishRecording, recorder.uri, recorderState.isRecording, recorderState.url, status]);
 
   const createPlan = async () => {
     if (!proposal) return;
@@ -170,6 +286,7 @@ export default function VoiceScheduleScreen() {
           <ModeTab label="단계별로 묻기" selected={voiceMode === 'guided'} onPress={() => changeMode('guided')} palette={palette} />
           <ModeTab label="한 번에 말하기" selected={voiceMode === 'one-shot'} onPress={() => changeMode('one-shot')} palette={palette} />
         </View>
+        <View accessibilityLabel="AI 비서 자동 음성 모드 켜짐" style={[styles.aiMode, { backgroundColor: palette.surface, borderColor: palette.border }]}><View style={[styles.aiModeDot, { backgroundColor: palette.primary }]} /><Text style={[styles.aiModeText, { color: palette.text }]}>AI 비서 · 자동 음성 대화</Text><Text style={[styles.aiModeState, { color: palette.primary }]}>켜짐</Text></View>
 
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
           {voiceMode === 'one-shot' && !messages.length && status !== 'result' ? <View style={styles.oneShotIntro}><Text style={[styles.oneShotTitle, { color: palette.text }]}>약속을 한 번에{`\n`}말해줘</Text><Text style={[styles.example, { color: palette.textMuted, backgroundColor: palette.surface }]}>예시 · “토요일 저녁 7시에 홍대에서{`\n`}지수랑 저녁 약속”</Text></View> : null}
@@ -178,7 +295,7 @@ export default function VoiceScheduleScreen() {
           {errorMessage ? <View style={[styles.error, { backgroundColor: palette.surface, borderColor: '#C2413A' }]}><Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>{Platform.OS !== 'web' ? <Button label="마이크 권한 설정" variant="secondary" onPress={() => void Linking.openSettings()} /> : null}</View> : null}
         </ScrollView>
 
-        {status !== 'result' ? <View style={styles.micArea}><VoicePulseButton active={status === 'recording'} size={72} label={status === 'recording' ? '말하기 완료' : '마이크로 답하기'} onPress={() => status === 'recording' ? void finishRecording() : void startRecording()} /><Text accessibilityLiveRegion="polite" style={[styles.micCaption, { color: palette.textMuted }]}>{status === 'recording' ? `듣고 있어요 · ${seconds}초` : status === 'processing' ? '말한 내용을 확인하고 있어요' : voiceMode === 'guided' ? '마이크를 누르고 대답해 줘' : '마이크를 누르고 한 번에 말해 줘'}</Text></View> : null}
+        {status !== 'result' ? <View style={styles.micArea}><VoicePulseButton active={status === 'recording' || status === 'speaking'} size={72} label={status === 'recording' ? '듣기 중지하고 바로 확인' : status === 'speaking' ? 'AI 비서가 말하는 중' : status === 'processing' ? 'AI 비서가 확인하는 중' : 'AI 음성 대화 다시 시작'} onPress={() => status === 'recording' ? void finishRecording() : status === 'ready' || status === 'error' ? void startRecording() : undefined} /><Text accessibilityLiveRegion="polite" style={[styles.micCaption, { color: palette.textMuted }]}>{status === 'recording' ? `듣고 있어요 · ${seconds}초\n말이 끝나면 자동으로 확인해요` : status === 'speaking' ? 'AI 비서가 말하고 있어요.\n이어서 편하게 말해 주세요.' : status === 'processing' ? 'AI 비서가 이해한 내용을 확인하고 있어요' : 'AI 음성 대화를 다시 시작할 수 있어요'}</Text></View> : null}
         </View>
       </SafeAreaView>
       <Pressable accessibilityRole="button" accessibilityLabel="텍스트로 직접 일정 등록" accessibilityHint="수동 일정 등록 화면으로 전환합니다" onPress={() => router.replace({ pathname: '/create', params: { new: '1' } })} style={({ pressed }) => [styles.manualFab, { backgroundColor: palette.primary, bottom: insets.bottom + 12 }, pressed && styles.pressed]}><AppIcon name="plus" size={28} iconColor="#FFFFFF" strokeWidth={2.8} /></Pressable>
@@ -210,6 +327,21 @@ async function recordingToInput(uri: string): Promise<VoiceScheduleInput> {
   }
 }
 
+function initialAssistantPrompt(mode: VoiceMode) {
+  return mode === 'guided'
+    ? GUIDED_VOICE_QUESTIONS[0].prompt
+    : '편하게 한 번에 말해 줘. 약속 이름, 시간, 장소, 이동 방법을 알아들을게.';
+}
+
+function appendAssistantPrompt(message: string, prompt: string, serverQuestion: string | null) {
+  const response = message.trim();
+  if (!response) return prompt;
+  if (response.includes(prompt)
+    || (serverQuestion && response.includes(serverQuestion))
+    || /[?？]\s*$/.test(response)) return response;
+  return `${response}\n${prompt}`;
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1 },
   safe: { flex: 1 },
@@ -219,6 +351,8 @@ const styles = StyleSheet.create({
   tabs: { minHeight: 48, flexDirection: 'row', borderRadius: radius.md, borderWidth: 1, padding: 3 },
   tab: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
   tabText: { fontSize: 14, fontWeight: '900' },
+  aiMode: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1 },
+  aiModeDot: { width: 8, height: 8, borderRadius: 4 }, aiModeText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '800' }, aiModeState: { fontSize: 13, lineHeight: 18, fontWeight: '900' },
   body: { flex: 1, minHeight: 0 }, bodyContent: { flexGrow: 1, paddingBottom: space.sm }, chat: { gap: space.md, paddingTop: space.lg },
   message: { maxWidth: '82%', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: 18 },
   assistantMessage: { alignSelf: 'flex-start', borderBottomLeftRadius: 5 }, userMessage: { alignSelf: 'flex-end', borderBottomRightRadius: 5 },
@@ -230,7 +364,7 @@ const styles = StyleSheet.create({
   resultLead: { fontSize: 16, lineHeight: 22, fontWeight: '900', marginBottom: 2 },
   resultRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: space.md },
   resultLabel: { width: 45, fontSize: 13, fontWeight: '700' }, resultValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '900' },
-  micArea: { alignItems: 'center', gap: space.sm, paddingBottom: space.sm }, micCaption: { fontSize: 13, fontWeight: '700' },
+  micArea: { alignItems: 'center', gap: space.sm, paddingBottom: space.sm }, micCaption: { maxWidth: 270, minHeight: 38, textAlign: 'center', fontSize: 13, lineHeight: 19, fontWeight: '700' },
   manualFab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', elevation: 10, boxShadow: '0 8px 22px rgba(27,100,218,0.35)' },
   error: { gap: space.md, marginTop: space.lg, padding: space.lg, borderRadius: radius.md, borderWidth: 1 }, errorText: { color: '#C2413A', fontSize: 14, lineHeight: 21, fontWeight: '800' },
   pressed: { opacity: 0.76, transform: [{ scale: 0.96 }] },

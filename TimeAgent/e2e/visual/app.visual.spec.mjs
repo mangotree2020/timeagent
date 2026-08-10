@@ -110,6 +110,7 @@ const screens = [
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 잡을게, 맞아?' },
+  { id: 'voice-schedule-auto', path: '/voice-schedule?e2eState=auto-listening', ready: 'AI 비서 · 자동 음성 대화' },
   { id: 'voice-schedule-one-shot', path: '/voice-schedule?e2eMode=one-shot', ready: '약속을 한 번에\n말해줘' },
   { id: 'calendar-events', path: '/schedules?e2eCalendar=events', ready: '기기 캘린더 일정' },
   { id: 'plan', path: '/plan', ready: '확정된 준비 계획' },
@@ -610,6 +611,14 @@ test('음성 일정 결과로 준비 계획을 만들고 직접 등록으로 전
   await page.goto('/voice-schedule');
   await page.getByRole('button', { name: '텍스트로 직접 일정 등록' }).click();
   await expect(page).toHaveURL(/\/create\?new=1/);
+});
+
+test('음성 일정 화면은 열리자마자 AI 비서 자동 듣기 상태를 보여줌', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=auto-listening');
+  await expect(page.getByLabel('AI 비서 자동 음성 모드 켜짐', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '듣기 중지하고 바로 확인', exact: true })).toBeVisible();
+  await expect(page.getByText('듣고 있어요 · 0초\n말이 끝나면 자동으로 확인해요', { exact: true })).toBeVisible();
+  await expect(page.getByText('마이크를 누르고 대답해 줘', { exact: true })).toHaveCount(0);
 });
 
 test('설정한 다크 모드를 음성 일정 화면에 저장·적용함', async ({ page }) => {
