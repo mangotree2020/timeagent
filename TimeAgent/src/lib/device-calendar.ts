@@ -158,11 +158,54 @@ export function calendarEventsForLocalDay(events: DeviceCalendarEvent[], day = n
     });
 }
 
+export function calendarEventsForLocalDateRange(
+  events: DeviceCalendarEvent[],
+  day = new Date(),
+  days = 2,
+) {
+  const { rangeStart, rangeEnd } = upcomingCalendarRange(day, days);
+  const start = rangeStart.getTime();
+  const end = rangeEnd.getTime();
+  const startKey = localDateKey(rangeStart);
+  const endKey = localDateKey(rangeEnd);
+
+  return events
+    .filter((event) => {
+      if (event.allDay) {
+        return event.startDate.slice(0, 10) < endKey && event.endDate.slice(0, 10) > startKey;
+      }
+      return new Date(event.startDate).getTime() < end && new Date(event.endDate).getTime() > start;
+    })
+    .sort((left, right) => {
+      const leftStart = new Date(left.startDate).getTime();
+      const rightStart = new Date(right.startDate).getTime();
+      const leftDay = leftStart < start ? startKey : eventLocalDateKey(left);
+      const rightDay = rightStart < start ? startKey : eventLocalDateKey(right);
+      if (leftDay !== rightDay) return leftDay.localeCompare(rightDay);
+      if (left.allDay !== right.allDay) return left.allDay ? -1 : 1;
+      const leftOngoing = leftStart < start;
+      const rightOngoing = rightStart < start;
+      if (leftOngoing !== rightOngoing) return leftOngoing ? -1 : 1;
+      if (leftStart !== rightStart) return leftStart - rightStart;
+      return left.title.localeCompare(right.title, 'ko');
+    });
+}
+
 export function formatTodayCalendarEventTime(event: DeviceCalendarEvent, day = new Date()) {
   if (event.allDay) return '종일';
   const { rangeStart } = upcomingCalendarRange(day, 1);
   if (new Date(event.startDate).getTime() < rangeStart.getTime()) return '진행 중';
   return localTime(new Date(event.startDate));
+}
+
+export function formatTodayTomorrowCalendarEventTime(event: DeviceCalendarEvent, day = new Date()) {
+  const { rangeStart } = upcomingCalendarRange(day, 1);
+  const startsBeforeToday = event.allDay
+    ? event.startDate.slice(0, 10) < localDateKey(rangeStart)
+    : new Date(event.startDate).getTime() < rangeStart.getTime();
+  const dateLabel = startsBeforeToday || eventLocalDateKey(event) === localDateKey(rangeStart) ? '오늘' : '내일';
+  const timeLabel = event.allDay ? '종일' : startsBeforeToday ? '진행 중' : localTime(new Date(event.startDate));
+  return `${dateLabel}\n${timeLabel}`;
 }
 
 export function groupCalendarEventsByDay(events: DeviceCalendarEvent[]) {
@@ -224,12 +267,20 @@ export function createTodayCalendarPreviewFixture(day = new Date()): DeviceCalen
   dinnerStart.setHours(18, 0);
   const dinnerEnd = new Date(dinnerStart);
   dinnerEnd.setHours(19, 30);
+  const tomorrowMeetingStart = new Date(start);
+  tomorrowMeetingStart.setDate(tomorrowMeetingStart.getDate() + 1);
+  tomorrowMeetingStart.setHours(9, 30);
+  const tomorrowMeetingEnd = new Date(tomorrowMeetingStart);
+  tomorrowMeetingEnd.setHours(10, 20);
   const events = normalizeDeviceCalendarEvents([
     { id: 'today-all-day', calendarId: 'device-personal', title: '재택근무', startDate: `${localDateKey(start)}T00:00:00`, endDate: `${localDateKey(end)}T00:00:00`, allDay: true },
     { id: 'today-meeting', calendarId: 'google-work', title: '팀 점검 회의', startDate: meetingStart, endDate: meetingEnd, location: '온라인 회의실' },
     { id: 'today-dinner', calendarId: 'device-personal', title: '저녁 약속', startDate: dinnerStart, endDate: dinnerEnd, location: '광안리' },
+    { id: 'tomorrow-meeting', calendarId: 'google-work', title: '내일 오전 약속', startDate: tomorrowMeetingStart, endDate: tomorrowMeetingEnd, location: '서면' },
   ], calendars);
-  return { calendars, events, rangeStart: start.toISOString(), rangeEnd: end.toISOString() };
+  const rangeEnd = new Date(end);
+  rangeEnd.setDate(rangeEnd.getDate() + 1);
+  return { calendars, events, rangeStart: start.toISOString(), rangeEnd: rangeEnd.toISOString() };
 }
 
 function compareCalendarEvents(left: DeviceCalendarEvent, right: DeviceCalendarEvent) {
@@ -241,6 +292,10 @@ function compareCalendarEvents(left: DeviceCalendarEvent, right: DeviceCalendarE
 
 function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function eventLocalDateKey(event: DeviceCalendarEvent) {
+  return event.allDay ? event.startDate.slice(0, 10) : localDateKey(new Date(event.startDate));
 }
 
 function rawCalendarDateKey(value: string | Date, parsed: Date) {

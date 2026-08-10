@@ -14,6 +14,7 @@ import {
   loadConfirmedPlans,
   markConfirmedPlanState,
   saveConfirmedPlans,
+  settlePastConfirmedPlans,
 } from '@/lib/confirmed-plans';
 import {
   clearScheduleDraft,
@@ -183,9 +184,13 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     setConfirmedPlans(plans);
     if (progressSessionRef.current?.state === 'active') return;
     const next = plans.find((plan) => plan.state === 'active')
-      ?? plans.find((plan) => plan.state === 'scheduled')
-      ?? [...plans].reverse().find((plan) => plan.state === 'completed');
-    if (!next) return;
+      ?? plans.find((plan) => plan.state === 'scheduled');
+    if (!next) {
+      setActiveSchedule(null);
+      setActivePlan(null);
+      setTimeline([]);
+      return;
+    }
     setActiveSchedule(next.schedule);
     setActivePlan(next.plan);
     setTimeline(next.plan.timeline);
@@ -286,16 +291,69 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let active = true;
     loadConfirmedPlans(AsyncStorage)
-      .then((plans) => {
+      .then(async (plans) => {
         if (!active) return;
-        applyConfirmedPlans(plans);
-        setConfirmedPlansStatus('saved');
+        const settled = settlePastConfirmedPlans(plans);
+        applyConfirmedPlans(settled);
+        if (settled.some((plan, index) => plan !== plans[index])) {
+          await persistConfirmedPlans(settled);
+        } else {
+          setConfirmedPlansStatus('saved');
+        }
       })
       .catch(() => {
         if (active) setConfirmedPlansStatus('error');
       });
     return () => { active = false; };
-  }, [applyConfirmedPlans]);
+  }, [applyConfirmedPlans, persistConfirmedPlans]);
+
+  useEffect(() => {
+    if (confirmedPlansStatus === 'loading' || progressStatus === 'loading') return;
+    let cancelled = false;
+
+    const settleElapsedPlans = async () => {
+      const currentPlans = confirmedPlansRef.current;
+      const settled = settlePastConfirmedPlans(currentPlans);
+      const changed = settled.some((plan, index) => plan !== currentPlans[index]);
+      const currentProgress = progressSessionRef.current;
+      const progressPlan = currentProgress?.confirmedPlanId
+        ? settled.find((plan) => plan.id === currentProgress.confirmedPlanId)
+        : null;
+      const shouldCloseProgress = !!currentProgress?.confirmedPlanId
+        && (!progressPlan || progressPlan.state === 'completed' || progressPlan.state === 'incomplete');
+      if ((!changed && !shouldCloseProgress) || cancelled) return;
+
+      if (currentProgress && shouldCloseProgress) {
+        notificationGeneration.current += 1;
+        await cancelProgressNotifications(currentProgress);
+        if (cancelled) return;
+        progressSessionRef.current = null;
+        setProgressSession(null);
+        setPendingDelayProposal(null);
+        await removePersistedProgress();
+      }
+      if (cancelled) return;
+      if (changed) await commitConfirmedPlans(settled);
+      else applyConfirmedPlans(settled);
+    };
+
+    void settleElapsedPlans();
+    const nextExpiry = confirmedPlansRef.current
+      .filter((plan) => plan.state === 'scheduled' || plan.state === 'active')
+      .sort((left, right) => left.appointmentAt - right.appointmentAt)[0]?.appointmentAt;
+    const timer = nextExpiry === undefined ? null : setTimeout(
+      () => void settleElapsedPlans(),
+      Math.max(0, Math.min(nextExpiry - Date.now(), 2_147_000_000)),
+    );
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void settleElapsedPlans();
+    });
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [applyConfirmedPlans, commitConfirmedPlans, confirmedPlans, confirmedPlansStatus, progressStatus, removePersistedProgress]);
 
   useEffect(() => {
     let active = true;

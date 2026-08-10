@@ -4,7 +4,7 @@ import { ScheduleDraft } from './schedule-draft';
 export const CONFIRMED_PLANS_STORAGE_KEY = '@on-time/confirmed-plans';
 const CONFIRMED_PLANS_VERSION = 1;
 
-export type ConfirmedPlanState = 'scheduled' | 'active' | 'completed';
+export type ConfirmedPlanState = 'scheduled' | 'active' | 'completed' | 'incomplete';
 
 export type ConfirmedSchedulePlan = {
   version: typeof CONFIRMED_PLANS_VERSION;
@@ -64,6 +64,35 @@ export function markConfirmedPlanState(
   state: ConfirmedPlanState,
 ) {
   return plans.map((plan) => plan.id === id ? { ...plan, state } : plan);
+}
+
+export function plansForLocalDate(plans: ConfirmedSchedulePlan[], dateOrTimestamp: Date | number) {
+  const date = typeof dateOrTimestamp === 'number' ? new Date(dateOrTimestamp) : dateOrTimestamp;
+  return plans
+    .filter((plan) => isSameLocalDate(new Date(plan.appointmentAt), date))
+    .sort((left, right) => left.appointmentAt - right.appointmentAt || left.confirmedAt - right.confirmedAt);
+}
+
+export function plansForLocalDateRange(
+  plans: ConfirmedSchedulePlan[],
+  dateOrTimestamp: Date | number,
+  days = 2,
+) {
+  const date = typeof dateOrTimestamp === 'number' ? new Date(dateOrTimestamp) : dateOrTimestamp;
+  const rangeStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setDate(rangeEnd.getDate() + Math.max(1, Math.floor(days)));
+  return plans
+    .filter((plan) => plan.appointmentAt >= rangeStart.getTime() && plan.appointmentAt < rangeEnd.getTime())
+    .sort((left, right) => left.appointmentAt - right.appointmentAt || left.confirmedAt - right.confirmedAt);
+}
+
+export function settlePastConfirmedPlans(plans: ConfirmedSchedulePlan[], now = Date.now()) {
+  return plans.map((plan) => (
+    (plan.state === 'scheduled' || plan.state === 'active') && plan.appointmentAt <= now
+      ? { ...plan, state: 'incomplete' as const }
+      : plan
+  ));
 }
 
 export async function loadConfirmedPlans(storage: StorageLike): Promise<ConfirmedSchedulePlan[]> {
@@ -153,7 +182,7 @@ function isConfirmedSchedulePlan(value: unknown): value is ConfirmedSchedulePlan
     && isFiniteNumber(value.appointmentAt)
     && isFiniteNumber(value.prepStartAt)
     && isFiniteNumber(value.confirmedAt)
-    && (value.state === 'scheduled' || value.state === 'active' || value.state === 'completed')
+    && (value.state === 'scheduled' || value.state === 'active' || value.state === 'completed' || value.state === 'incomplete')
     && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string');
 }
 

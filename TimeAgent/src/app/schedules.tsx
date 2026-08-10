@@ -21,7 +21,7 @@ import {
 import { deviceCalendarProvider } from '@/lib/device-calendar-provider';
 import { useSchedule } from '@/state/schedule-context';
 
-type ScheduleTab = '내 일정' | '캘린더' | '완료';
+type ScheduleTab = '내 일정' | '캘린더' | '지난 일정';
 type CalendarViewState = 'checking' | 'intro' | 'loading' | 'ready' | 'denied' | 'blocked' | 'unavailable' | 'error';
 type ProviderFilter = 'all' | CalendarProviderKind;
 
@@ -37,7 +37,10 @@ export default function SchedulesScreen() {
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<DeviceCalendarEvent | null>(null);
   const { beginDraftWith, confirmedPlans, confirmedPlansStatus, selectConfirmedPlan } = useSchedule();
-  const upcomingPlans = confirmedPlans.filter((plan) => plan.state !== 'completed');
+  const upcomingPlans = confirmedPlans.filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
+  const closedPlans = confirmedPlans
+    .filter((plan) => plan.state === 'completed' || plan.state === 'incomplete')
+    .sort((left, right) => right.appointmentAt - left.appointmentAt);
 
   const loadCalendars = useCallback(async () => {
     if (fixtureMode) {
@@ -117,7 +120,7 @@ export default function SchedulesScreen() {
       <Screen>
         <Header title="일정" eyebrow="다가오는 약속과 기기 캘린더를 확인하세요" />
         <View accessibilityRole="tablist" style={styles.tabs}>
-          {(['내 일정', '캘린더', '완료'] as const).map((item) => (
+          {(['내 일정', '캘린더', '지난 일정'] as const).map((item) => (
             <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: tab === item }} onPress={() => { setTab(item); if (item === '캘린더') void checkCalendarAccess(); }} style={[styles.tab, tab === item && styles.tabActive]}>
               <Text style={[styles.tabText, tab === item && styles.tabTextActive]}>{item}</Text>
             </Pressable>
@@ -126,7 +129,7 @@ export default function SchedulesScreen() {
         <Text accessibilityLiveRegion="polite" style={styles.tabDescription}>{tab} 화면입니다.</Text>
 
         {tab === '내 일정' ? <UpcomingSchedules plans={upcomingPlans} status={confirmedPlansStatus} onSelect={(id) => { selectConfirmedPlan(id); router.push('/plan'); }} /> : null}
-        {tab === '완료' ? <CompletedSchedule /> : null}
+        {tab === '지난 일정' ? <ClosedSchedules plans={closedPlans} status={confirmedPlansStatus} /> : null}
         {tab === '캘린더' ? <CalendarPanel
           calendarView={calendarView}
           permission={permission}
@@ -164,8 +167,21 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
   </>;
 }
 
-function CompletedSchedule() {
-  return <><Text style={styles.date}>최근 완료</Text><Pressable accessibilityRole="button" accessibilityHint="완료 기록을 엽니다" onPress={() => router.push('/complete')}><Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>18:30</Text></View><View style={styles.flexContent}><StatusPill label="3분 일찍 도착" tone="success" /><Text style={type.heading}>광안리 저녁 약속</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>광안리 해변 식당</Text></View><Text style={styles.meta}>실제 준비·이동 기록 보기</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.textMuted} style={styles.arrow} /></Card></Pressable></>;
+function ClosedSchedules({ plans, status }: { plans: ConfirmedSchedulePlan[]; status: 'loading' | 'saving' | 'saved' | 'error' }) {
+  if (status === 'loading') return <StateCard icon="calendar" title="지난 일정을 정리하고 있어요" body="완료 여부를 확인해 종결 상태로 표시합니다." />;
+  if (!plans.length) return <StateCard icon="calendar" title="종결된 일정이 없어요" body="시간이 지난 일정은 완료 또는 미완료로 이곳에 정리됩니다." />;
+  return <>
+    <Text style={styles.date}>지난 일정 {plans.length}개</Text>
+    {plans.map((item) => <Card key={item.id} style={styles.schedule}>
+      <View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><Text style={styles.closedDate}>{new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(item.appointmentAt)}</Text></View>
+      <View style={styles.flexContent}>
+        <StatusPill label={item.state === 'completed' ? '완료' : '미완료'} tone={item.state === 'completed' ? 'success' : 'warning'} />
+        <Text style={type.heading}>{item.schedule.title}</Text>
+        <View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>
+        <Text style={styles.meta}>{item.state === 'completed' ? '준비 행동을 모두 완료한 일정' : '약속 시간까지 완료되지 않은 일정'}</Text>
+      </View>
+    </Card>)}
+  </>;
 }
 
 type CalendarPanelProps = {
@@ -227,7 +243,7 @@ const styles = StyleSheet.create({
   tabDescription: { ...type.caption, marginTop: -space.md },
   planGroup: { gap: space.sm }, date: { fontSize: 14, color: color.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
-  timeRail: { width: 54 }, time: { fontSize: 17, color: color.navy, fontWeight: '900' }, line: { width: 2, height: 70, backgroundColor: color.cyan, marginTop: 8, marginLeft: 18 },
+  timeRail: { width: 54, gap: 4 }, time: { fontSize: 17, color: color.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: color.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: color.cyan, marginTop: 8, marginLeft: 18 },
   flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: color.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
   stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: color.ice, alignItems: 'center', justifyContent: 'center' },
   calendarHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textButtonLabel: { color: color.deepBlue, fontSize: 13, fontWeight: '800' },

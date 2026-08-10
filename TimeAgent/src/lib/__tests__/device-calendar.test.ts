@@ -1,10 +1,12 @@
 import {
   calendarEventToDraftPatch,
   calendarEventsForLocalDay,
+  calendarEventsForLocalDateRange,
   classifyCalendarProvider,
   createCalendarPreviewFixture,
   formatCalendarEventTime,
   formatTodayCalendarEventTime,
+  formatTodayTomorrowCalendarEventTime,
   groupCalendarEventsByDay,
   normalizeDeviceCalendarEvents,
   normalizeDeviceCalendars,
@@ -78,5 +80,22 @@ describe('device calendar domain', () => {
 
     expect(result.map((event) => event.id)).toEqual(['all-day', 'ongoing', 'timed']);
     expect(result.map((event) => formatTodayCalendarEventTime(event, today))).toEqual(['종일', '진행 중', '18:00']);
+  });
+
+  it('keeps today and tomorrow events, excludes the following day, and labels their dates', () => {
+    const calendars = normalizeDeviceCalendars([
+      { id: 'device', title: '내 캘린더', sourceName: 'Samsung', isLocalAccount: true },
+    ]);
+    const events = normalizeDeviceCalendarEvents([
+      { id: 'tomorrow', calendarId: 'device', title: '내일 회의', startDate: '2026-08-06T10:00:00+09:00', endDate: '2026-08-06T11:00:00+09:00' },
+      { id: 'today', calendarId: 'device', title: '오늘 약속', startDate: '2026-08-05T18:00:00+09:00', endDate: '2026-08-05T19:00:00+09:00' },
+      { id: 'later', calendarId: 'device', title: '모레 일정', startDate: '2026-08-07T09:00:00+09:00', endDate: '2026-08-07T10:00:00+09:00' },
+    ], calendars);
+    const today = new Date('2026-08-05T15:00:00+09:00');
+    const result = calendarEventsForLocalDateRange(events, today, 2);
+
+    expect(result.map((event) => event.id)).toEqual(['today', 'tomorrow']);
+    expect(result.map((event) => formatTodayTomorrowCalendarEventTime(event, today)))
+      .toEqual(['오늘\n18:00', '내일\n10:00']);
   });
 });

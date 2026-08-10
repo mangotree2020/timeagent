@@ -755,3 +755,24 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Implement: 홈을 단일 `activeSchedule` 표시에서 확정 계획 저장소의 미완료 목록까지 사용하도록 연결했다. 다음 약속 요약은 유지하고 `등록한 일정 N개` 목록과 일정 화면 이동, 개별 계획 선택을 추가했다. 오래된 초안의 날짜 문자열 대신 확정된 실행 시각으로 `오늘·내일·M월 D일`을 계산해 잘림과 잘못된 날짜 표시를 함께 해결했다. 검증 중 발견한 Journey 권한 거부 fixture의 초기·비동기 경로 경합도 첫 렌더부터 같은 fallback 상태를 사용하도록 고정했다.
 - Verify: 확정 계획 두 건을 저장한 fixture에서 두 카드 표시, 두 번째 일정의 시간·장소, 선택한 계획 상세 이동을 검증했다. `npm run verify`의 TypeScript·ESLint·Jest 33개 스위트·158/158과 360×800·390×844·430×932 전체 시각·상호작용 120/120을 통과했다. 출시 서명 arm64 APK를 Samsung Android 12 `SM-N971N`에 설치해 기존 데이터가 유지된 홈에서 `등록한 일정 3개`, 세 카드의 시간·장소·실행 상태, 실제 실행 시각 기준 `오늘` 날짜가 표시되고 치명적 런타임 오류가 없음을 확인했다.
 - Evidence: `src/app/index.tsx`, `src/lib/confirmed-plans.ts`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/app/journey.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `tmp/timeagent-home-list-final.xml`, `tmp/timeagent-home-list.png`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-10 홈 당일 일정 기본 표시·지난 일정 종결 (완료)
+
+- Accept: 홈을 열면 앱에 확정한 일정 중 현지 날짜가 오늘인 일정만 시간순으로 표시한다. 미래 날짜 일정은 홈 기본 목록에 섞이지 않는다. 약속 시간이 지난 예약·실행 중 일정은 자동으로 `미완료` 종결하고, 준비 행동을 모두 마친 일정은 `완료`를 유지한다. 두 상태는 색상뿐 아니라 텍스트로 구분하고 `일정 → 지난 일정`에서 실제 저장 기록을 확인할 수 있어야 한다.
+- Implement: 확정 시각을 기준으로 현지 날짜 일정을 고르는 `plansForLocalDate`와 열린 일정의 약속 시각 경과를 `incomplete`로 바꾸는 `settlePastConfirmedPlans`를 UI 밖 순수 로직으로 추가했다. 저장 복원·약속 시각 타이머·앱 foreground 복귀 때 종결 규칙을 실행하고, 종결된 활성 진행의 알림과 저장 세션도 함께 정리한다. 홈의 다음 약속·등록 목록·준비 계획은 오늘 계획만 사용하며 기기 캘린더는 `오늘 캘린더 일정`으로 분리했다. 일정 화면의 정적 완료 fixture를 제거하고 실제 완료·미완료 저장 기록을 최신순으로 표시한다.
+- Verify: `npm run verify`에서 TypeScript·ESLint·Jest 33개 스위트·164/164가 통과했다. 당일 필터, 미래 일정 제외, 경과 예약 미완료 전환, 완료 상태 보존을 단위·브라우저 흐름으로 검증했다. 360×800·390×844·430×932에서 홈 기준 이미지와 관련 상호작용 9/9가 통과하고 가로 잘림이 없었다. 출시 서명 arm64 APK를 Samsung Android 12 `SM-N971N`에 데이터 유지 방식으로 설치해 홈이 `8월 10일 월요일 · 오늘 일정 0개`와 실제 기기 캘린더 당일 일정 2개만 표시하는 것을 확인했다. 기존 8월 8~9일 확정 계획 4건은 `지난 일정 4개`로 이동해 모두 `미완료`와 설명 문구로 종결 표시됐다.
+- Evidence: `src/lib/confirmed-plans.ts`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/state/schedule-context.tsx`, `src/app/index.tsx`, `src/app/schedules.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `tmp/timeagent-today-home-final.png`, `tmp/timeagent-closed-schedules-final.png`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-10 홈 날씨 정보 순서 조정 (완료)
+
+- Accept: 홈의 현재 위치 날씨 정보는 오늘 등록 일정 목록보다 먼저 표시돼야 한다. 다음 약속 요약과 당일 일정 필터·지난 일정 종결 동작은 유지한다.
+- Implement: 홈 콘텐츠 순서를 `다음 약속 → 현재 위치 날씨 → 오늘 등록 일정 → 오늘 캘린더 일정 → 오늘의 준비 계획`으로 조정했다.
+- Verify: `npm run verify` 33개 스위트·164/164 통과. 360×800·390×844·430×932에서 홈 기준 이미지와 순서 검증 6/6을 기준 갱신 후 재실행해 통과했다. 테스트는 날씨 카드 하단 좌표가 `오늘 등록 일정` 제목의 상단 좌표보다 위인지 직접 검증한다.
+- Evidence: `src/app/index.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`.
+
+## 2026-08-10 홈 오늘·내일 약속 범위 (완료)
+
+- Accept: 홈 일정 제목은 `오늘·내일 약속`으로 표시하고, 앱에서 확정한 약속과 기기 캘린더 약속 모두 현지 날짜 기준 오늘 자정부터 모레 자정 전까지만 시간순으로 보여준다. 모레 이후 약속은 홈에서 제외하며 오늘·내일 항목은 날짜를 색상 외 텍스트로 구분한다. 현재 위치 날씨는 약속 목록 위에 유지한다.
+- Implement: 확정 계획용 `plansForLocalDateRange`와 기기 캘린더용 `calendarEventsForLocalDateRange` 순수 함수를 추가했다. 홈 기기 캘린더 조회 기간을 1일에서 2일로 확장하고 제목·로딩·권한·오류·빈 상태 문구를 오늘·내일 범위로 통일했다. 각 캘린더 카드에는 `오늘/내일`과 `종일/진행 중/시각`을 두 줄로 표시하고, 다음 약속과 등록 약속 목록도 같은 이틀 범위를 사용한다. `오늘의 준비 계획`은 당일 계획만 유지한다.
+- Verify: 날짜 범위 단위 테스트 2건을 추가해 오늘·내일 포함, 모레 제외, 시간순 정렬과 날짜 레이블을 검증했다. `npm run verify` 33개 스위트·166/166 통과. 360×800·390×844·430×932에서 홈 기준 이미지와 오늘·내일 기기 약속·확정 약속 흐름 9/9가 통과했으며 가로 잘림이 없었다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 설치·실행했다. 실제 홈에서 날씨 아래 `오늘·내일 약속 4개`, 오늘 종일·오늘 20:00·내일 종일 항목의 날짜·시간순 표시를 확인했다. APK SHA-256은 `92102376e01f76460d770e32a8acc2f0abad39341a885726dd9e6c8676c6361b`이다.
+- Evidence: `src/lib/confirmed-plans.ts`, `src/lib/device-calendar.ts`, `src/app/index.tsx`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/lib/__tests__/device-calendar.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `docs/HARNESS.md`, `tmp/timeagent-today-tomorrow.png`, `android/app/build/outputs/apk/release/app-release.apk`.

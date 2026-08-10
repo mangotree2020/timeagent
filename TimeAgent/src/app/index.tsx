@@ -12,12 +12,12 @@ import { Timeline } from '@/components/timeline';
 import { color, radius, space } from '@/constants/design';
 import { useSchedule } from '@/state/schedule-context';
 import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
-import { ConfirmedSchedulePlan, formatConfirmedPlanDate } from '@/lib/confirmed-plans';
+import { ConfirmedSchedulePlan, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
 import {
   DeviceCalendarEvent,
-  calendarEventsForLocalDay,
+  calendarEventsForLocalDateRange,
   createTodayCalendarPreviewFixture,
-  formatTodayCalendarEventTime,
+  formatTodayTomorrowCalendarEventTime,
 } from '@/lib/device-calendar';
 import { deviceCalendarProvider } from '@/lib/device-calendar-provider';
 import { createHomeGreeting } from '@/lib/home-greeting';
@@ -42,24 +42,28 @@ export default function HomeScreen() {
   const [today, setToday] = useState(() => new Date());
   const [todayEvents, setTodayEvents] = useState<DeviceCalendarEvent[]>(() => {
     if (!calendarFixtureMode) return [];
-    return calendarEventsForLocalDay(createTodayCalendarPreviewFixture(today).events, today);
+    return calendarEventsForLocalDateRange(createTodayCalendarPreviewFixture(today).events, today, 2);
   });
   const [todayCalendarStatus, setTodayCalendarStatus] = useState<TodayCalendarStatus>(calendarFixtureMode ? 'ready' : 'checking');
   const [weather, setWeather] = useState<WeatherSnapshot | null>(() => weatherFixtureMode ? createWeatherPreviewFixture() : null);
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>(weatherFixtureMode ? 'ready' : weatherErrorFixtureMode ? 'error' : 'checking');
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { activeSchedule: schedule, confirmedPlans, confirmedPlansStatus, selectConfirmedPlan, timeline, delayMinutes } = useSchedule();
-  const registeredPlans = confirmedPlans.filter((plan) => plan.state !== 'completed');
+  const { confirmedPlans, confirmedPlansStatus, selectConfirmedPlan, delayMinutes } = useSchedule();
+  const todayPlans = plansForLocalDate(confirmedPlans, today)
+    .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
+  const homePlans = plansForLocalDateRange(confirmedPlans, today, 2)
+    .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
+  const nextTodayPlan = todayPlans.find((plan) => plan.state === 'active') ?? todayPlans[0] ?? null;
+  const nextHomePlan = homePlans.find((plan) => plan.state === 'active') ?? homePlans[0] ?? null;
+  const schedule = nextHomePlan?.schedule ?? null;
   const openRegisteredPlan = (id: string) => {
     selectConfirmedPlan(id);
     router.push('/plan');
   };
-  const scheduleSummary = todayCalendarStatus === 'ready'
-    ? `오늘 약속 ${todayEvents.length}개`
-    : todayCalendarStatus === 'checking'
-      ? '오늘 약속 확인 중'
-      : '오늘 약속 직접 관리';
+  const scheduleSummary = confirmedPlansStatus === 'loading'
+    ? '오늘·내일 약속 확인 중'
+    : `오늘·내일 약속 ${homePlans.length}개`;
   const hasAttentionMessage = shouldAnimateHomeLogo({
     delayMinutes,
     weatherIcon: weather?.icon,
@@ -70,7 +74,7 @@ export default function HomeScreen() {
     const currentDay = new Date();
     setToday(currentDay);
     if (calendarFixtureMode) {
-      setTodayEvents(calendarEventsForLocalDay(createTodayCalendarPreviewFixture(currentDay).events, currentDay));
+      setTodayEvents(calendarEventsForLocalDateRange(createTodayCalendarPreviewFixture(currentDay).events, currentDay, 2));
       setTodayCalendarStatus('ready');
       return;
     }
@@ -87,8 +91,8 @@ export default function HomeScreen() {
         setTodayCalendarStatus('permission-needed');
         return;
       }
-      const snapshot = await deviceCalendarProvider.loadUpcoming(currentDay, 1);
-      setTodayEvents(calendarEventsForLocalDay(snapshot.events, currentDay));
+      const snapshot = await deviceCalendarProvider.loadUpcoming(currentDay, 2);
+      setTodayEvents(calendarEventsForLocalDateRange(snapshot.events, currentDay, 2));
       setTodayCalendarStatus('ready');
     } catch {
       setTodayCalendarStatus('error');
@@ -158,7 +162,7 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel={`다음 약속, ${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
           accessibilityHint="상세 일정과 준비 계획을 확인합니다"
-          onPress={() => router.push('/plan')}
+          onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
           style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
         >
           <Card style={styles.hero}>
@@ -174,14 +178,14 @@ export default function HomeScreen() {
           </Card>
         </Pressable> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '일정을 만든 뒤 계획 확정을 누르면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="새 일정 만들기" variant="secondary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /> : null}</View></Card>}
 
-        {registeredPlans.length ? <>
-          <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/schedules')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable>}>등록한 일정 {registeredPlans.length}개</SectionTitle>
-          <RegisteredPlanList plans={registeredPlans} onSelect={openRegisteredPlan} />
-        </> : null}
-
         <HomeWeather status={weatherStatus} weather={weather} fixtureMode={weatherFixtureMode} onRetry={() => void loadWeather()} />
 
-        <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} style={styles.sectionAction}><Text style={styles.link}>+ 추가</Text></Pressable>}>오늘 일정{todayCalendarStatus === 'ready' ? ` ${todayEvents.length}개` : ''}</SectionTitle>
+        {homePlans.length ? <>
+          <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/schedules')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable>}>오늘·내일 등록 약속 {homePlans.length}개</SectionTitle>
+          <RegisteredPlanList plans={homePlans} onSelect={openRegisteredPlan} />
+        </> : null}
+
+        <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} style={styles.sectionAction}><Text style={styles.link}>+ 추가</Text></Pressable>}>오늘·내일 약속{todayCalendarStatus === 'ready' ? ` ${todayEvents.length}개` : ''}</SectionTitle>
         <TodaySchedules
           status={todayCalendarStatus}
           events={todayEvents}
@@ -190,7 +194,7 @@ export default function HomeScreen() {
         />
 
         <SectionTitle action={schedule ? <Pressable onPress={() => router.push('/plan')}><Text style={styles.link}>전체 보기</Text></Pressable> : undefined}>오늘의 준비 계획</SectionTitle>
-        {schedule && timeline.length ? <Card><Timeline steps={timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
+        {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
 
       </Screen>
       <VoicePulseButton label="음성으로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} style={[styles.fab, { bottom: getHomeFloatingActionBottom(insets.bottom) - 8 }]} />
@@ -271,18 +275,21 @@ function weatherIconName(weather: WeatherSnapshot): AppIconName {
 
 function TodaySchedules({ status, events, today, onRetry }: { status: TodayCalendarStatus; events: DeviceCalendarEvent[]; today: Date; onRetry: () => void }) {
   if (status === 'checking') {
-    return <Card style={styles.todayState}><ActivityIndicator color={color.deepBlue} /><View style={styles.todayStateCopy}><Text style={type.heading}>오늘 일정을 확인하고 있어요</Text><Text style={type.bodyMuted}>기기 캘린더에서 오늘 일정만 불러옵니다.</Text></View></Card>;
+    return <Card style={styles.todayState}><ActivityIndicator color={color.deepBlue} /><View style={styles.todayStateCopy}><Text style={type.heading}>오늘·내일 약속을 확인하고 있어요</Text><Text style={type.bodyMuted}>기기 캘린더에서 오늘과 내일 약속을 불러옵니다.</Text></View></Card>;
   }
   if (status === 'error') {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="error" size={24} /></View><Text style={type.heading}>오늘 일정을 불러오지 못했어요</Text><Text style={type.bodyMuted}>캘린더 연결 상태를 확인한 뒤 다시 시도해 주세요.</Text><Button label="오늘 일정 다시 불러오기" variant="secondary" onPress={onRetry} /></Card>;
+    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="error" size={24} /></View><Text style={type.heading}>오늘·내일 약속을 불러오지 못했어요</Text><Text style={type.bodyMuted}>캘린더 연결 상태를 확인한 뒤 다시 시도해 주세요.</Text><Button label="약속 다시 불러오기" variant="secondary" onPress={onRetry} /></Card>;
   }
   if (status === 'permission-needed' || status === 'unavailable') {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>{status === 'permission-needed' ? '캘린더를 연결하면 오늘 일정을 보여드려요' : '오늘 일정을 직접 추가해 주세요'}</Text><Text style={type.bodyMuted}>{status === 'permission-needed' ? '권한을 허용하기 전에는 기기 일정을 읽지 않습니다.' : '기기 캘린더 연결은 iOS·Android 앱에서 사용할 수 있습니다.'}</Text><Button label={status === 'permission-needed' ? '캘린더 연결하기' : '일정 만들기'} variant="secondary" onPress={() => status === 'permission-needed' ? router.push({ pathname: '/schedules', params: { tab: 'calendar' } }) : router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
+    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>{status === 'permission-needed' ? '캘린더를 연결하면 오늘·내일 약속을 보여드려요' : '오늘·내일 약속을 직접 추가해 주세요'}</Text><Text style={type.bodyMuted}>{status === 'permission-needed' ? '권한을 허용하기 전에는 기기 일정을 읽지 않습니다.' : '기기 캘린더 연결은 iOS·Android 앱에서 사용할 수 있습니다.'}</Text><Button label={status === 'permission-needed' ? '캘린더 연결하기' : '일정 만들기'} variant="secondary" onPress={() => status === 'permission-needed' ? router.push({ pathname: '/schedules', params: { tab: 'calendar' } }) : router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
   }
   if (!events.length) {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>오늘 등록된 일정이 없어요</Text><Text style={type.bodyMuted}>새 일정을 추가하면 준비 시작 시간과 다음 행동을 계산해 드립니다.</Text><Button label="오늘 일정 추가" variant="secondary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
+    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>오늘·내일 등록된 약속이 없어요</Text><Text style={type.bodyMuted}>새 약속을 추가하면 준비 시작 시간과 다음 행동을 계산해 드립니다.</Text><Button label="약속 추가" variant="secondary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
   }
-  return <View accessibilityLabel={`오늘 일정 ${events.length}개`} style={styles.todayList}>{events.map((event) => <Pressable key={event.occurrenceKey} accessibilityRole="button" accessibilityLabel={`${formatTodayCalendarEventTime(event, today)}, ${event.title}${event.location ? `, ${event.location}` : ''}`} accessibilityHint="기기 캘린더 일정 화면으로 이동합니다" onPress={() => router.push({ pathname: '/schedules', params: { tab: 'calendar' } })} style={({ pressed }) => [styles.todayEvent, pressed && styles.todayEventPressed]}><View style={styles.todayTime}><Text style={styles.todayTimeText}>{formatTodayCalendarEventTime(event, today)}</Text></View><View style={styles.todayEventCopy}><Text style={styles.todayEventTitle}>{event.title}</Text>{event.location ? <View style={styles.locationRow}><AppIcon name="location" size={15} /><Text style={styles.todayLocation}>{event.location}</Text></View> : null}<Text style={styles.todaySource}>{event.providerLabel} · {event.calendarTitle}</Text></View><AppIcon name="chevronRight" size={20} iconColor={color.textMuted} /></Pressable>)}</View>;
+  return <View accessibilityLabel={`오늘·내일 약속 ${events.length}개`} style={styles.todayList}>{events.map((event) => {
+    const timeLabel = formatTodayTomorrowCalendarEventTime(event, today);
+    return <Pressable key={event.occurrenceKey} accessibilityRole="button" accessibilityLabel={`${timeLabel.replace('\n', ' ')}, ${event.title}${event.location ? `, ${event.location}` : ''}`} accessibilityHint="기기 캘린더 일정 화면으로 이동합니다" onPress={() => router.push({ pathname: '/schedules', params: { tab: 'calendar' } })} style={({ pressed }) => [styles.todayEvent, pressed && styles.todayEventPressed]}><View style={styles.todayTime}><Text style={styles.todayTimeText}>{timeLabel}</Text></View><View style={styles.todayEventCopy}><Text style={styles.todayEventTitle}>{event.title}</Text>{event.location ? <View style={styles.locationRow}><AppIcon name="location" size={15} /><Text style={styles.todayLocation}>{event.location}</Text></View> : null}<Text style={styles.todaySource}>{event.providerLabel} · {event.calendarTitle}</Text></View><AppIcon name="chevronRight" size={20} iconColor={color.textMuted} /></Pressable>;
+  })}</View>;
 }
 
 const styles = StyleSheet.create({

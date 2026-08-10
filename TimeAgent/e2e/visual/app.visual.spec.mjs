@@ -106,7 +106,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const screens = [
-  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘 일정 3개' },
+  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘·내일 등록 약속 1개' },
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 잡을게, 맞아?' },
@@ -218,15 +218,17 @@ test('홈 음성 일정 버튼이 내비게이션 위에 고정됨', async ({ pa
   expect(after.y).toBeCloseTo(before.y, 0);
 });
 
-test('홈은 당일 캘린더 일정을 시간 상태와 함께 보여줌', async ({ page }) => {
+test('홈은 오늘·내일 캘린더 약속을 날짜와 시간 상태로 보여줌', async ({ page }) => {
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
   await expect(page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true })).toBeVisible();
   await expect(page.getByText('비 올 확률 70%. 우산을 챙기세요.', { exact: true })).toBeVisible();
-  await expect(page.getByText('오늘 일정 3개', { exact: true })).toBeVisible();
+  await expect(page.getByText('오늘·내일 약속 4개', { exact: true })).toBeVisible();
   await expect(page.getByText('재택근무', { exact: true })).toBeVisible();
   await expect(page.getByText('팀 점검 회의', { exact: true })).toBeVisible();
   await expect(page.getByText('저녁 약속', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /10:30, 팀 점검 회의/ }).click();
+  await expect(page.getByText('내일 오전 약속', { exact: true })).toBeVisible();
+  await expect(page.getByText('내일\n09:30', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /오늘 10:30, 팀 점검 회의/ }).click();
   await expect(page).toHaveURL(/\/schedules\?tab=calendar$/);
   await expect(page.getByText('캘린더 화면입니다.', { exact: true })).toBeVisible();
 });
@@ -245,7 +247,7 @@ test('홈 다음 약속은 제목·시간·장소만 보여주고 카드 터치�
   await expect(page.getByText('확정된 준비 계획', { exact: true })).toBeVisible();
 });
 
-test('홈은 확정한 일정 여러 건을 등록 목록으로 보여줌', async ({ page }) => {
+test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 보여줌', async ({ page }) => {
   await page.addInitScript(({ firstPlan }) => {
     const secondPlan = {
       ...firstPlan,
@@ -257,11 +259,27 @@ test('홈은 확정한 일정 여러 건을 등록 목록으로 보여줌', asyn
       confirmedAt: firstPlan.confirmedAt + 1_000,
       state: 'scheduled',
     };
-    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [firstPlan, secondPlan] }));
+    const tomorrowPlan = {
+      ...secondPlan,
+      id: 'visual-confirmed-plan-tomorrow',
+      schedule: { ...secondPlan.schedule, title: '내일 일정' },
+      appointmentAt: firstPlan.appointmentAt + 24 * 60 * 60_000,
+      prepStartAt: firstPlan.prepStartAt + 24 * 60 * 60_000,
+    };
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [firstPlan, secondPlan, tomorrowPlan] }));
   }, { firstPlan: confirmedPlanFixture });
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  await expect(page.getByText('등록한 일정 2개', { exact: true })).toBeVisible();
+  const weatherCard = page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true });
+  const registeredHeading = page.getByText('오늘·내일 등록 약속 3개', { exact: true });
+  await expect(registeredHeading).toBeVisible();
+  const weatherBox = await weatherCard.boundingBox();
+  const registeredBox = await registeredHeading.boundingBox();
+  expect(weatherBox).not.toBeNull();
+  expect(registeredBox).not.toBeNull();
+  expect(weatherBox.y + weatherBox.height, '날씨 정보가 등록 일정 위에 있어야 합니다').toBeLessThan(registeredBox.y);
   await expect(page.getByRole('button', { name: /등록 일정, 서면 볼링장 친구 약속/ })).toBeVisible();
+  await expect(page.getByText('내일 일정', { exact: true })).toBeVisible();
+  await expect(page.getByText('내일', { exact: true })).toBeVisible();
   const dinner = page.getByRole('button', { name: /등록 일정, 저녁 식사 약속/ });
   await expect(dinner).toBeVisible();
   await expect(dinner.getByText('18:30', { exact: true })).toBeVisible();
@@ -269,6 +287,38 @@ test('홈은 확정한 일정 여러 건을 등록 목록으로 보여줌', asyn
   await dinner.click();
   await expect(page).toHaveURL(/\/plan$/);
   await expect(page.getByText('18:30 약속', { exact: true })).toBeVisible();
+});
+
+test('시간이 지난 일정은 완료 또는 미완료로 종결됨', async ({ page }) => {
+  await page.addInitScript(({ firstPlan, now }) => {
+    const elapsed = {
+      ...firstPlan,
+      id: 'elapsed-incomplete-plan',
+      schedule: { ...firstPlan.schedule, title: '지나간 미완료 일정', appointmentTime: '11:00' },
+      appointmentAt: now - 2 * 60 * 60_000,
+      prepStartAt: now - 3 * 60 * 60_000,
+      state: 'scheduled',
+    };
+    const completed = {
+      ...elapsed,
+      id: 'elapsed-completed-plan',
+      schedule: { ...elapsed.schedule, title: '지나간 완료 일정', appointmentTime: '10:00' },
+      appointmentAt: now - 3 * 60 * 60_000,
+      state: 'completed',
+    };
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [elapsed, completed, firstPlan] }));
+  }, { firstPlan: confirmedPlanFixture, now: fixedNow.getTime() });
+
+  await page.goto('/schedules');
+  await page.getByRole('tab', { name: '지난 일정', exact: true }).click();
+  await expect(page.getByText('지나간 미완료 일정', { exact: true })).toBeVisible();
+  await expect(page.getByText('지나간 완료 일정', { exact: true })).toBeVisible();
+  await expect(page.getByText('미완료', { exact: true })).toBeVisible();
+  await expect(page.getByText('완료', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const plans = JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans;
+    return plans.find((plan) => plan.id === 'elapsed-incomplete-plan')?.state;
+  })).toBe('incomplete');
 });
 
 test('홈 날씨 카드는 내부 상세 화면으로 이동하고 출처는 상세에서만 보여줌', async ({ page }) => {

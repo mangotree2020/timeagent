@@ -6,6 +6,9 @@ import {
   formatConfirmedPlanDate,
   loadConfirmedPlans,
   markConfirmedPlanState,
+  plansForLocalDate,
+  plansForLocalDateRange,
+  settlePastConfirmedPlans,
   saveConfirmedPlans,
 } from '../confirmed-plans';
 
@@ -74,6 +77,50 @@ describe('confirmed schedule plans', () => {
     expect(formatConfirmedPlanDate(new Date('2026-08-08T14:00:00+09:00').getTime(), morning)).toBe('오늘');
     expect(formatConfirmedPlanDate(new Date('2026-08-09T14:00:00+09:00').getTime(), morning)).toBe('내일');
     expect(formatConfirmedPlanDate(new Date('2026-08-12T14:00:00+09:00').getTime(), morning)).toBe('8월 12일');
+  });
+
+  test('shows only appointments from the requested local day', () => {
+    const today = planAt('오늘 치과', '14:00', morning);
+    const tomorrow = {
+      ...planAt('내일 저녁', '19:00', morning + 1),
+      appointmentAt: new Date('2026-08-09T19:00:00+09:00').getTime(),
+    };
+
+    expect(plansForLocalDate([tomorrow, today], morning).map((plan) => plan.id)).toEqual([today.id]);
+  });
+
+  test('shows today and tomorrow appointments in chronological order while excluding later dates', () => {
+    const today = planAt('오늘 치과', '14:00', morning);
+    const tomorrow = {
+      ...planAt('내일 저녁', '19:00', morning + 1),
+      appointmentAt: new Date('2026-08-09T19:00:00+09:00').getTime(),
+    };
+    const dayAfterTomorrow = {
+      ...planAt('모레 점심', '12:00', morning + 2),
+      appointmentAt: new Date('2026-08-10T12:00:00+09:00').getTime(),
+    };
+
+    expect(plansForLocalDateRange([dayAfterTomorrow, tomorrow, today], morning, 2).map((plan) => plan.schedule.title))
+      .toEqual(['오늘 치과', '내일 저녁']);
+  });
+
+  test('closes every elapsed appointment as incomplete while preserving completed records', () => {
+    const elapsed = planAt('지나간 치과', '14:00', morning);
+    const completed = { ...planAt('완료한 점심', '12:00', morning + 1), state: 'completed' as const };
+    const future = planAt('저녁 약속', '19:00', morning + 2);
+    const now = new Date('2026-08-08T15:00:00+09:00').getTime();
+
+    const settled = settlePastConfirmedPlans([elapsed, completed, future], now);
+
+    expect(settled.find((plan) => plan.id === elapsed.id)?.state).toBe('incomplete');
+    expect(settled.find((plan) => plan.id === completed.id)?.state).toBe('completed');
+    expect(settled.find((plan) => plan.id === future.id)?.state).toBe('scheduled');
+  });
+
+  test('does not rewrite plans before their appointment time', () => {
+    const future = planAt('치과', '14:00', morning);
+    expect(settlePastConfirmedPlans([future], future.appointmentAt - 1)).toBeDefined();
+    expect(settlePastConfirmedPlans([future], future.appointmentAt - 1)[0]).toBe(future);
   });
 
   test('ignores malformed saved data', async () => {
