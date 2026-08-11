@@ -142,7 +142,7 @@ export default function SchedulesScreen() {
           onSelectEvent={setSelectedEvent}
           onRequest={() => void requestCalendarAccess()}
           onRefresh={() => void loadCalendars()}
-          onManual={() => router.push({ pathname: '/create', params: { new: '1' } })}
+          onManual={() => router.push('/voice-schedule')}
           onSettings={() => void Linking.openSettings()}
           onImport={importSelectedEvent}
         /> : null}
@@ -163,7 +163,7 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
         <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View><Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.textMuted} style={styles.arrow} /></Card>
       </Pressable>
     </View>)}
-    <Button label="새 일정 만들기" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} />
+    <Button label="말로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} />
   </>;
 }
 
@@ -206,13 +206,13 @@ type CalendarPanelProps = {
 
 function CalendarPanel(props: CalendarPanelProps) {
   if (props.calendarView === 'checking' || props.calendarView === 'loading') return <StateCard icon="calendar" title={props.calendarView === 'checking' ? '캘린더 연결 상태를 확인하고 있어요' : '향후 30일 일정을 불러오고 있어요'} body="기기에 있는 일정만 잠시 확인합니다." />;
-  if (props.calendarView === 'intro') return <><StateCard icon="calendar" title="기기 캘린더 일정을 확인할까요?" body="Google·Apple/iCloud·기기 캘린더의 향후 30일 일정을 읽습니다. 선택한 일정만 새 TimeAgent 초안으로 가져오며 원문은 서버에 저장하지 않습니다." /><Button label="캘린더 연결하기" onPress={props.onRequest} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
-  if (props.calendarView === 'denied') return <><StateCard icon="error" title="캘린더 권한이 필요해요" body="권한을 다시 허용하거나 직접 일정을 만들 수 있습니다." /><Button label="권한 다시 요청" onPress={props.onRequest} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
-  if (props.calendarView === 'blocked' || (props.permission.state === 'blocked' && props.calendarView !== 'ready')) return <><StateCard icon="error" title="기기 설정에서 캘린더 권한을 켜 주세요" body="설정에서 TimeAgent의 캘린더 권한을 허용한 뒤 앱으로 돌아오면 자동으로 다시 확인합니다." /><Button label="기기 설정 열기" onPress={props.onSettings} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
-  if (props.calendarView === 'unavailable') return <><StateCard icon="calendar" title="이 기기에서는 캘린더 연결을 사용할 수 없어요" body="기기 캘린더 연결은 iOS·Android 개발 빌드에서 제공됩니다. 지금은 직접 일정을 등록해 주세요." /><Button label="직접 일정 만들기" onPress={props.onManual} /></>;
-  if (props.calendarView === 'error') return <><StateCard icon="error" title="캘린더를 불러오지 못했어요" body="연결 상태를 확인한 뒤 다시 시도하거나 직접 등록해 주세요." /><Button label="다시 불러오기" onPress={props.onRefresh} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'intro') return <><StateCard icon="calendar" title="기기 캘린더 일정을 확인할까요?" body="Google·Apple/iCloud·기기 캘린더의 향후 30일 일정을 읽습니다. 선택한 일정만 새 TimeAgent 초안으로 가져오며 원문은 서버에 저장하지 않습니다." /><Button label="캘린더 연결하기" onPress={props.onRequest} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'denied') return <><StateCard icon="error" title="캘린더 권한이 필요해요" body="권한을 다시 허용하거나 말로 일정을 만들 수 있습니다." /><Button label="권한 다시 요청" onPress={props.onRequest} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'blocked' || (props.permission.state === 'blocked' && props.calendarView !== 'ready')) return <><StateCard icon="error" title="기기 설정에서 캘린더 권한을 켜 주세요" body="설정에서 TimeAgent의 캘린더 권한을 허용한 뒤 앱으로 돌아오면 자동으로 다시 확인합니다." /><Button label="기기 설정 열기" onPress={props.onSettings} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (props.calendarView === 'unavailable') return <><StateCard icon="calendar" title="이 기기에서는 캘린더 연결을 사용할 수 없어요" body="기기 캘린더 연결은 iOS·Android 개발 빌드에서 제공됩니다. 지금은 말로 일정을 등록해 주세요." /><Button label="말로 일정 만들기" onPress={props.onManual} /></>;
+  if (props.calendarView === 'error') return <><StateCard icon="error" title="캘린더를 불러오지 못했어요" body="연결 상태를 확인한 뒤 다시 시도하거나 말로 등록해 주세요." /><Button label="다시 불러오기" onPress={props.onRefresh} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
 
-  if (!props.snapshot?.calendars.length) return <><StateCard icon="calendar" title="연결된 캘린더가 없어요" body="기기 설정에서 Google·iCloud 계정의 캘린더 동기화를 켜거나 직접 일정을 등록해 주세요." /><Button label="새로고침" onPress={props.onRefresh} /><Button label="직접 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
+  if (!props.snapshot?.calendars.length) return <><StateCard icon="calendar" title="연결된 캘린더가 없어요" body="기기 설정에서 Google·iCloud 계정의 캘린더 동기화를 켜거나 말로 일정을 등록해 주세요." /><Button label="새로고침" onPress={props.onRefresh} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
 
   return <>
     <View style={styles.calendarHeadingRow}><View style={styles.flexContent}><Text accessibilityRole="header" style={type.heading}>기기 캘린더 일정</Text><Text style={type.caption}>오늘부터 30일 · 가져오기 전에는 초안이 바뀌지 않아요</Text></View><Pressable accessibilityRole="button" accessibilityLabel="캘린더 새로고침" onPress={props.onRefresh} style={styles.textButton}><Text style={styles.textButtonLabel}>새로고침</Text></Pressable></View>

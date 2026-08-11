@@ -6,7 +6,7 @@ import { Button, Card, Header, Screen, SectionTitle, type } from '@/components/a
 import { AppIcon, AppIconName, IconButton, iconForRoutine, iconForTransport } from '@/components/app-icon';
 import { DestinationPicker } from '@/components/destination-picker';
 import { color, radius, space } from '@/constants/design';
-import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import { isGeneratedScheduleTitle, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import { addRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
 
@@ -56,7 +56,7 @@ export default function CreateScreen() {
       {step === 1 ? <TransportForm draft={draft} onChange={updateDraft} /> : null}
       {step === 2 ? <RoutineForm draft={draft} onChange={updateDraft} /> : null}
 
-      {step === 0 ? <Button label="음성으로 일정 만들기" variant="secondary" accessibilityHint="AI가 약속 내용을 듣고 일정 변경안을 제안합니다" onPress={() => router.push('/voice-schedule')} /> : null}
+      {step === 0 ? <Button label="음성 대화로 다시 확인" variant="secondary" accessibilityHint="AI가 현재 입력 내용을 바탕으로 모호한 항목만 다시 묻습니다" onPress={() => router.push('/voice-schedule')} /> : null}
       <View style={styles.actions}>
         {step > 0 ? <Button label="이전" variant="secondary" onPress={() => setDraftStep((step - 1) as 0 | 1)} /> : null}
         <View style={{ flex: 1 }}><Button label={step === 2 ? 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : step === 0 ? nextFromAppointment() : setDraftStep(2)} /></View>
@@ -73,7 +73,7 @@ export default function CreateScreen() {
 }
 
 function AppointmentForm({ draft, onChange }: DraftFormProps) {
-  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><DestinationPicker value={draft} onChange={onChange} /></View>;
+  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} replaceOnInput={isGeneratedScheduleTitle(draft.title)} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><DestinationPicker value={draft} onChange={onChange} /></View>;
 }
 
 function TransportForm({ draft, onChange }: DraftFormProps) {
@@ -102,8 +102,8 @@ type DraftFormProps = {
   onChange: (values: Partial<ScheduleDraft>) => void;
 };
 
-function Field({ label, value, icon, onChangeText }: { label: string; value: string; icon?: AppIconName; onChangeText: (value: string) => void }) {
-  return <View><Text style={styles.fieldLabel}>{label}</Text><View style={styles.field}>{icon ? <AppIcon name={icon} size={18} /> : null}<TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} style={styles.input} /></View></View>;
+function Field({ label, value, icon, replaceOnInput = false, onChangeText }: { label: string; value: string; icon?: AppIconName; replaceOnInput?: boolean; onChangeText: (value: string) => void }) {
+  return <View><Text style={styles.fieldLabel}>{label}</Text><View style={styles.field}>{icon ? <AppIcon name={icon} size={18} /> : null}<TextInput accessibilityLabel={label} accessibilityHint={replaceOnInput ? '입력을 시작하면 기본 이름이 지워집니다' : undefined} value={value} onFocus={() => { if (replaceOnInput) onChangeText(''); }} onChangeText={onChangeText} style={styles.input} /></View></View>;
 }
 
 const styles = StyleSheet.create({

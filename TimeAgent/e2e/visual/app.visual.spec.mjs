@@ -110,9 +110,10 @@ const screens = [
   { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
-  { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 잡을게, 맞아?' },
-  { id: 'voice-schedule-auto', path: '/voice-schedule?e2eState=auto-listening', ready: 'AI 비서 · 자동 음성 대화' },
-  { id: 'voice-schedule-one-shot', path: '/voice-schedule?e2eMode=one-shot', ready: '약속을 한 번에\n말해줘' },
+  { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 등록할까요?' },
+  { id: 'voice-schedule-auto', path: '/voice-schedule?e2eState=auto-listening', ready: '실시간 대화 · 자동 듣기' },
+  { id: 'voice-schedule-clarification', path: '/voice-schedule?e2eState=clarification', ready: '금요일 오후 몇 시로 등록할까요?' },
+  { id: 'voice-task-proposal', path: '/voice-schedule?e2eState=task', ready: '지금 시작할 만큼 나눴어요' },
   { id: 'calendar-events', path: '/schedules?e2eCalendar=events', ready: '기기 캘린더 일정' },
   { id: 'plan', path: '/plan', ready: '확정된 준비 계획' },
   { id: 'plan-b', path: '/plan-b', ready: '플랜 B' },
@@ -144,9 +145,6 @@ for (const screen of screens) {
   test(`${screen.id} 화면`, async ({ page }) => {
     await page.goto(screen.path);
     await page.getByText(screen.ready, { exact: true }).waitFor({ state: 'visible' });
-    if (screen.id === 'voice-schedule-one-shot') {
-      await expect(page.getByText('새 약속', { exact: true })).toHaveCSS('color', 'rgb(25, 31, 40)');
-    }
     if (screen.id === 'home-on-time-streak') {
       await page.getByRole('button', { name: /연속 5회 정시 도착 중/ }).scrollIntoViewIfNeeded();
     }
@@ -183,6 +181,23 @@ test('첫 실행은 온보딩 3장 뒤 Google 로그인 화면을 보여줌', as
   await expectVisual(page, 'google-sign-in');
 });
 
+test('새 일정은 30분 이후 기본값을 보여주고 이름 입력을 바로 교체함', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('tab', { name: '홈', exact: true }).click();
+  await page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true }).click();
+  await page.getByRole('button', { name: '키보드로 직접 입력·수정', exact: true }).click();
+  const title = page.getByRole('textbox', { name: '일정 이름' });
+
+  await expect(title).toHaveValue('목요일 오후 약속');
+  await expect(page.getByRole('textbox', { name: '날짜' })).toHaveValue('7월 23일 (오늘)');
+  await expect(page.getByRole('textbox', { name: '약속 시간' })).toHaveValue('13:35');
+  await expectVisual(page, 'create-step-1-default');
+
+  await title.click();
+  await page.keyboard.type('치과 검진');
+  await expect(title).toHaveValue('치과 검진');
+});
+
 test('선택한 성별의 기본 준비 항목을 새 일정에 적용함', async ({ page }) => {
   await page.goto('/settings');
   await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
@@ -193,7 +208,8 @@ test('선택한 성별의 기본 준비 항목을 새 일정에 적용함', asyn
 
   await page.getByRole('tab', { name: '홈', exact: true }).click();
   await page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true }).click();
-  await page.getByRole('button', { name: '텍스트로 직접 일정 등록', exact: true }).click();
+  await page.getByRole('button', { name: '키보드로 직접 입력·수정', exact: true }).click();
+  await page.waitForFunction(() => JSON.parse(window.localStorage.getItem('@on-time/schedule-draft') ?? '{}').routines?.some((routine) => routine.label === '면도'));
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await expect(page.getByText('면도', { exact: true })).toBeVisible();
@@ -561,7 +577,7 @@ test('계획 확정은 즉시 실행하지 않고 여러 약속을 저장함', a
 
   await expect(page).toHaveURL(/\/schedules$/);
   await expect(page.getByText('서면 볼링장 친구 약속', { exact: true })).toBeVisible();
-  await expect(page.getByText('친구와 볼링', { exact: true })).toBeVisible();
+  await expect(page.getByText('목요일 오후 약속', { exact: true })).toBeVisible();
   await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans.length)).toBe(2);
 });
 
@@ -609,30 +625,69 @@ test('일정 등록에서 장소명 검색 결과를 선택하고 최근 장소�
   await expect(destination).toHaveValue('서울특별시청');
 });
 
-test('음성 일정 결과로 준비 계획을 만들고 직접 등록으로 전환할 수 있음', async ({ page }) => {
+test('음성 일정 결과를 한 번에 확정하고 추출 값만 직접 수정할 수 있음', async ({ page }) => {
   await page.goto('/voice-schedule?e2eState=proposal');
-  await expect(page.getByText('약속', { exact: true })).toBeVisible();
-  await expect(page.getByText('일시', { exact: true })).toBeVisible();
+  await expect(page.getByText('일정명', { exact: true })).toBeVisible();
+  await expect(page.getByText('날짜', { exact: true })).toBeVisible();
+  await expect(page.getByText('시간', { exact: true })).toBeVisible();
   await expect(page.getByText('장소', { exact: true })).toBeVisible();
-  await expect(page.getByText('이동', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '좋아, 준비 계획 만들어줘' }).click();
+  await page.getByRole('button', { name: /시간 15:00–16:00 수정/ }).click();
+  const timeInput = page.getByRole('textbox', { name: '시간 직접 수정' });
+  await timeInput.fill('16:00');
+  await timeInput.press('Enter');
+  await expect(page.getByText('16:00–17:00', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '확정하고 일정 등록' }).click();
   await expect(page).toHaveURL(/\/plan/);
-  await expect(page.getByText('준비 계획을 확인해 주세요', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '계획 확정', exact: true }).click();
-  await expect(page).toHaveURL(/\/schedules$/);
-  await expect(page.getByText('지수랑 저녁 약속', { exact: true })).toBeVisible();
+  await expect(page.getByText('계획이 저장됐습니다', { exact: true })).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans') ?? '{"plans":[]}').plans.find((plan) => plan.schedule.title === '병원')?.schedule.appointmentTime)).toBe('16:00');
+});
 
-  await page.goto('/voice-schedule');
-  await page.getByRole('button', { name: '텍스트로 직접 일정 등록' }).click();
-  await expect(page).toHaveURL(/\/create\?new=1/);
+test('말로 일정 생성 X는 이전 화면 기록이 없어도 홈으로 닫힘', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=proposal');
+  await page.getByRole('button', { name: '음성 입력 닫기', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true })).toBeVisible();
+});
+
+test('모호한 시간은 해당 항목의 빠른 선택지만 보여줌', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=clarification');
+  await expect(page.getByText('금요일 오후 몇 시로 등록할까요?', { exact: true })).toBeVisible();
+  for (const option of ['13:00', '15:00', '17:00', '직접 입력']) {
+    await expect(page.getByRole('button', { name: option, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText('확인할 항목: 시간 · 지도 위치', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록' })).toBeDisabled();
 });
 
 test('음성 일정 화면은 열리자마자 AI 비서 자동 듣기 상태를 보여줌', async ({ page }) => {
   await page.goto('/voice-schedule?e2eState=auto-listening');
-  await expect(page.getByLabel('AI 비서 자동 음성 모드 켜짐', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '듣기 중지하고 바로 확인', exact: true })).toBeVisible();
-  await expect(page.getByText('듣고 있어요 · 0초\n말이 끝나면 자동으로 확인해요', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('AI 실시간 대화 자동 듣기 켜짐', { exact: true })).toBeVisible();
+  await expect(page.getByText('듣는 중', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '지금까지 말한 내용 확인', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('switch', { name: 'AI 음성 출력 끄기', exact: true })).toBeVisible();
+  await expect(page.getByLabel(/^사용자 발화:/)).toHaveCount(0);
   await expect(page.getByText('마이크를 누르고 대답해 줘', { exact: true })).toHaveCount(0);
+});
+
+test('플로팅 스피커로 AI 음성 출력만 끄고 다시 켬', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=auto-listening');
+  await page.getByRole('switch', { name: 'AI 음성 출력 끄기', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'AI 음성 출력 켜기', exact: true })).toBeVisible();
+  await page.getByRole('switch', { name: 'AI 음성 출력 켜기', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'AI 음성 출력 끄기', exact: true })).toBeVisible();
+});
+
+test('음성 할 일을 작은 행동으로 수정·저장하고 5분만 시작함', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=task');
+  await expect(page.getByText('지금 시작할 만큼 나눴어요', { exact: true })).toBeVisible();
+  const firstAction = page.getByLabel('1번째 행동 수정');
+  await firstAction.fill('빈 문서 열기');
+  await page.getByRole('button', { name: '저장하고 5분만 시작' }).click();
+  await expect(page.getByText('지금–다음–나중', { exact: true })).toBeVisible();
+  await expect(page.getByText('빈 문서 열기', { exact: true })).toBeVisible();
+  await expect(page.getByText('5분 시작 중', { exact: true })).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('@time-agent/execution-tasks') ?? '{}'));
+  expect(stored.tasks[0].status).toBe('active');
 });
 
 test('설정한 다크 모드를 음성 일정 화면에 저장·적용함', async ({ page }) => {
@@ -643,9 +698,9 @@ test('설정한 다크 모드를 음성 일정 화면에 저장·적용함', asy
   await page.waitForFunction(() => JSON.parse(window.localStorage.getItem('@on-time/app-settings') ?? '{}').colorMode === 'dark');
   await page.getByRole('tab', { name: '홈', exact: true }).click();
   await page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true }).click();
-  const guidedQuestion = page.getByText('안녕! 새 약속 잡아줄게. 무슨 약속이야?', { exact: true });
-  await expect(guidedQuestion).toBeVisible();
-  await expect(guidedQuestion).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const firstQuestion = page.getByText(/새 일정이나 할 일을 말해 주세요/);
+  await expect(firstQuestion).toBeVisible();
+  await expect(firstQuestion).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expectVisual(page, 'voice-schedule-dark');
 });
 

@@ -30,9 +30,9 @@ export function AuthGate({ children }: React.PropsWithChildren) {
         <AppLogo size={36} style={styles.topLogo} />
         <View style={styles.heroFrame}>
           <Image
-            accessibilityLabel="TimeAgent, 지금 해야 할 일과 남은 시간을 한눈에"
+            accessibilityLabel="Time:Agent, 지금 해야 할 일과 남은 시간을 한눈에"
             contentFit="contain"
-            source={require('../../assets/images/timeagent-login-hero-original.png')}
+            source={require('../../assets/images/timeagent-login-hero-wordmark.png')}
             style={styles.heroImage}
             transition={180}
           />

@@ -11,6 +11,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics';
 import '@/lib/background-journey-service';
 import { AuthProvider } from '@/state/auth-context';
 import { ScheduleProvider } from '@/state/schedule-context';
+import { TaskProvider } from '@/state/task-context';
 import { ThemeProvider, useAppTheme } from '@/state/theme-context';
 
 if (Platform.OS !== 'web') {
@@ -49,9 +50,9 @@ function RootLayoutContent() {
     <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
     <OnboardingGate>
       <AuthGate>
-        <ScheduleProvider>
+        <TaskProvider><ScheduleProvider>
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: 'slide_from_right' }} />
-        </ScheduleProvider>
+        </ScheduleProvider></TaskProvider>
       </AuthGate>
     </OnboardingGate>
   </AuthProvider>;

@@ -6,17 +6,37 @@ export type VoiceSchedulePatch = Partial<Pick<ScheduleDraft,
   | 'appointmentTime'
   | 'destination'
   | 'destinationAddress'
+  | 'destinationCoordinate'
   | 'transport'
   | 'priority'
   | 'routines'
->>;
+  | 'durationMinutes'
+  | 'recurrence'
+>> & {
+  preparationMinutes?: number;
+};
+
+export type VoiceClarificationField = 'title' | 'date' | 'time' | 'destination' | 'recurrence' | 'preparation';
+export type VoiceScheduleClarification = {
+  field: VoiceClarificationField;
+  prompt: string;
+  options: string[];
+};
 
 export type VoiceScheduleAssistantReply = {
+  entryType: 'schedule' | 'task';
   transcript: string;
   assistantMessage: string;
   question: string | null;
   readyToApply: boolean;
   patch: VoiceSchedulePatch;
+  clarification: VoiceScheduleClarification | null;
+  task: VoiceTaskProposal | null;
+};
+
+export type VoiceTaskProposal = {
+  title: string;
+  actions: { label: string; estimatedMinutes: number }[];
 };
 
 export type VoiceScheduleChange = {
@@ -26,13 +46,52 @@ export type VoiceScheduleChange = {
 };
 
 export type GuidedVoiceField = 'title' | 'dateTime' | 'destination' | 'transport';
-export type VoiceActivityState = { heardSpeech: boolean; silenceSinceMs: number | null };
+export type VoiceActivityState = {
+  heardSpeech: boolean;
+  speechCandidateSinceMs: number | null;
+  silenceSinceMs: number | null;
+};
 export const GUIDED_VOICE_QUESTIONS: { field: GuidedVoiceField; prompt: string }[] = [
   { field: 'title', prompt: '안녕! 새 약속 잡아줄게. 무슨 약속이야?' },
   { field: 'dateTime', prompt: '좋아. 언제 만나?' },
   { field: 'destination', prompt: '어디서 만나?' },
   { field: 'transport', prompt: '마지막! 어떻게 갈 거야?' },
 ];
+
+export function createVoiceFirstScheduleDraft(draft: ScheduleDraft): ScheduleDraft {
+  return {
+    ...draft,
+    step: 0,
+    title: '',
+    date: '',
+    appointmentTime: '',
+    destination: '',
+    destinationAddress: '',
+    destinationCoordinate: null,
+    durationMinutes: 60,
+    recurrence: '반복 없음',
+  };
+}
+
+export function voiceScheduleMissingFields(draft: ScheduleDraft) {
+  const missing: string[] = [];
+  if (!draft.title.trim()) missing.push('일정명');
+  if (!draft.date.trim()) missing.push('날짜');
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(draft.appointmentTime)) missing.push('시간');
+  if (!draft.destination.trim()) missing.push('장소');
+  return missing;
+}
+
+export function canConfirmVoiceSchedule(
+  draft: ScheduleDraft,
+  assistantReady: boolean,
+  clarification: VoiceScheduleClarification | null,
+) {
+  return assistantReady
+    && clarification === null
+    && voiceScheduleMissingFields(draft).length === 0
+    && Boolean(draft.destinationCoordinate);
+}
 
 export function resolveSpokenDateReference(text: string, now = Date.now()) {
   const reference = new Date(now);
@@ -83,18 +142,39 @@ export function updateVoiceActivity(
   previous: VoiceActivityState,
   metering: number | undefined,
   durationMillis: number,
-  { speechThresholdDb = -55, minimumListeningMs = 600, trailingSilenceMs = 1_200 } = {},
+  {
+    speechThresholdDb = -48,
+    minimumListeningMs = 350,
+    speechOnsetMs = 240,
+    trailingSilenceMs = 700,
+  } = {},
 ) {
   if (metering === undefined || durationMillis < minimumListeningMs) {
     return { state: previous, shouldFinish: false };
   }
   if (metering >= speechThresholdDb) {
-    return { state: { heardSpeech: true, silenceSinceMs: null }, shouldFinish: false };
+    if (previous.heardSpeech) {
+      return { state: { ...previous, silenceSinceMs: null }, shouldFinish: false };
+    }
+    const speechCandidateSinceMs = previous.speechCandidateSinceMs ?? durationMillis;
+    return {
+      state: {
+        heardSpeech: durationMillis - speechCandidateSinceMs >= speechOnsetMs,
+        speechCandidateSinceMs,
+        silenceSinceMs: null,
+      },
+      shouldFinish: false,
+    };
   }
-  if (!previous.heardSpeech) return { state: previous, shouldFinish: false };
+  if (!previous.heardSpeech) {
+    return {
+      state: { heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null },
+      shouldFinish: false,
+    };
+  }
   const silenceSinceMs = previous.silenceSinceMs ?? durationMillis;
   return {
-    state: { heardSpeech: true, silenceSinceMs },
+    state: { ...previous, silenceSinceMs },
     shouldFinish: durationMillis - silenceSinceMs >= trailingSilenceMs,
   };
 }
@@ -102,12 +182,18 @@ export function updateVoiceActivity(
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
 
 export function applyVoiceSchedulePatch(draft: ScheduleDraft, patch: VoiceSchedulePatch): ScheduleDraft {
+  const { preparationMinutes, ...schedulePatch } = patch;
   const destinationChanged = (patch.destination !== undefined && patch.destination !== draft.destination)
     || (patch.destinationAddress !== undefined && patch.destinationAddress !== draft.destinationAddress);
   return {
     ...draft,
-    ...patch,
-    destinationCoordinate: destinationChanged ? null : draft.destinationCoordinate,
+    ...schedulePatch,
+    ...(preparationMinutes !== undefined && patch.routines === undefined ? {
+      routines: [{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: preparationMinutes }],
+    } : {}),
+    destinationCoordinate: patch.destinationCoordinate !== undefined
+      ? patch.destinationCoordinate
+      : destinationChanged ? null : draft.destinationCoordinate,
   };
 }
 
@@ -121,6 +207,8 @@ export function describeVoiceScheduleChanges(before: ScheduleDraft, after: Sched
     ['이동수단', before.transport, after.transport],
     ['도착 우선순위', priorityLabel(before.priority), priorityLabel(after.priority)],
     ['준비 행동', routinesLabel(before.routines), routinesLabel(after.routines)],
+    ['일정 길이', `${before.durationMinutes ?? 60}분`, `${after.durationMinutes ?? 60}분`],
+    ['반복', before.recurrence ?? '반복 없음', after.recurrence ?? '반복 없음'],
   ];
   return candidates
     .filter(([, previous, next]) => previous !== next)
@@ -138,12 +226,57 @@ export function normalizeVoiceScheduleReply(value: unknown): VoiceScheduleAssist
   }
 
   const patch = normalizePatch(value.patch);
+  const entryType = value.entryType === undefined ? 'schedule' : value.entryType;
+  if (entryType !== 'schedule' && entryType !== 'task') throw invalidResponse();
+  const task = normalizeTaskProposal(value.task);
+  if (entryType === 'task' && !task) throw invalidResponse();
   return {
+    entryType,
     transcript: value.transcript.trim(),
     assistantMessage: value.assistantMessage.trim(),
     question: value.question === null ? null : value.question.trim(),
     readyToApply: value.readyToApply,
     patch,
+    clarification: normalizeClarification(value.clarification),
+    task,
+  };
+}
+
+function normalizeTaskProposal(value: unknown): VoiceTaskProposal | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)
+    || !isTrimmedText(value.title, 120)
+    || !Array.isArray(value.actions)
+    || value.actions.length < 1
+    || value.actions.length > 3) throw invalidResponse();
+  const actions = value.actions.map((action) => {
+    if (!isRecord(action)
+      || !isTrimmedText(action.label, 100)
+      || typeof action.estimatedMinutes !== 'number'
+      || !Number.isInteger(action.estimatedMinutes)
+      || action.estimatedMinutes < 2
+      || action.estimatedMinutes > 5) throw invalidResponse();
+    return { label: action.label.trim(), estimatedMinutes: action.estimatedMinutes };
+  });
+  return { title: value.title.trim(), actions };
+}
+
+function normalizeClarification(value: unknown): VoiceScheduleClarification | null {
+  if (value === null || value === undefined) return null;
+  const fields: VoiceClarificationField[] = ['title', 'date', 'time', 'destination', 'recurrence', 'preparation'];
+  if (!isRecord(value)
+    || typeof value.field !== 'string'
+    || !fields.includes(value.field as VoiceClarificationField)
+    || !isTrimmedText(value.prompt, 300)
+    || !Array.isArray(value.options)
+    || value.options.length > 6
+    || value.options.some((option) => !isTrimmedText(option, 80))) {
+    throw invalidResponse();
+  }
+  return {
+    field: value.field as VoiceClarificationField,
+    prompt: value.prompt.trim(),
+    options: value.options.map((option) => option.trim()),
   };
 }
 
@@ -178,6 +311,21 @@ function normalizePatch(value: Record<string, unknown>): VoiceSchedulePatch {
   if (routines !== null && routines !== undefined) {
     if (!Array.isArray(routines) || routines.length > 12) throw invalidResponse();
     patch.routines = routines.map((routine, index) => normalizeRoutine(routine, index));
+  }
+  const durationMinutes = value.durationMinutes;
+  if (durationMinutes !== null && durationMinutes !== undefined) {
+    if (typeof durationMinutes !== 'number' || !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1_440) throw invalidResponse();
+    patch.durationMinutes = durationMinutes;
+  }
+  const recurrence = value.recurrence;
+  if (recurrence !== null && recurrence !== undefined) {
+    if (!isTrimmedText(recurrence, 120)) throw invalidResponse();
+    patch.recurrence = recurrence.trim();
+  }
+  const preparationMinutes = value.preparationMinutes;
+  if (preparationMinutes !== null && preparationMinutes !== undefined) {
+    if (typeof preparationMinutes !== 'number' || !Number.isInteger(preparationMinutes) || preparationMinutes < 1 || preparationMinutes > 720) throw invalidResponse();
+    patch.preparationMinutes = preparationMinutes;
   }
   return patch;
 }

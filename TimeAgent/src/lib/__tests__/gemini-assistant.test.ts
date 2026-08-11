@@ -23,9 +23,15 @@ describe('Gemini assistant adapter', () => {
     const body = buildGeminiInteractionBody('gemini-3.1-flash-lite', turn);
 
     expect(body.model).toBe('gemini-3.1-flash-lite');
-    expect(body.system_instruction).toContain('한국어 일정 등록 도우미');
+    expect(body.system_instruction).toContain('한국어 일정·할 일 등록 도우미');
     expect(body.system_instruction).toContain('친구 같은 AI 비서');
     expect(body.system_instruction).toContain('가벼운 잡담');
+    expect(body.system_instruction).toContain('모호한 값');
+    expect(body.system_instruction).toContain('금요일 오후 몇 시');
+    expect(body.system_instruction).toContain('일정인지');
+    expect(body.system_instruction).toContain('할 일인지');
+    expect(body.system_instruction).toContain('2~5분');
+    expect(body.system_instruction).toContain('걸어서');
     expect(body.store).toBe(false);
     expect(body.input).toHaveLength(1);
     expect(body.input[0]).toEqual(expect.objectContaining({ type: 'text', text: expect.stringContaining('내일 오전 열 시 치과') }));
@@ -35,7 +41,7 @@ describe('Gemini assistant adapter', () => {
       type: 'text',
       mime_type: 'application/json',
       schema: {
-        required: ['transcript', 'assistantMessage', 'question', 'readyToApply', 'patch'],
+        required: ['entryType', 'transcript', 'assistantMessage', 'question', 'readyToApply', 'clarification', 'task', 'patch'],
       },
     });
   });

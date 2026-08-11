@@ -22,7 +22,7 @@ Ralph Loop는 한 번의 큰 프롬프트로 모든 기능을 만들지 않고, 
 ## 에이전트용 반복 프롬프트
 
 ```text
-ON:TIME 저장소에서 docs/PRODUCT.md, docs/DESIGN_SYSTEM.md,
+TimeAgent 저장소에서 docs/PRODUCT.md, docs/DESIGN_SYSTEM.md,
 docs/HARNESS.md, docs/EXECUTION_PLAN.md를 읽어라.
 
 EXECUTION_PLAN에서 우선순위가 가장 높은 미완료 항목 하나만 선택하라.
@@ -48,4 +48,3 @@ npm run verify를 통과시키고 관련 화면을 360x800, 390x844,
 ## 완료의 정의
 
 코드 작성만으로 완료하지 않는다. 수용 기준 충족, 자동 검증 통과, 대상 크기 시각 확인, 접근성 레이블과 상태 문구 확인, 실행 계획 업데이트까지 끝나야 완료다.
-

@@ -218,5 +218,6 @@ function minutesToClock(totalMinutes: number) {
 }
 
 function departureTitle(transport: TransportMode) {
+  if (transport === '도보') return '걸어서 출발';
   return transport === 'AI 추천' ? '추천 경로로 출발' : `${transport}로 출발`;
 }

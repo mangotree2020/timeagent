@@ -33,6 +33,7 @@ import Sparkles from 'lucide-react-native/icons/sparkles';
 import SunMedium from 'lucide-react-native/icons/sun-medium';
 import TrainFront from 'lucide-react-native/icons/train-front';
 import WandSparkles from 'lucide-react-native/icons/wand-sparkles';
+import Volume2 from 'lucide-react-native/icons/volume-2';
 import VolumeX from 'lucide-react-native/icons/volume-x';
 import X from 'lucide-react-native/icons/x';
 import Zap from 'lucide-react-native/icons/zap';
@@ -64,6 +65,7 @@ const icons = {
   home: Home,
   location: MapPin,
   voice: Mic2,
+  speaker: Volume2,
   mute: VolumeX,
   minus: Minus,
   navigation: Navigation,

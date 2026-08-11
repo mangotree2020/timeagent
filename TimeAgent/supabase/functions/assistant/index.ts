@@ -112,11 +112,38 @@ function parseAssistantResult(outputText: string, input: Input) {
 
 function isAssistantResult(value: unknown): value is Record<string, unknown> & { transcript: string } {
   return isRecord(value)
+    && (value.entryType === "schedule" || value.entryType === "task")
     && validText(value.transcript, 2_000)
     && validText(value.assistantMessage, 1_000)
     && (value.question === null || validText(value.question, 500))
     && typeof value.readyToApply === "boolean"
+    && (value.clarification === null || isClarification(value.clarification))
+    && (value.task === null || isTaskProposal(value.task))
+    && (value.entryType !== "task" || isTaskProposal(value.task))
     && isRecord(value.patch);
+}
+
+function isTaskProposal(value: unknown) {
+  return isRecord(value)
+    && validText(value.title, 120)
+    && Array.isArray(value.actions)
+    && value.actions.length >= 1
+    && value.actions.length <= 3
+    && value.actions.every((action) => isRecord(action)
+      && validText(action.label, 100)
+      && Number.isInteger(action.estimatedMinutes)
+      && Number(action.estimatedMinutes) >= 2
+      && Number(action.estimatedMinutes) <= 5);
+}
+
+function isClarification(value: unknown) {
+  if (!isRecord(value)
+    || typeof value.field !== "string"
+    || !["title", "date", "time", "destination", "recurrence", "preparation"].includes(value.field)
+    || !validText(value.prompt, 300)
+    || !Array.isArray(value.options)
+    || value.options.length > 6) return false;
+  return value.options.every((option) => validText(option, 80));
 }
 
 function invalidResponse() {

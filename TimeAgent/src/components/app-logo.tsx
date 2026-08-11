@@ -4,14 +4,14 @@ import { color, radius, space } from '@/constants/design';
 
 export function AppLogo({ size = 36, style, variant = 'default', iconOnly = false }: { size?: number; style?: StyleProp<ViewStyle>; variant?: 'default' | 'dark'; iconOnly?: boolean }) {
   return (
-    <View accessibilityRole="image" accessibilityLabel="TimeAgent 로고" style={[styles.lockup, style]}>
+    <View accessibilityRole="image" accessibilityLabel="Time:Agent 로고" style={[styles.lockup, style]}>
       <Image
         accessibilityIgnoresInvertColors
         accessible={false}
         source={require('../../assets/images/timeagent-alarm-logo.png')}
         style={{ width: size, height: size, borderRadius: Math.max(radius.sm, size * 0.28) }}
       />
-      {iconOnly ? null : <Text style={[styles.wordmark, variant === 'dark' && styles.wordmarkDark, { fontSize: Math.max(18, size * 0.56) }]}>Time<Text style={styles.accent}>Agent</Text></Text>}
+      {iconOnly ? null : <Text style={[styles.wordmark, variant === 'dark' && styles.wordmarkDark, { fontSize: Math.max(18, size * 0.56) }]}>Time<Text style={styles.accent}>:Agent</Text></Text>}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +30,7 @@ import {
   weatherPreparationAdvice,
 } from '@/lib/weather';
 import { useAuth } from '@/state/auth-context';
+import { useTaskExecution } from '@/state/task-context';
 
 type TodayCalendarStatus = 'checking' | 'ready' | 'permission-needed' | 'unavailable' | 'error';
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
@@ -49,6 +50,7 @@ export default function HomeScreen() {
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>(weatherFixtureMode ? 'ready' : weatherErrorFixtureMode ? 'error' : 'checking');
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { currentTask } = useTaskExecution();
   const { confirmedPlans, confirmedPlansStatus, selectConfirmedPlan, delayMinutes } = useSchedule();
   const todayPlans = plansForLocalDate(confirmedPlans, today)
     .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
@@ -162,6 +164,8 @@ export default function HomeScreen() {
           <HomeLogoButton hasMessage={hasAttentionMessage} onPress={() => router.push('/alerts')} />
         </View>
 
+        {currentTask ? <NowTaskCard task={currentTask} onPress={() => router.push('/task-focus' as Href)} /> : null}
+
         {schedule ? <Pressable
           accessibilityRole="button"
           accessibilityLabel={`다음 약속, ${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
@@ -180,7 +184,7 @@ export default function HomeScreen() {
               <View style={styles.appointmentDetail}><AppIcon name="location" size={17} iconColor={color.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
             </View>
           </Card>
-        </Pressable> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '일정을 만든 뒤 계획 확정을 누르면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="새 일정 만들기" variant="secondary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /> : null}</View></Card>}
+        </Pressable> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '말로 일정을 등록하면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="말로 새 일정 만들기" variant="secondary" onPress={() => router.push('/voice-schedule')} /> : null}</View></Card>}
 
         <HomeWeather status={weatherStatus} weather={weather} fixtureMode={weatherFixtureMode} onRetry={() => void loadWeather()} />
 
@@ -189,7 +193,7 @@ export default function HomeScreen() {
           <RegisteredPlanList plans={homePlans} onSelect={openRegisteredPlan} />
         </> : null}
 
-        <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} style={styles.sectionAction}><Text style={styles.link}>+ 추가</Text></Pressable>}>오늘·내일 약속{todayCalendarStatus === 'ready' ? ` ${todayEvents.length}개` : ''}</SectionTitle>
+        <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/voice-schedule')} style={styles.sectionAction}><Text style={styles.link}>+ 말로 추가</Text></Pressable>}>오늘·내일 약속{todayCalendarStatus === 'ready' ? ` ${todayEvents.length}개` : ''}</SectionTitle>
         <TodaySchedules
           status={todayCalendarStatus}
           events={todayEvents}
@@ -210,6 +214,19 @@ export default function HomeScreen() {
       <BottomNav />
     </View>
   );
+}
+
+function NowTaskCard({ task, onPress }: { task: NonNullable<ReturnType<typeof useTaskExecution>['currentTask']>; onPress: () => void }) {
+  const current = task.actions.find((action) => action.status === 'current');
+  const next = task.actions.find((action) => action.status === 'upcoming');
+  if (!current) return null;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`지금 ${current.label}. ${task.status === 'active' ? '5분 시작 중' : '5분만 시작'}`} onPress={onPress} style={({ pressed }) => [styles.nowTaskPressable, pressed && styles.buttonPressed]}>
+    <Card dark style={styles.nowTaskCard}>
+      <View style={styles.nowTaskTop}><Text style={styles.nowTaskLabel}>지금 할 일</Text><StatusPill label={task.status === 'active' ? '시작 중' : '5분 시작'} tone={task.status === 'active' ? 'success' : 'info'} /></View>
+      <Text numberOfLines={2} style={styles.nowTaskAction}>{current.label}</Text>
+      <Text numberOfLines={1} style={styles.nowTaskNext}>다음 · {next?.label ?? '이 행동을 마치면 완료'}</Text>
+    </Card>
+  </Pressable>;
 }
 
 function OnTimeArrivalBadge({ streak, onPress }: { streak: number; onPress: () => void }) {
@@ -314,10 +331,10 @@ function TodaySchedules({ status, events, today, onRetry }: { status: TodayCalen
     return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="error" size={24} /></View><Text style={type.heading}>오늘·내일 약속을 불러오지 못했어요</Text><Text style={type.bodyMuted}>캘린더 연결 상태를 확인한 뒤 다시 시도해 주세요.</Text><Button label="약속 다시 불러오기" variant="secondary" onPress={onRetry} /></Card>;
   }
   if (status === 'permission-needed' || status === 'unavailable') {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>{status === 'permission-needed' ? '캘린더를 연결하면 오늘·내일 약속을 보여드려요' : '오늘·내일 약속을 직접 추가해 주세요'}</Text><Text style={type.bodyMuted}>{status === 'permission-needed' ? '권한을 허용하기 전에는 기기 일정을 읽지 않습니다.' : '기기 캘린더 연결은 iOS·Android 앱에서 사용할 수 있습니다.'}</Text><Button label={status === 'permission-needed' ? '캘린더 연결하기' : '일정 만들기'} variant="secondary" onPress={() => status === 'permission-needed' ? router.push({ pathname: '/schedules', params: { tab: 'calendar' } }) : router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
+    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>{status === 'permission-needed' ? '캘린더를 연결하면 오늘·내일 약속을 보여드려요' : '말로 오늘·내일 약속을 추가해 주세요'}</Text><Text style={type.bodyMuted}>{status === 'permission-needed' ? '권한을 허용하기 전에는 기기 일정을 읽지 않습니다.' : '앱이 열리면 바로 듣고 모호한 항목만 다시 물어봅니다.'}</Text><Button label={status === 'permission-needed' ? '캘린더 연결하기' : '말로 일정 만들기'} variant="secondary" onPress={() => status === 'permission-needed' ? router.push({ pathname: '/schedules', params: { tab: 'calendar' } }) : router.push('/voice-schedule')} /></Card>;
   }
   if (!events.length) {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>오늘·내일 등록된 약속이 없어요</Text><Text style={type.bodyMuted}>새 약속을 추가하면 준비 시작 시간과 다음 행동을 계산해 드립니다.</Text><Button label="약속 추가" variant="secondary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /></Card>;
+    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>오늘·내일 등록된 약속이 없어요</Text><Text style={type.bodyMuted}>말로 새 약속을 추가하면 준비 시작 시간과 다음 행동을 계산해 드립니다.</Text><Button label="말로 약속 추가" variant="secondary" onPress={() => router.push('/voice-schedule')} /></Card>;
   }
   return <View accessibilityLabel={`오늘·내일 약속 ${events.length}개`} style={styles.todayList}>{events.map((event) => {
     const timeLabel = formatTodayTomorrowCalendarEventTime(event, today);
@@ -333,6 +350,12 @@ const styles = StyleSheet.create({
   headerMeta: { color: color.textMuted, fontSize: 13, lineHeight: 19, fontWeight: '700' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroPressable: { minHeight: 44, borderRadius: radius.lg },
+  nowTaskPressable: { minHeight: 44, borderRadius: radius.lg },
+  nowTaskCard: { minHeight: 142, gap: space.md, padding: space.xl },
+  nowTaskTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  nowTaskLabel: { color: color.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
+  nowTaskAction: { color: color.surface, fontSize: 24, lineHeight: 31, fontWeight: '900' },
+  nowTaskNext: { color: color.ice, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   hero: { minHeight: 148, gap: space.md, padding: space.xl, borderColor: 'transparent', boxShadow: '0 10px 28px rgba(15,23,42,0.055)', elevation: 2 },
   emptyPlan: { minHeight: 132, flexDirection: 'row', alignItems: 'center', gap: space.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },

@@ -49,8 +49,32 @@ export function buildProgressNotificationRequests(
       });
     }
 
+    const next = session.timeline[index + 1];
+    const previewAt = endAt - 15 * 60_000;
+    if (next && step.duration >= 20 && previewAt > now) {
+      requests.push({
+        key: `transition-preview:${step.id}`,
+        kind: 'transition-preview',
+        stepId: step.id,
+        fireAt: previewAt,
+        title: `15분 뒤 ${next.title}(으)로 전환해요`,
+        body: `지금 하는 ${step.title}을 천천히 마무리할 시점이에요.`,
+      });
+    }
+
+    const wrapAt = endAt - 5 * 60_000;
+    if (next && step.duration >= 10 && wrapAt > now) {
+      requests.push({
+        key: `transition-wrap:${step.id}`,
+        kind: 'transition-wrap',
+        stepId: step.id,
+        fireAt: wrapAt,
+        title: `5분 뒤 ${next.title}(으)로 이동해요`,
+        body: `새 일을 벌이지 말고 현재 행동을 정리하세요. 다음 행동은 ${next.title}입니다.`,
+      });
+    }
+
     if (step.duration > 0 && endAt > now) {
-      const next = session.timeline[index + 1];
       requests.push({
         key: `step-end:${step.id}`,
         kind: 'step-end',

@@ -40,6 +40,24 @@ describe('local notification plan', () => {
     ]));
   });
 
+  test('adds 15-minute preview and 5-minute wrap-up before a long step transition', () => {
+    const session = createFixture();
+    const requests = buildProgressNotificationRequests(session, 1_000_000);
+    const longStep = session.timeline.find((step) => step.duration >= 20);
+    expect(longStep).toBeDefined();
+    expect(requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: `transition-preview:${longStep!.id}`, kind: 'transition-preview', stepId: longStep!.id }),
+      expect.objectContaining({ key: `transition-wrap:${longStep!.id}`, kind: 'transition-wrap', stepId: longStep!.id }),
+    ]));
+    const preview = requests.find((request) => request.key === `transition-preview:${longStep!.id}`)!;
+    const wrap = requests.find((request) => request.key === `transition-wrap:${longStep!.id}`)!;
+    const end = requests.find((request) => request.key === `step-end:${longStep!.id}`)!;
+    expect(end.fireAt - preview.fireAt).toBe(15 * 60_000);
+    expect(end.fireAt - wrap.fireAt).toBe(5 * 60_000);
+    expect(preview.body).toContain('마무리');
+    expect(wrap.body).toContain('다음 행동');
+  });
+
   test('returns no notifications for a completed session', () => {
     let session = createFixture();
     while (session.state === 'active') session = advanceProgressSession(session, session.updatedAt + 1_000);

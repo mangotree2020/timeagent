@@ -69,7 +69,7 @@ describe('confirmed schedule plans', () => {
   });
 
   test('treats the explicit today label as authoritative over a stale formatted date', () => {
-    const schedule = { ...createDefaultScheduleDraft(), date: '7월 23일 (오늘)' };
+    const schedule = { ...createDefaultScheduleDraft(), date: '7월 23일 (오늘)', appointmentTime: '14:00' };
     const confirmed = confirmSchedulePlan({ schedule, plan: createSchedulePlan(schedule), now: morning });
 
     expect(new Date(confirmed.appointmentAt).toISOString()).toBe('2026-08-08T05:00:00.000Z');

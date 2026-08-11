@@ -20,6 +20,11 @@ const validReply = {
   assistantMessage: '치과 일정으로 이해했어요.',
   question: '주소를 알려주시겠어요?',
   readyToApply: false,
+  clarification: {
+    field: 'destination',
+    prompt: '어느 치과인가요?',
+    options: ['연산동 치과', '서면 치과', '직접 입력'],
+  },
   patch: {
     title: '치과 진료',
     date: null,

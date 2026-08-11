@@ -1,5 +1,88 @@
 # 실행 계획
 
+## 2026-08-12 완전 자동 음성 대화 및 저장 안정화 (구현 완료)
+
+- [x] 음성 일정 화면 진입 즉시 안내 음성을 기다리지 않고 녹음을 시작하며, 발화가 확인된 뒤 0.7초 침묵하면 자동 제출한다.
+- [x] 하단 마이크 버튼 영역을 제거하고 현재 상태를 `듣는 중`·`말하는 중`·`정리 중`으로 표시한다.
+- [x] 52×52 플로팅 스피커 스위치로 AI 음성 출력만 끄고 켜며, 입력 마이크는 계속 자동 동작한다.
+- [x] 0.24초 이상 연속된 음성 에너지만 발화 시작으로 인정해 짧은 주변 소음을 거르고, 실제 발화가 없거나 서버 transcript가 비어 있으면 사용자 발화·AI 응답을 추가하지 않은 채 다시 듣는다.
+- [x] Android crash buffer에서 저장 화면 전환의 원인을 `Cannot use shared object that was already released`인 `AudioRecorder` unmount 재접근으로 확인했다. 저장·닫기 전에 녹음과 TTS를 정리하고 unmount cleanup에서는 recorder 객체를 호출하지 않으며, 비동기 응답은 generation 검사로 화면 이탈 뒤 폐기한다.
+- [x] 예약된 자동 재청취는 현재 대화 generation을 캡처하고, 닫기·저장·직접 수정·unmount에서 타이머를 취소한다. 처리 중 중복 `submitTurn`도 ref guard로 차단한다.
+- [x] `npm run verify`의 34 suites / 185 tests가 통과했다. Playwright 전체 159 tests와 최종 변경 뒤 핵심 6 tests가 360×800·390×844·430×932에서 자동 듣기, 가짜 사용자 발화 없음, 마이크 버튼 제거, 스피커 on/off, 일정 저장·화면 전환을 검증한다.
+- [x] SM-N971N에서 화면 진입 즉시 `듣는 중`, 18초 무발화 시 대화 미생성, 발화 후 자동 제출·AI 응답·재청취, 시스템 내비게이션 위 스피커 on/off, 녹음 중 일정 확정 후 홈 복귀와 저장 일정 표시를 확인했다. 확인 뒤 Android crash buffer는 0줄이었다.
+- [x] Claude Code 2.1.228을 `claude.ai` 인증으로 읽기 전용 실행했다. 리뷰의 유효 지적이었던 중복 제출과 화면 이탈 뒤 재청취 타이머 경합을 보강했으며, fire-and-forget TTS 지적은 TTS 후와 `startRecording` 내부의 mounted/generation 재검사가 있어 결함으로 채택하지 않았다.
+- [x] 최종 소스 Android release 751 tasks 빌드와 SM-N971N 데이터 유지 설치를 완료했다. APK SHA-256은 `82c77606b2a70c89b4fae33eea6f0e4adad0f9f18fc93c7481057f1a23b287c0`다. 최종 APK에서 홈 실행, 음성 화면 즉시 `듣는 중`, 스피커 스위치 표시, X 홈 복귀를 재확인했으며 Android crash buffer는 0줄이었다.
+
+## 2026-08-12 말로 일정 생성 닫기 복구 (완료)
+
+- [x] 음성 일정 화면의 X가 라우터 뒤로가기 기록에 의존하지 않고 항상 홈으로 닫히도록 변경했다.
+- [x] 닫을 때 진행 중인 AI 음성 흐름과 녹음을 중단해 화면을 벗어난 뒤 음성 처리가 이어지지 않도록 했다.
+- [x] 음성 화면을 직접 연 뒤 X를 누르는 회귀 테스트를 추가하고 360×800·390×844·430×932에서 홈 복귀를 확인했다.
+- 검증: `npm run verify` 통과(34 suites / 184 tests), Playwright 닫기 상호작용 3/3 통과.
+- Android: release 760 tasks 빌드 성공, SM-N971N에 데이터 유지 업데이트 설치 성공. APK SHA-256은 `2595729cf163f80c56419d4779489f3ac32c863daaac9bc34c6bbe42e813b4ae`다. 업데이트 후 앱이 Google 계정 선택을 요구해 로그인 뒤 X 실기기 조작을 최종 확인한다.
+
+## 2026-08-11 ADHD 실행 지원 MVP 재정렬 (기획 반영)
+
+제품 목표를 일정 기록에서 `기억하기 → 시작하기 → 시간 인식하기 → 전환하기 → 실패 후 복구하기` 루프 운영으로 재정렬한다. 성인 ADHD의 시간 지각은 연구 결과와 개인차가 크므로 결함을 전제하지 않고, 사용자가 개입 강도와 자동화를 선택하도록 한다.
+
+### MVP 1 — 입력 에너지 최소화
+
+- [x] 음성·자연어 일정 입력, 모호한 필드만 재질문, 지도 확인, 한 번 탭 확정
+- [x] 일정뿐 아니라 할 일도 같은 음성 대화에서 구분·등록
+- [ ] 반복 일정의 과거 수정 패턴을 추천값으로 제시하고 자동 확정하지 않음
+
+### MVP 2 — 실행 가능한 다음 행동
+
+- [x] 큰 작업을 동사형 2~5분 행동 최대 3개로 분해하는 순수 도메인·테스트
+- [x] 분해 결과의 적용·부분 수정·원문 유지·취소 확인 UI
+- [ ] 홈과 진행 화면을 `지금–다음–나중`으로 통일하고 현재 행동 하나를 우선
+- [x] 할 일 홈 카드와 `지금–다음–나중` 진행 화면에서 현재 행동 하나를 우선
+- [x] `5분만 시작` 세션과 완료·5분 연장·다음 행동 전환·저장 복원
+- [ ] 5분 세션의 명시적 중단·나중에 재개 복구 상태
+
+### MVP 3 — 역산과 전환
+
+- [x] 준비·이동 시간을 포함한 역산 계획과 로컬 알림
+- [ ] 주차·정리·컨텍스트 전환 시간을 일정별 선택 항목으로 추가
+- [x] 15분 전 예고→5분 전 마무리→종료 시 다음 행동의 단계적 알림
+- [x] 일정 진행과 5분 시작에서 남은 시간을 숫자와 감소형 바로 함께 표시
+- [ ] Reduce Motion 설정을 시간 시각화와 전환 애니메이션에 일괄 적용
+- [ ] 알림 무시 후 `5분 뒤 시작`·`오늘 재배치`·`취소` action과 전체 재계산
+
+### MVP 4 — 비난 없는 하루 복구
+
+- [x] 현재 계획 지연 재계산, 변경 전후 확인, 사용자 승인 후 적용
+- [ ] 남은 하루의 복수 일정을 대상으로 유지·축소·이동 후보 최대 3개 계산
+- [ ] `지금 가능한 행동`을 먼저 보여주는 수치심 없는 복구 화면과 문구 회귀 테스트
+- [ ] 자동 변경 이유, 영향 일정, 적용·수정·유지·취소를 한 화면에서 확인
+
+### 학습과 안전 경계
+
+- [ ] 예상 대비 실제 소요시간을 행동 유형별로 학습하고 표본 수·오차 범위와 함께 추천
+- [ ] 개인화 추천은 명시적 수락 전 일정·버퍼·알림을 변경하지 않음
+- [ ] 설정에서 전환 개입 시점·빈도·음성·개인화 사용을 끄거나 조정
+- [ ] 제품·온보딩·스토어 문구에 진단/치료 대체 아님과 개인차 원칙 반영
+- [ ] 지표를 ADHD 증상·치료 효과·성실성 점수로 사용하지 않는 분석 계약 작성
+
+검증 기준은 `다음 행동 확인 3초 이내`, `정상 일정 음성 무추가 입력 등록 80~90%`, `작업 분해 후 5분 내 시작률`, `전환 단계별 반응률`, `지연 후 10분 내 복구율`, `개인화 추천 수락·수정·거절률`이다.
+
+구현 증거(2026-08-11): 운영 Gemini가 `보고서 작성해야 해`를 `task`로 분류하고 `문서 파일 열기 2분 → 보고서 제목 작성 3분 → 참고 자료 파일 하나 붙이기 3분`을 반환했다. 앱은 제안 수정→저장→5분 즉시 시작→행동 완료 후 다음 행동 전환을 영속화한다. `npm run verify` 34 suites / 183 tests, Playwright 153 tests가 360×800·390×844·430×932에서 통과했다.
+
+Android 증거: release 760 tasks 빌드 성공, SM-N971N에 데이터 유지 업데이트 설치 성공. APK SHA-256은 `22a457da53d190542f289be8d9464e18fcf5df6d0778f11dc962dc5a3524f037`다. `voice-schedule?e2eState=task` 실행 intent까지 확인했으며 제안→5분 시작 실기기 조작은 패턴 잠금 해제 후 최종 확인한다.
+
+도보 이동 보완: `도보`를 독립 이동수단으로 유지하고 `걸어서`·`걸어가`·`걷기`·`도보로` 음성을 모두 `도보`로 정규화한다. 계획 타임라인에는 `걸어서 출발`로 표시하며 Plan B는 TMAP 실제 도보 경로와 버스·지하철 예상안의 도보 구간을 함께 비교한다. 운영 Gemini에서 `걸어서 갈게`가 `transport: 도보`로 반환됨을 확인했다.
+
+## 2026-08-11 음성 대화 중심 일정 등록 (완료)
+
+- [x] 홈·일정 목록의 새 일정 진입점을 `말로 새 일정`으로 통일하고, 화면 진입 즉시 AI 안내 음성 뒤 자동 듣기를 시작한다.
+- [x] 발화를 일정명·날짜·시간·소요시간·장소·반복·준비시간·교통수단으로 추출해 대화 중 확인 카드에 즉시 반영한다.
+- [x] `금요일 오후`처럼 모호한 값은 추측하지 않고 해당 필드만 질문하며 `13:00`·`15:00`·`17:00`·`직접 입력`과 같은 빠른 답변을 제공한다.
+- [x] 장소명이 확인되면 검색·좌표 선택·인라인 지도를 같은 대화 화면에 보여주며, 장소 좌표가 확인되기 전에는 최종 확정을 막는다.
+- [x] 추출 결과는 카드의 값만 터치해 수정하고, 키보드 폼은 보조 경로로 유지한다. 완성된 일정은 `확정하고 일정 등록` 한 번으로 저장·알림 예약·계획 화면 이동까지 처리한다.
+- [x] Gemini 구조화 응답 계약에 모호성 질문, 소요시간, 반복, 준비시간을 추가하고 운영 Edge Function을 배포했다. 운영 확인에서 `금요일 오후에 치과`가 시간 필드만 재질문하고 후속 `15:00`에서 기존 제목·날짜를 보존함을 확인했다.
+- 검증: `npm run verify` 33 suites / 176 tests 통과. Playwright 147 tests가 360×800·390×844·430×932에서 통과했으며 자동 듣기·모호성 빠른 선택·추출값 직접 수정·한 번 확정·다크 모드·가로 잘림을 포함한다.
+- Android: release APK 빌드 760 tasks 성공, SM-N971N에 데이터 유지 업데이트 설치 완료. APK SHA-256은 `025fba10d5886e0c5beb0d9aa7e81386245f4c808ff13fb42f70bf9fae1e0c72`다. 실기기에서 `말로 새 일정` 진입, `실시간 대화 · 자동 듣기 · 켜짐`, 마이크 대기 상태를 확인했다.
+
 ## 2026-08-08 음성 일정 등록 개편 (완료)
 
 - [x] 홈의 일정 생성 플로팅 버튼을 마이크 아이콘과 파동 애니메이션으로 변경하고 음성 일정 화면에 직접 연결했다.
@@ -50,12 +133,13 @@
 ## P1 - 네이티브 핵심
 
 - [x] 새 일정 음성 AI 도우미
-  - Given 홈에서 음성 일정을 선택함, When 음성 화면이 열리면, Then AI 비서가 첫 질문을 말하고 별도의 마이크 시작 버튼 없이 자동으로 듣기 시작하며 직접 입력 `+` 대체 경로를 함께 보여준다.
-  - Given 마이크를 허용함, When 약속 내용을 말한 뒤 1.2초 이상 침묵하면, Then 앱이 자동으로 녹음을 마치고 인식한 문장·AI 확인 문장·부족한 정보 질문·현재 일정 변경 제안을 텍스트로 함께 보여주며 화면 읽기를 사용하지 않을 때만 확인 문장을 음성으로 읽는다.
+  - Given 홈에서 음성 일정을 선택함, When 음성 화면이 열리면, Then AI 비서가 첫 질문을 말하고 별도의 마이크 시작 버튼 없이 자동으로 듣기 시작하며 키보드 직접 수정 대체 경로를 함께 보여준다.
+  - Given 마이크를 허용함, When 약속 내용을 말한 뒤 약 0.8초 침묵하면, Then 앱이 발화를 자동 제출하고 인식 문장·AI 확인 문장·추출 결과·부족한 항목 질문을 텍스트와 음성으로 이어서 제공한 뒤 다시 듣는다.
   - Given 사용자가 인사·감정·가벼운 잡담을 말함, When 현재 약속 질문에 필요한 정보가 포함되지 않으면, Then AI 비서는 친구처럼 짧게 공감한 뒤 같은 일정 질문으로 돌아오고 잡담을 일정 값으로 저장하거나 다음 단계로 넘기지 않는다.
-  - Given AI가 일정 변경을 제안함, When 사용자가 `이 일정에 적용`을 누르기 전이거나 제안을 거절하면, Then 자동 저장 초안은 바뀌지 않는다.
-  - Given 사용자가 변경 제안을 적용함, When 일정 등록 화면으로 돌아오면, Then 일정명·날짜·시간·목적지·이동수단·준비 행동 변경이 초안에 병합되고 목적지가 달라졌다면 기존 좌표를 초기화한다.
-  - Given 일정 정보가 부족함, When AI 질문에 음성 또는 텍스트로 답하면, Then 직전 제안을 포함한 제한된 대화 문맥으로 제안을 보완하며 사용자가 적용하기 전에는 초안을 변경하지 않는다.
+  - Given AI가 값을 추출함, When 대화가 계속되면, Then 일정명·날짜·시간·소요시간·목적지·반복·준비시간·이동수단을 확인 카드에 반영하되 최종 확정 전에는 등록 일정으로 저장하지 않는다.
+  - Given 목적지가 변경됨, When 새 위치 좌표가 아직 확인되지 않았으면, Then 기존 좌표를 재사용하지 않고 장소 검색·지도 선택을 요구한다.
+  - Given 일정 정보가 모호함, When AI가 특정 필드의 확인이 필요하다고 판단하면, Then 전체 내용을 다시 묻지 않고 그 필드의 질문과 빠른 선택지만 제공하며 후속 답변에서 기존 추출값을 유지한다.
+  - Given 모든 필수값과 장소 좌표가 확인됨, When `확정하고 일정 등록`을 한 번 누르면, Then 계획을 저장하고 알림을 예약한 뒤 확정된 계획 화면으로 이동한다.
   - Given 마이크를 거부했거나 네트워크·서버 오류가 발생함, When 음성 흐름을 계속함, Then 직접 입력·재시도·수동 등록 복귀 중 가능한 다음 행동과 현재 초안 유지 상태를 표시한다.
   - Given 화면 읽기가 활성 또는 확인 중임, When AI 답변이 도착함, Then 앱 자체 TTS를 재생하지 않고 상태 변화와 질문을 접근성 라이브 영역으로 전달한다.
   - Given 녹음 요청을 처리함, When 응답 또는 오류가 끝나면, Then 원본 오디오는 앱 저장소와 서버에 보관하지 않고 Gemini 키는 Supabase Edge Function 비밀값으로만 사용한다.
@@ -68,7 +152,7 @@
   - Given 일정 탭에서 캘린더를 처음 사용함, When 연결을 시작하면, Then 운영체제 팝업 전에 향후 30일 읽기·기기 내 처리·수동 등록 대체 경로를 설명하고 Android에서는 `READ_CALENDAR`만, iOS에서는 EventKit 조회에 필요한 캘린더 접근을 요청한다.
   - Given 권한을 허용함, When 기기에 Google 계정·iCloud/Apple·Android 로컬 캘린더가 동기화돼 있으면, Then 공급자와 캘린더 이름을 텍스트로 구분하고 전체·공급자 필터와 날짜별 일정 목록을 표시한다.
   - Given 시간 일정 또는 종일 일정이 있음, When 목록을 확인하면, Then 시작 시각 또는 `종일`, 제목, 장소, 캘린더 출처를 표시하고 색상만으로 출처를 전달하지 않는다.
-  - Given 캘린더 일정을 선택함, When 상세 미리보기를 열면, Then 현재 ON:TIME 초안은 유지하며 `이 일정 가져오기`를 누른 뒤에만 제목·날짜·시간·장소를 새 초안에 반영한다.
+  - Given 캘린더 일정을 선택함, When 상세 미리보기를 열면, Then 현재 TimeAgent 초안은 유지하며 `이 일정 가져오기`를 누른 뒤에만 제목·날짜·시간·장소를 새 초안에 반영한다.
   - Given 종일 일정에 시간이 없음, When 가져오면, Then 시간을 추측하지 않고 약속 시간 입력을 비운 채 등록 화면에서 확인해야 할 다음 행동을 표시한다.
   - Given 권한 거부·차단, 캘린더 없음, 일정 없음, 조회 오류 또는 앱 복귀가 발생함, When 캘린더 화면을 표시하면, Then 재요청·기기 설정·새로고침·수동 등록 중 가능한 행동을 제공한다.
   - Given 캘린더를 조회함, When 사용자가 가져오지 않거나 화면을 닫으면, Then 조회한 원문을 서버나 앱 영구 저장소에 저장하지 않는다.
@@ -303,7 +387,7 @@
 
 ## 2026-07-28 Ralph Loop - 기기 캘린더 조회·일정 가져오기 (완료)
 
-- Observe: 일정은 ON:TIME 안에서 직접 입력해야 했고, 기기에 이미 동기화된 Google·Apple/iCloud·Android 캘린더를 계획 초안으로 활용할 경로가 없었음.
+- Observe: 일정은 TimeAgent 안에서 직접 입력해야 했고, 기기에 이미 동기화된 Google·Apple/iCloud·Android 캘린더를 계획 초안으로 활용할 경로가 없었음.
 - Select: 별도 OAuth나 서버 복제 없이 운영체제 캘린더 저장소를 읽고, 사용자가 선택·확인한 일정만 새 초안으로 가져오는 기기 연동 방식을 선택.
 - Specify: 권한 사전 설명, Android `READ_CALENDAR` 전용·iOS EventKit 접근, 향후 30일 조회, 공급자 텍스트 필터, 날짜별 시간·종일 일정, 선택 전 초안 불변, 종일 시간 미추정, 거부·차단·빈 상태·오류·복귀 fallback을 수용 기준으로 정의. TalkBack 실제 탐색은 사용자 요청으로 범위에서 제외.
 - Implement: Expo Calendar 네이티브 adapter, 캘린더/이벤트 정규화와 공급자 분류, 일정 탭의 `내 일정·캘린더·완료` UI, 선택 항목 바로 아래 미리보기, 원자적 새 초안 생성, 가져오기 확인 배너와 1단계 필수값 검증을 구현. 조회 원문은 화면 상태에만 두고 영구 저장하지 않음.
@@ -523,7 +607,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - 요청 전·허용·재요청 가능 거부·차단·확인 실패를 색상 외 텍스트 상태로 구분
 - 위치 거부 시 수동 출발지 입력·AsyncStorage 저장, 차단 시 기기 설정 이동 제공
 - 알림 거부 시 앱 내 현재 행동·남은 시간 안내 fallback 제공
-- OS 알림 권한과 ON:TIME 앱 알림 사용 설정을 분리하고 설정 화면 복귀 시 다시 동기화
+- OS 알림 권한과 TimeAgent 앱 알림 사용 설정을 분리하고 설정 화면 복귀 시 다시 동기화
 - `npx expo-doctor`: 20/20 통과
 - `npm run verify`: typecheck, lint, Jest 25/25 통과
 - 웹 자동 상호작용: 사전 설명 선행, 위치 거부 fallback, 수동 `부산역` 저장, 알림 거부 fallback 확인
@@ -715,6 +799,12 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Blocked: 기존 Supabase 프로젝트 `chpsoncuxjpgugowrydb`가 `INACTIVE`여서 weather 함수 배포가 404로 거절됐다. 프로젝트 재활성화, 공공데이터포털 단기예보 활용신청, `KMA_SERVICE_KEY` Secret 등록, `EXPO_PUBLIC_WEATHER_API_BASE_URL` 빌드 설정 전까지 실기기는 최적화된 Open-Meteo 대체 경로를 사용한다.
 - Evidence: `src/lib/kma-weather.ts`, `src/lib/__tests__/kma-weather.test.ts`, `src/lib/device-weather-provider.ts`, `supabase/functions/weather/index.ts`, `src/app/index.tsx`, `src/app/privacy.tsx`, `docs/CLIENT_SECRET_SETUP.md`, `docs/INTEGRATIONS.md`, `artifacts/timeagent-weather-optimized-samsung.png`, `artifacts/TimeAgent-v1.0.0-release.apk` (SHA-256 `8589acee7e6e26a40da775d1d8724813ab5b259276e62dd72b8df0e1269b1730`), `artifacts/TimeAgent-v1.0.0-release.aab` (SHA-256 `365eac1b44daaf74116ceed093ffc9866c34126af8e9ff8aded6875efb71bb83`).
 
+### 2026-08-11 운영 weather proxy·기상청 연동 (완료)
+
+- Implement: 서울 리전 Supabase `timeagent` 프로젝트가 `ACTIVE_HEALTHY`임을 재확인하고 `weather` Edge Function을 JWT 검증 없는 공개 읽기 endpoint로 배포했다. 앱의 로컬 빌드 설정에는 공개 weather URL만 연결했으며 비밀키는 포함하지 않았다.
+- Verify: 부산 좌표 운영 실호출이 HTTP 200, `source: open-meteo`, `Cache-Control: public, max-age=300`을 반환했다. 범위를 벗어난 좌표는 `INVALID_COORDINATES` HTTP 400, CORS OPTIONS는 HTTP 200을 반환했다. `npm run verify`의 TypeScript·ESLint·Jest 33개 스위트·170/170도 통과했다. 운영 endpoint는 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/weather`이다.
+- Complete: 공공데이터포털에서 기상청 단기예보 개발계정 활용신청이 자동 승인됐으며 유효기간은 2028-08-11까지다. 발급된 Decoding 인증키를 로그·저장소·앱 번들에 노출하지 않고 Supabase `KMA_SERVICE_KEY` Secret으로 등록한 뒤 함수를 재배포했다. 제주 좌표 운영 실호출에서 HTTP 200, `source: kma`, 기상청 관측 시각을 확인했으며 공급자 장애 시 Open-Meteo 대체 계약도 유지된다.
+
 ## 2026-08-07 홈 정보 구조·날씨 상세 리디자인 (완료)
 
 - Accept: 헤더는 실제 사용자 이름 기반 시간대 인사, 날짜·요일, 실제 당일 약속 수를 먼저 보여주고 우측에는 아이콘형 TimeAgent 로고만 둔다. 지연·우천·데이터 오류처럼 확인할 메시지가 있을 때 로고는 저모션 설정을 존중하며 짧게 흔들리고 `!` 배지와 텍스트 접근성 상태를 함께 제공한다. 로고를 누르면 알림으로 이동한다. 다음 약속 카드에는 약속·장소·준비 시작 상태와 `준비 계획 보기`, 단일 우선 CTA `지금 시작하기`를 배치한다. 홈 날씨에는 공급자 링크를 노출하지 않고 카드 전체 터치로 앱 내부 날씨 상세에 이동한다.
@@ -791,3 +881,24 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Implement: `speaking → recording → processing` 연속 상태와 화면 최초 1회 자동 시작·모드 전환 세대 토큰·중복 제출 잠금을 추가했다. 녹음 metering에서 실제 음성을 감지한 뒤 1.2초 연속 침묵하면 자동 종료하며, 최대 60초 동안 발화가 감지되지 않으면 빈 녹음을 AI에 보내지 않고 재시도 안내를 표시한다. Samsung 실기기에서 발견한 AI 음성 에코 재입력을 막기 위해 TTS 완료 후 700ms의 오디오 해제 간격을 두고, 기기 거리에서도 발화를 잡도록 감지 기준을 -55dB로 조정했다. Gemini 요청에 guided/one-shot·현재 필드·현재 질문 문맥을 추가하고, 친구 같은 짧은 공감·잡담 후 일정 복귀·비답변 patch 금지·실제 필드 확인 시에만 진행하는 운영 역할을 배포했다. UI에는 `AI 비서 · 자동 음성 대화 · 켜짐`, 자동 듣기·말하기·처리 상태를 텍스트로 표시한다.
 - Verify: 필드 확인 전 단계 유지와 발화 후 침묵 자동 종료를 단위 테스트로 고정했고 `npm run verify` 33개 스위트·168/168이 통과했다. 운영 `assistant` 함수의 `/health`가 Gemini configured 상태를 반환했고 합성 잡담 `오늘 좀 지쳤어` 실호출에서 다정한 응답, 같은 약속 질문, 모든 일정 patch null을 확인했다. 실제 제목 답변에서는 제목 patch만 채워지고 다음 날짜 질문으로 이어졌다. 360×800·390×844·430×932에서 자동 듣기·단계별 결과·한 번에 말하기·다크 모드 시각 및 상호작용 15/15를 기준 갱신 후 재실행해 통과했다. 출시 서명 arm64 APK 빌드와 Samsung Android 12 `SM-N971N` 덮어 설치가 성공했고, 홈 마이크를 한 번 누른 뒤 별도의 화면 내 마이크 조작 없이 첫 안내 음성에서 `듣고 있어요`로 자동 전환되는 것을 확인했다. 실기기 과정에서 발견한 TTS 꼬리 에코는 안전 간격을 적용한 최종 APK에서 재현되지 않았고 치명적 Android·React Native 런타임 오류도 없었다. APK SHA-256은 `40738940d4bf2b8789948c2a66aefc9d4f281782ed7ef510062d287883a7d417`이다.
 - Evidence: `src/app/voice-schedule.tsx`, `src/lib/voice-schedule-assistant.ts`, `src/lib/voice-schedule-api.ts`, `supabase/functions/_shared/gemini-assistant.ts`, `supabase/functions/assistant/index.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `src/lib/__tests__/voice-schedule-api.test.ts`, `src/lib/__tests__/gemini-assistant.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/voice-schedule-*.png`, `docs/HARNESS.md`, `tmp/timeagent-ai-auto-listening-final.png`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-11 새 일정 현재 시각 기본값 (완료)
+
+- Accept: 새 일정은 현지 날짜와 현재 시각을 기준으로 최소 30분 뒤의 약속 시간을 기본값으로 사용한다. 시간은 입력 편의를 위해 5분 단위로 올림하며 자정을 넘으면 날짜와 요일도 다음 날로 이동한다. 일정 이름은 `화요일 오후 약속`처럼 요일·오전/오후를 포함하고, 사용자가 이름 필드에 입력을 시작하면 자동 생성 이름을 한 번 비운 뒤 사용자 입력만 받는다. 저장 초안과 캘린더 가져오기 값은 덮어쓰지 않는다.
+- Implement: 기본 날짜·시간·제목 계산과 자동 생성 제목 판별을 `schedule-draft` 순수 로직으로 분리했다. 제목 입력은 자동 생성 형식일 때만 첫 포커스에서 초기화하며 이후 사용자 값에는 같은 동작을 반복하지 않는다.
+- Verify: 현재 시각 17:07:30의 17:40 올림, 자정 경계의 다음 날 00:15, 요일·오전/오후 제목 판별 단위 테스트를 추가했다. `npm run verify`의 TypeScript·ESLint·Jest 33개 스위트·173/173과 360x800·390x844·430x932 전체 시각·상호작용 144/144가 통과했다. 세 화면에서 오늘 날짜, 최소 30분 이후 시간, 자동 제목과 첫 한글 입력 `치과 검진`의 완전 교체를 확인했다. 출시 서명 APK/AAB 760 tasks 빌드 후 Samsung Android 12 `SM-N971N`에 데이터 유지 방식으로 설치했고, 실제 새 일정의 `화요일 오후 약속`, `8월 11일 (오늘)`, 현재 시각에서 30분 이상 뒤인 `18:15`를 확인했다. 이름 필드를 눌러 `Dentist`를 입력했을 때 자동 제목이 완전히 사라진 뒤 사용자 값만 남았으며 최종 화면은 다시 새 기본값으로 열어뒀다. APK SHA-256은 `cc6784b0a9fc3170179c6c1385cac6815521c7f744fe57ce2b274e44893d9460`이다.
+- Evidence: `src/lib/schedule-draft.ts`, `src/app/create.tsx`, `src/lib/__tests__/schedule-draft.test.ts`, `src/lib/__tests__/confirmed-plans.test.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/create-step-1-default.png`, `tmp/timeagent-new-defaults.xml`, `tmp/timeagent-new-defaults-input.xml`, `tmp/timeagent-new-defaults-final.xml`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-11 공식 제품명 TimeAgent 통일 (완료)
+
+- Accept: 사용자에게 노출되는 앱과 현재 제품 문서의 공식 명칭은 `TimeAgent`로 통일한다. 기존 설치 데이터·딥링크·알림·자동화 호환성에 쓰이는 내부 식별자는 제품 표시 이름으로 취급하지 않는다.
+- Implement: README와 제품·사업·수익화·아키텍처·연동·운영 문서의 현재 제품명 표기를 `TimeAgent`로 변경했다. 과거 Android 런처가 `ON:TIME`이었던 변경 이력은 당시 사실을 설명하는 기록이라 유지했다. npm 패키지명, Expo slug·scheme, AsyncStorage 키, 알림 채널·작업 ID처럼 동작 호환성에 영향을 주는 `on-time` 내부 식별자도 의도적으로 유지했다.
+- Verify: Expo 표시 이름과 Android 네이티브 런처 문자열이 모두 `TimeAgent`이고 Android application ID는 `com.timeagent.app`임을 확인했다. 현재 문서 범위에서 과거 변경 이력 1건 외의 `ON:TIME` 제품명 표기가 없음을 검색으로 확인했고 `npm run verify` 33개 스위트·173/173도 통과했다. 이 변경은 문서 표기만 바꾸며 이미 설치·실행 중인 APK의 앱 이름과 동작에는 변경이 없다.
+- Evidence: `app.json`, `android/app/src/main/res/values/strings.xml`, `README.md`, `docs/PRODUCT.md`, `docs/BUSINESS_MODEL.md`, `docs/MONETIZATION_PRD.md`, `docs/ARCHITECTURE.md`, `docs/INTEGRATIONS.md`, `docs/CLIENT_SECRET_SETUP.md`, `docs/RALPH_LOOP.md`.
+
+## 2026-08-11 Time:Agent 로고 워드마크 (완료)
+
+- Accept: 공식 앱·제품 명칭 `TimeAgent`는 유지하되, 아이콘과 함께 노출되는 로고 워드마크와 로그인 브랜드 배너는 `Time:Agent`로 표시한다. 일반 본문·권한·알림·법률 문서에는 공식 명칭을 유지한다.
+- Implement: 공통 `AppLogo`의 워드마크와 접근성 이름을 `Time:Agent`로 변경했다. 로그인 배너의 기존 구성·한국어 문구를 유지하면서 워드마크만 `Time:Agent`로 수정한 1731×909 PNG를 새 자산으로 추가하고 로그인 화면에 연결했다. 브랜드 표기 규칙을 디자인 시스템에 기록했다.
+- Verify: 새 배너의 크기와 `Time:Agent` 철자, 한국어 문구·배경·휴대폰·타임라인 구성 유지를 시각 확인했다. 공통 로고는 로그인 확인·로그인·온보딩 화면에서 같은 워드마크를 사용하며 홈의 아이콘 전용 로고는 기존대로 유지된다. `npm run verify` 33개 스위트·173/173과 360×800·390×844·430×932 시각·상호작용 144/144를 기준 갱신 후 재실행해 통과했다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터 유지 방식으로 설치했다. 온보딩 실기기 화면에서 아이콘 옆 `Time:Agent`, 콜론·`Agent` 강조색, 잘림 없음을 확인한 뒤 홈으로 복귀했다. APK SHA-256은 `e41f4543561e584ab3bd5ff5503cf34bab0212e4732a5ea8a04ae2d303925a1b`이다.
+- Evidence: `src/components/app-logo.tsx`, `src/components/auth-gate.tsx`, `assets/images/timeagent-login-hero-wordmark.png`, `docs/DESIGN_SYSTEM.md`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `tmp/timeagent-wordmark-android.png`, `android/app/build/outputs/apk/release/app-release.apk`.

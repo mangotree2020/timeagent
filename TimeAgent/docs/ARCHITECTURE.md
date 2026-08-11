@@ -32,6 +32,7 @@ MVP API 연결 시 다음 경계를 유지한다.
 - `mobility`: 경로, 교통, 비용, 플랜 B
 - `progress`: 현재 단계, 완료, 지연, 건너뛰기, 복귀
 - `notifications`: 준비/단계 종료/출발/교통 변경 알림
+- `task-execution`: 음성 할 일의 최대 3개 행동 분해, 5분 집중 종료 시각, 현재/다음/완료 상태와 로컬 영속화
 - `profile`: 기본 위치, 루틴, 이동 우선순위, 권한
 
 UI는 원시 지도/교통 응답을 직접 사용하지 않고 도메인 모델을 받는다.
@@ -47,7 +48,7 @@ UI는 원시 지도/교통 응답을 직접 사용하지 않고 도메인 모델
 - 지도 표시는 NAVER Maps adapter로 격리한다.
 - 장소 좌표화는 NAVER Maps Geocoding 계층으로 분리한다.
 - 도보 경로는 TMAP pedestrian routing adapter가 서버 프록시를 통해 호출한다.
-- TMAP App Key는 React Native 번들에 포함하지 않는다. 앱은 ON:TIME 서버의 정규화된 mobility endpoint만 호출한다.
+- TMAP App Key는 React Native 번들에 포함하지 않는다. 앱은 TimeAgent 서버의 정규화된 mobility endpoint만 호출한다.
 - NAVER/TMAP 원시 응답은 UI에 노출하지 않고 공통 `RoutePlan` 도메인 모델로 변환한다.
 - AI 출력은 구조화 스키마로 검증하고 설명 문구와 계산 결과를 분리한다.
 - 알림 예약 ID를 일정/단계와 함께 저장해 완료 또는 변경 시 이전 알림을 취소한다.

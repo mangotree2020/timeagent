@@ -2,6 +2,13 @@ import { createDefaultScheduleDraft } from '../schedule-draft';
 import { createSchedulePlan } from '../planning';
 
 describe('schedule planning engine', () => {
+  test('keeps walking as a first-class transport mode', () => {
+    const draft = { ...createDefaultScheduleDraft(), transport: '도보' as const };
+    const plan = createSchedulePlan(draft);
+    expect(plan.travelMinutes).toBe(35);
+    expect(plan.timeline.find((step) => step.id === 'depart')?.title).toBe('걸어서 출발');
+  });
+
   test('works backward from the appointment using preparation, travel, and safety buffer', () => {
     const draft = {
       ...createDefaultScheduleDraft(),

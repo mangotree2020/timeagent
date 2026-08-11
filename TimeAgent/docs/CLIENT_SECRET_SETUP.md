@@ -4,7 +4,7 @@
 
 - NAVER Client Secret과 TMAP App Key는 mobility 서버에만, Gemini API Key는 assistant 서버에만, 기상청 서비스키는 weather 서버에만 둔다.
 - `EXPO_PUBLIC_` 접두사가 붙은 값은 앱 번들에 포함될 수 있으므로 비밀값에 사용하지 않는다.
-- React Native 앱은 공개 proxy URL로 ON:TIME의 mobility·assistant·weather 서버만 호출한다.
+- React Native 앱은 공개 proxy URL로 TimeAgent의 mobility·assistant·weather 서버만 호출한다.
 - 실제 키는 Git, 문서, 스크린샷, 로그에 남기지 않는다.
 
 ## 로컬 개발 설정

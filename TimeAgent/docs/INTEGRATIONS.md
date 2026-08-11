@@ -26,7 +26,7 @@ TMAP은 보행자 경로 기능을 제공한다. API 응답 데이터는 공급�
 ```text
 React Native 앱
   ├─ NAVER Maps adapter → 지도·마커·정규화된 polyline 표시
-  └─ ON:TIME mobility API
+  └─ TimeAgent mobility API
        ├─ NAVER Geocoding API → GeocodedPlace로 정규화
        ├─ NAVER Reverse Geocoding API → 지도 선택 좌표를 주소로 정규화
        ├─ TMAP POI API → 장소명 검색 결과 목록을 GeocodedPlace로 정규화
@@ -80,7 +80,7 @@ UI와 일정 계산 엔진은 TMAP 원시 필드가 아니라 `RoutePlan`만 사
 
 2026-07-26 서울 리전 프로젝트에 배포 후 `/health` 200, NAVER 도로명 주소 좌표 변환, TMAP 도보 시간·거리·geometry·maneuver 응답을 실호출로 확인했다.
 
-날씨는 한국 좌표에서 weather proxy의 기상청 초단기실황·초단기예보를 우선하며, 서비스키 미설정·응답 지연·장애 시 Open-Meteo로 전환한다. 앱은 10분/750m 캐시를 적용하고 장애 시 최대 30분의 마지막 성공값을 `최근 저장된 날씨`로 표시한다. 2026-08-07 배포 시도에서 기존 Supabase 프로젝트가 `INACTIVE`로 확인되어, 프로젝트 재활성화와 `KMA_SERVICE_KEY` 등록 전까지 앱은 Open-Meteo 직접 대체 경로를 사용한다.
+날씨는 한국 좌표에서 weather proxy의 기상청 초단기실황·초단기예보를 우선하며, 서비스키 미설정·응답 지연·장애 시 Open-Meteo로 전환한다. 앱은 10분/750m 캐시를 적용하고 장애 시 최대 30분의 마지막 성공값을 `최근 저장된 날씨`로 표시한다. 운영 proxy는 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/weather`에 배포되어 있으며, 2026-08-11 발급한 개발계정 키를 Supabase Secret에 등록해 운영 응답의 `source: kma`를 확인했다. 개발계정 유효기간은 2028-08-11까지다.
 
 실제 값은 Git에 커밋하지 않는다. 개발·스테이징·운영 애플리케이션과 키를 분리한다.
 
@@ -98,8 +98,8 @@ UI와 일정 계산 엔진은 TMAP 원시 필드가 아니라 `RoutePlan`만 사
 
 1. `MapAdapter`, `GeocodingProvider`, `RouteProvider`, `LocationProvider`, `VoiceGuidePort` interface 정의
 2. fixture adapter로 계산 엔진과 UI 연결 (완료)
-3. ON:TIME mobility API의 NAVER Geocoding proxy와 계약 테스트 (완료)
-4. ON:TIME mobility API의 TMAP 보행자 adapter와 계약 테스트 (완료)
+3. TimeAgent mobility API의 NAVER Geocoding proxy와 계약 테스트 (완료)
+4. TimeAgent mobility API의 TMAP 보행자 adapter와 계약 테스트 (완료)
 5. NAVER native map bridge 호환성 spike, 현재 위치와 경로 polyline 연결 및 콘솔 Android 허용 패키지 `com.timeagent.app` 저장 완료
 6. waypoint 음성 안내와 timeout, quota, 권한 거부, 오프라인 시나리오 테스트 (foreground 완료)
 

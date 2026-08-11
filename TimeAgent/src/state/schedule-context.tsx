@@ -85,6 +85,7 @@ type ScheduleContextValue = {
   beginDraftWith: (values: Partial<ScheduleDraft>) => void;
   finalizeDraft: () => Promise<void>;
   finalizeDraftWith: (schedule: ScheduleDraft) => Promise<void>;
+  confirmDraftWith: (schedule: ScheduleDraft) => Promise<ConfirmedSchedulePlan>;
   confirmPendingPlan: () => Promise<ConfirmedSchedulePlan>;
   selectConfirmedPlan: (id: string) => void;
   useStandardPlan: () => void;
@@ -539,6 +540,23 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     void recordAnalyticsEvent(AsyncStorage, 'draft_completed');
   }, [createCurrentPlan]);
 
+  const confirmScheduleDirectly = useCallback(async (schedule: ScheduleDraft) => {
+    const plan = createCurrentPlan(schedule);
+    await finalizeSchedule(schedule);
+    const confirmed = confirmSchedulePlan({ schedule, plan });
+    const notification = await scheduleConfirmedPlanStart(confirmed);
+    const stored = notification.identifier
+      ? { ...confirmed, notificationIdentifier: notification.identifier }
+      : confirmed;
+    await commitConfirmedPlans(addConfirmedPlan(confirmedPlansRef.current, stored));
+    await clearScheduleDraft(AsyncStorage);
+    setPendingSchedule(null);
+    setPendingPlan(null);
+    setNotificationStatus(notification.status);
+    void recordAnalyticsEvent(AsyncStorage, 'draft_completed', { confirmed: true, source: 'voice' });
+    return stored;
+  }, [commitConfirmedPlans, createCurrentPlan, finalizeSchedule]);
+
   const value = useMemo<ScheduleContextValue>(() => ({
     timeline,
     delayMinutes,
@@ -582,6 +600,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       await finalizeSchedule(draft);
     },
     finalizeDraftWith: finalizeSchedule,
+    confirmDraftWith: confirmScheduleDirectly,
     async confirmPendingPlan() {
       if (!pendingSchedule || !pendingPlan) throw new Error('확정할 계획이 없습니다.');
       const confirmed = confirmSchedulePlan({ schedule: pendingSchedule, plan: pendingPlan });
@@ -655,7 +674,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setProgressStatus('saved');
       await removePersistedProgress();
     },
-  }), [activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, commitConfirmedPlans, completeCurrent, confirmedPlans, confirmedPlansStatus, delayMinutes, draft, draftStatus, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
+  }), [activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, draft, draftStatus, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;
 }

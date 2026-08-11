@@ -6,7 +6,7 @@ import { shiftClock } from '@/lib/schedule';
 export const PROGRESS_SESSION_STORAGE_KEY = '@on-time/progress-session';
 const PROGRESS_SESSION_VERSION = 1;
 
-export type ProgressNotificationKind = 'prep-start' | 'step-end' | 'departure';
+export type ProgressNotificationKind = 'prep-start' | 'transition-preview' | 'transition-wrap' | 'step-end' | 'departure';
 
 export type ScheduledProgressNotification = {
   identifier: string;

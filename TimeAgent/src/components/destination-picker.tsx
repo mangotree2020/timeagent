@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, type } from '@/components/app-ui';
@@ -21,15 +21,19 @@ type DestinationPickerProps = {
   value: DestinationValue;
   onChange: (value: DestinationValue) => void;
   title?: string;
+  autoSearch?: boolean;
+  autoSelectExact?: boolean;
+  showSelectedMap?: boolean;
 };
 
 const DEFAULT_MAP_CENTER = { latitude: 35.1796, longitude: 129.0756 };
 
-export function DestinationPicker({ value, onChange, title = '목적지 찾기' }: DestinationPickerProps) {
+export function DestinationPicker({ value, onChange, title = '목적지 찾기', autoSearch = false, autoSelectExact = false, showSelectedMap = false }: DestinationPickerProps) {
   const provider = useMemo(() => {
     try { return createConfiguredMobilityProvider(); } catch { return null; }
   }, []);
   const requestRef = useRef<AbortController | null>(null);
+  const autoSearchRef = useRef('');
   const [query, setQuery] = useState(value.destination);
   const [places, setPlaces] = useState<GeocodedPlace[]>([]);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
@@ -56,7 +60,7 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기' 
     } catch { /* The default map center remains available. */ }
   };
 
-  const search = async () => {
+  const search = useCallback(async () => {
     const normalized = query.trim();
     if (!normalized) return;
     requestRef.current?.abort();
@@ -72,6 +76,21 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기' 
     try {
       const results = await provider.searchPlaces(normalized, mapCoordinate, controller.signal);
       if (controller.signal.aborted) return;
+      const exact = autoSelectExact
+        ? results.filter((place) => normalizePlaceName(place.name) === normalizePlaceName(normalized))
+        : [];
+      if (exact.length === 1) {
+        const place = exact[0];
+        onChange({ destination: place.name, destinationAddress: displayAddress(place), destinationCoordinate: place.coordinate });
+        setQuery(place.name);
+        setPlaces([]);
+        setStatus('idle');
+        setMessage(`${place.name} 위치를 지도에서 확인했습니다.`);
+        setMapCoordinate(place.coordinate);
+        setMapPlace(place);
+        try { setSavedPlaces(await rememberPlace(AsyncStorage, place)); } catch { /* selection remains */ }
+        return;
+      }
       setPlaces(results);
       setStatus(results.length ? 'success' : 'empty');
       setMessage(results.length ? `${results.length}개의 장소를 찾았습니다.` : '일치하는 장소가 없습니다. 검색어를 바꾸거나 지도에서 지정해 주세요.');
@@ -81,9 +100,9 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기' 
       setStatus('error');
       setMessage(error instanceof MobilityApiError ? error.message : '장소를 검색하지 못했습니다. 지도에서 직접 지정할 수 있어요.');
     }
-  };
+  }, [autoSelectExact, mapCoordinate, onChange, provider, query]);
 
-  const selectPlace = async (place: GeocodedPlace) => {
+  const selectPlace = useCallback(async (place: GeocodedPlace) => {
     const selected = {
       destination: place.name,
       destinationAddress: displayAddress(place),
@@ -101,7 +120,14 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기' 
       const next = await rememberPlace(AsyncStorage, place);
       setSavedPlaces(next);
     } catch { /* The destination remains selected even if recent-place persistence fails. */ }
-  };
+  }, [onChange]);
+
+  useEffect(() => {
+    const normalized = query.trim();
+    if (!autoSearch || !normalized || value.destinationCoordinate || autoSearchRef.current === normalized) return;
+    autoSearchRef.current = normalized;
+    void search();
+  }, [autoSearch, query, search, value.destinationCoordinate]);
 
   const chooseMapCoordinate = async (coordinate: Coordinate) => {
     setMapCoordinate(coordinate);
@@ -158,13 +184,17 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기' 
     </View>
 
     <Button label={showMap ? '지도 닫기' : '지도에서 직접 지정'} variant="secondary" onPress={openMap} />
-    {showMap ? <View style={styles.mapSection}>
+    {showMap || (showSelectedMap && value.destinationCoordinate) ? <View style={styles.mapSection}>
       <Text style={type.bodyMuted}>지도에서 목적지 위치를 한 번 눌러 주세요.</Text>
       <DestinationMap coordinate={mapCoordinate} onSelect={(coordinate) => void chooseMapCoordinate(coordinate)} />
       {mapStatus === 'loading' ? <Text accessibilityLiveRegion="polite" style={styles.message}>선택한 위치의 주소를 확인하고 있습니다.</Text> : null}
       {mapPlace && mapStatus === 'ready' ? <View style={styles.mapConfirm}><View style={styles.flex}><Text style={styles.resultName}>{mapPlace.name}</Text><Text style={styles.address}>{displayAddress(mapPlace)}</Text></View><Button label="이 위치 선택" onPress={() => void selectPlace(mapPlace)} /></View> : null}
     </View> : null}
   </Card>;
+}
+
+function normalizePlaceName(value: string) {
+  return value.replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 }
 
 const styles = StyleSheet.create({

@@ -44,7 +44,10 @@ export default function JourneyScreen() {
     const location = { ...fixtureLocation, capturedAt: Date.now() };
     const initial = createJourneyState({
       route: forcePermissionDenied
-        ? createFallbackWalkingRoute({ origin: location.coordinate, destination: fixtureRoutePlan.destination })
+        ? createFallbackWalkingRoute({
+            origin: location.coordinate,
+            destination: schedule.destinationCoordinate ?? fixtureRoutePlan.destination,
+          })
         : fixtureRoutePlan,
       location,
       appointmentAt,

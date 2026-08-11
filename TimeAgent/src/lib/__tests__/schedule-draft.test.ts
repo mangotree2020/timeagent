@@ -1,6 +1,7 @@
 import {
   clearScheduleDraft,
   createDefaultScheduleDraft,
+  isGeneratedScheduleTitle,
   loadScheduleDraft,
   saveScheduleDraft,
   SCHEDULE_DRAFT_STORAGE_KEY,
@@ -61,6 +62,33 @@ describe('schedule draft persistence', () => {
     expect(createDefaultScheduleDraft('female').routines.map((item) => item.label)).toContain('스킨케어');
     expect(createDefaultScheduleDraft('male').routines.map((item) => item.label)).toContain('면도');
     expect(createDefaultScheduleDraft().routines.map((item) => item.label)).not.toContain('면도');
+  });
+
+  test('starts a new draft at least 30 minutes later with a weekday period title', () => {
+    const now = new Date('2026-08-11T17:07:30+09:00');
+
+    expect(createDefaultScheduleDraft('unspecified', now)).toEqual(expect.objectContaining({
+      title: '화요일 오후 약속',
+      date: '8월 11일 (오늘)',
+      appointmentTime: '17:40',
+    }));
+  });
+
+  test('moves the date and title to tomorrow when the minimum lead crosses midnight', () => {
+    const now = new Date('2026-08-11T23:43:00+09:00');
+
+    expect(createDefaultScheduleDraft('unspecified', now)).toEqual(expect.objectContaining({
+      title: '수요일 오전 약속',
+      date: '8월 12일 (내일)',
+      appointmentTime: '00:15',
+    }));
+  });
+
+  test('recognizes only the generated weekday period title as replaceable input', () => {
+    expect(isGeneratedScheduleTitle('화요일 오후 약속')).toBe(true);
+    expect(isGeneratedScheduleTitle(' 화요일 오후 약속 ')).toBe(true);
+    expect(isGeneratedScheduleTitle('화요일 오후 치과 약속')).toBe(false);
+    expect(isGeneratedScheduleTitle('부모님 저녁 식사')).toBe(false);
   });
 
   test('keeps the demo destination as a fully selected place', () => {
