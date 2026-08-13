@@ -60,6 +60,8 @@ export type VoiceActivityState = {
   noiseFloorDb?: number | null;
   /** Loudest level measured since speech started, used to spot the drop back to the room. */
   peakDb?: number | null;
+  /** Usable level readings so far. The noise floor is only trusted once a few have arrived. */
+  meteringSamples?: number;
   meteringMissingSinceMs?: number | null;
   /** True once the device has stayed silent about levels long enough that we stop waiting for them. */
   meteringUnavailable?: boolean;
@@ -221,6 +223,7 @@ export function createVoiceActivityState(): VoiceActivityState {
     silenceSinceMs: null,
     noiseFloorDb: null,
     peakDb: null,
+    meteringSamples: 0,
     meteringMissingSinceMs: null,
     meteringUnavailable: false,
   };
@@ -236,6 +239,8 @@ export function updateVoiceActivity(
     speechOnsetMs?: number;
     trailingSilenceMs?: number;
     noiseFloorRiseDb?: number;
+    noiseFloorConfirmDb?: number;
+    floorConfidenceSamples?: number;
     speechDropDb?: number;
     missingMeteringGraceMs?: number;
     maxListeningMs?: number;
@@ -259,6 +264,8 @@ function measureVoiceActivity(
     speechOnsetMs = 120,
     trailingSilenceMs = 700,
     noiseFloorRiseDb = 12,
+    noiseFloorConfirmDb = 8,
+    floorConfidenceSamples = 3,
     speechDropDb = 18,
     missingMeteringGraceMs = 4_000,
   }: {
@@ -267,6 +274,8 @@ function measureVoiceActivity(
     speechOnsetMs?: number;
     trailingSilenceMs?: number;
     noiseFloorRiseDb?: number;
+    noiseFloorConfirmDb?: number;
+    floorConfidenceSamples?: number;
     speechDropDb?: number;
     missingMeteringGraceMs?: number;
   },
@@ -287,8 +296,24 @@ function measureVoiceActivity(
   const noiseFloorDb = previous.noiseFloorDb === null || previous.noiseFloorDb === undefined
     ? metering
     : Math.min(previous.noiseFloorDb, metering);
-  const base = { ...previous, noiseFloorDb, meteringMissingSinceMs: null, meteringUnavailable: false };
-  const isSpeechLevel = metering >= speechThresholdDb || metering >= noiseFloorDb + noiseFloorRiseDb;
+  const meteringSamples = (previous.meteringSamples ?? 0) + 1;
+  const base = { ...previous, noiseFloorDb, meteringSamples, meteringMissingSinceMs: null, meteringUnavailable: false };
+  // The fixed threshold is only a stand-in until enough readings exist to know how quiet the room
+  // is. Once the floor is measured, speech has to rise above the room instead of above a constant,
+  // otherwise a room that is simply louder than the constant registers as continuous speech.
+  const floorMeasured = meteringSamples > floorConfidenceSamples;
+  const isSpeechLevel = metering >= noiseFloorDb + noiseFloorRiseDb
+    || (!floorMeasured && metering >= speechThresholdDb);
+  // Speech accepted on the fixed threshold alone is withdrawn if the loudest reading turns out to
+  // be no louder than the room.
+  if (floorMeasured && previous.heardSpeech
+    && previous.peakDb !== null && previous.peakDb !== undefined
+    && previous.peakDb < noiseFloorDb + noiseFloorConfirmDb) {
+    return {
+      state: { ...base, heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null, peakDb: null },
+      shouldFinish: false,
+    };
+  }
   // A room noisier than the fixed threshold stays "speech" forever by absolute level alone, so the
   // drop back down from the loudest measured level also counts as the speaker stopping.
   const droppedFromSpeech = previous.peakDb !== null && previous.peakDb !== undefined

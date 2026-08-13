@@ -20,7 +20,7 @@ type GeminiInput =
 export function buildGeminiInteractionBody(model: string, turn: GeminiAssistantTurn) {
   if (!/^[a-zA-Z0-9._-]+$/.test(model)) throw new Error("Invalid Gemini model name");
   const inputInstruction = turn.input.kind === "audio"
-    ? "첨부된 한국어 음성을 정확히 전사한 뒤 일정 변경 제안을 만드세요. transcript에는 전사문만 넣으세요."
+    ? "첨부된 한국어 음성을 정확히 전사한 뒤 일정 변경 제안을 만드세요. transcript에는 전사문만 넣으세요. 알아들을 수 있는 사람의 말이 없으면 transcript를 빈 문자열로 두고 patch를 비운 채 readyToApply를 false로 두세요. 들리지 않은 말을 지어내지 마세요."
     : "currentUserUtterance를 일정 변경 제안에 반영하세요. transcript에는 currentUserUtterance를 그대로 넣으세요.";
   const context = {
     conversationId: turn.conversationId,

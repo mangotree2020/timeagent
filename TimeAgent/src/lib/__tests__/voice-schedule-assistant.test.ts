@@ -367,12 +367,17 @@ describe('voice schedule assistant domain', () => {
   });
 
   it('always ends a turn within the maximum listening window so no manual finish is needed', () => {
-    let activity = updateVoiceActivity(createVoiceActivityState(), -20, 400);
-    activity = updateVoiceActivity(activity.state, -20, 600);
+    // Someone talking without pause: levels stay well above the measured room floor.
+    let activity = updateVoiceActivity(createVoiceActivityState(), -60, 400);
+    activity = updateVoiceActivity(activity.state, -22, 600);
+    activity = updateVoiceActivity(activity.state, -20, 800);
     expect(activity.state.heardSpeech).toBe(true);
 
-    activity = updateVoiceActivity(activity.state, -20, 14_900);
+    for (let elapsed = 920; elapsed <= 14_900; elapsed += 120) {
+      activity = updateVoiceActivity(activity.state, elapsed % 240 === 0 ? -22 : -20, elapsed);
+    }
     expect(activity.shouldFinish).toBe(false);
+
     activity = updateVoiceActivity(activity.state, -20, 15_000);
     expect(activity.shouldFinish).toBe(true);
     expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(true);
@@ -384,6 +389,34 @@ describe('voice schedule assistant domain', () => {
 
     expect(activity.shouldFinish).toBe(true);
     expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(false);
+  });
+
+  it('never submits steady room noise, even when it sits above the absolute speech threshold', () => {
+    // A room measured at a constant -45dB is louder than the fixed threshold but carries no speech.
+    let activity = updateVoiceActivity(createVoiceActivityState(), -45, 400);
+    for (let elapsed = 520; elapsed <= 14_000; elapsed += 120) {
+      activity = updateVoiceActivity(activity.state, -45, elapsed);
+    }
+
+    expect(activity.state.heardSpeech).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, 14_000)).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, -45, 15_000);
+    expect(activity.shouldFinish).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(false);
+  });
+
+  it('still hears real speech that rises above a noisy room', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), -45, 400);
+    for (let elapsed = 520; elapsed <= 2_000; elapsed += 120) {
+      activity = updateVoiceActivity(activity.state, -45, elapsed);
+    }
+    expect(activity.state.heardSpeech).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, -20, 2_120);
+    activity = updateVoiceActivity(activity.state, -18, 2_300);
+    expect(activity.state.heardSpeech).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 2_300)).toBe(true);
   });
 
   it('keeps trusting metering once the device reports it after a silent start', () => {
