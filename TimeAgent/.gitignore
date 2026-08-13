@@ -19,6 +19,10 @@ expo-env.d.ts
 *.mobileprovision
 /.release/
 
+# local build artifacts and scratch files
+/artifacts/
+/tmp/
+
 # Metro
 .metro-health-check*
 
