@@ -41,3 +41,12 @@ export async function scheduleConfirmedPlanStart(
     return { status: 'error' };
   }
 }
+
+export async function cancelConfirmedPlanStart(plan: ConfirmedSchedulePlan) {
+  if (Platform.OS === 'web' || !plan.notificationIdentifier) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(plan.notificationIdentifier);
+  } catch {
+    // The notification may already have fired or been removed by the OS.
+  }
+}

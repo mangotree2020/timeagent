@@ -1,5 +1,110 @@
 # 실행 계획
 
+## 2026-08-13 음성 이동수단 선택지 한 줄 배치와 정리 결과 표시 (구현 완료)
+
+- Accept: 음성 대화의 `어떻게 이동할까요?` 선택지 다섯 개를 360px 이상 화면에서 줄바꿈 없이 한 줄로 표시하고 각 터치 영역은 최소 44px을 유지한다. 대화에서 확인한 이동수단을 `이렇게 등록할까요?` 정리 결과의 `이동수단` 항목으로 시간과 장소 사이에 표시하고, 확인 전에는 `확인 필요`를 보여준다.
+- Implement: 선택지 개수와 길이만 보고 한 줄 배치 여부를 정하는 순수 함수 `shouldUseCompactClarificationOptions`를 추가해, 네 개 이상이면서 모두 3글자 이하일 때만 같은 너비로 나눠 한 줄에 배치한다. `13:00·15:00·17:00·직접 입력`처럼 긴 선택지는 잘림 없이 기존 줄바꿈을 유지한다. 정리 결과에는 이동수단 행을 추가해 확인된 값과 수단별 아이콘을 함께 보여주고, 누르면 같은 자리에서 이동수단 선택지를 펼친다. 중복을 없애기 위해 `세부 설정` 안에 있던 이동수단 선택은 새 행으로 옮겼다.
+- Verify: 한 줄 배치 판정 단위 테스트를 먼저 추가해 실패를 확인한 뒤 통과시켰다. `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·194/194가 통과했다. 360×800·390×844·430×932에서 다섯 선택지의 Y 좌표가 동일하고 각 높이가 44px 이상인 검사, 이동수단 행이 시간 아래·장소 위에 있고 44px 이상인 검사, 확인 전 `확인 필요`→선택 후 `버스` 표시와 확정 버튼 활성화 검사가 모두 통과했다. 전체 시각·상호작용 186/186이 통과했고 이동수단 질문 화면을 세 해상도 기준 이미지로 추가했다.
+- Evidence: `src/lib/voice-schedule-assistant.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `src/app/voice-schedule.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/voice-schedule-transport.png`, `e2e/visual/__screenshots__/*/voice-schedule-proposal.png`.
+- Android: 서명 APK/AAB 760개 작업 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 `1.0.3 (4)`을 덮어 설치했다. 실기기에서 다섯 이동수단 선택지가 모두 같은 Y 좌표 `1182–1297`에 놓여 한 줄로 표시되고 각 터치 영역이 44dp임을 UI 트리 좌표로 확인했다. 정리 결과의 이동수단 행은 시간과 장소 사이에 있고 다른 요약 행과 같은 46dp 높이였다. 행을 눌러 펼친 선택지에서 `버스`를 고르면 행이 `이동수단 버스 수정`으로 바뀌고 `어떻게 이동할까요?` 질문이 사라지며 `확정하고 일정 등록`이 활성화되는 것을 확인했다. `com.timeagent.app/.MainActivity` 전면 실행과 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `9dcff6e2e1f311b9a9c1835e376b706c044da826a6194ff4b5375c5b1a3da98e`, AAB SHA-256은 `78af68c572da7ce22dc6a0f1cf5370cca1704f02b0d3f0a18c446e13dd165470`이다.
+
+## 2026-08-13 음성 일정 필수 항목 확인 강화 (구현 완료)
+
+- Accept: 음성 일정 생성에서 약속 시간·장소·이동수단은 사용자가 말하거나 화면에서 선택해 명시적으로 확인해야 한다. 세 항목 중 하나라도 확인되지 않았거나 장소 지도 좌표가 없으면 일정 확정 버튼을 활성화하지 않는다.
+- Implement: 음성 초안의 기본 이동수단 `AI 추천`을 사용자 답변으로 간주하지 않도록 시간·장소·이동수단의 확인 상태를 별도로 관리한다. 서버가 이동수단 없이 완료 응답을 보내더라도 앱이 `어떻게 이동할까요?`와 도보·버스·지하철·자가용·택시 선택지를 표시하고 확정을 차단한다. 직접 수정과 지도 선택, 이동수단 라디오 선택도 해당 확인 상태에 연결했다. 운영 Gemini 지침·응답 스키마·Edge Function 응답 검사에도 `transport` clarification과 다섯 이동수단 선택지를 추가했다.
+- Verify: 구현 전 기본 `AI 추천` 때문에 이동수단 없이 확정되는 회귀 테스트가 실패하는 것을 확인했고 구현 후 통과시켰다. `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·193/193이 통과했다. 360×800·390×844·430×932에서 이동수단 질문 표시→확정 비활성→버스 선택→질문 해제·확정 활성 흐름 3/3이 통과했다. 운영 `assistant` Edge Function을 배포하고 `내일 오후 3시 강남역에서 병원 예약` 요청에 `readyToApply: false`, `clarification.field: transport`, 다섯 선택지, `patch.transport: null`이 반환됨을 확인했다.
+- Android: 증분 출시 APK 751개 작업 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 `1.0.3 (4)`을 덮어 설치했다. 이동수단 누락 검증 화면을 실기기에서 열어 `어떻게 이동할까요?`가 표시되는 것을 UI 트리로 확인했다. `com.timeagent.app/.MainActivity` 전면 실행과 최근 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `f4d505b770f578b1f6a9cecae661a9bd714c64940e974c410a89a201ba0c7624`이다.
+- Evidence: `src/lib/voice-schedule-assistant.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `src/app/voice-schedule.tsx`, `supabase/functions/_shared/gemini-assistant.ts`, `supabase/functions/assistant/index.ts`, `e2e/visual/app.visual.spec.mjs`.
+
+## 2026-08-13 설정 이동 수단 한 줄 배치 (구현 완료)
+
+- Accept: 설정의 선호 이동수단 `도보·버스·지하철·자가용·택시`를 360px 이상 화면에서 줄바꿈 없이 한 줄로 표시하고, 각 선택 영역은 최소 44px 높이를 유지한다.
+- Implement: 이동수단 선택에만 적용되는 compact 레이아웃을 추가해 각 항목이 같은 너비를 나눠 갖도록 하고 텍스트는 한 줄로 제한했다. 다른 설정 선택 패널의 기존 줄바꿈 동작은 유지한다.
+- Verify: `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·192/192가 통과했다. 360×800·390×844·430×932에서 다섯 항목의 Y 좌표가 동일하고 각 터치 높이가 최소 44px인 회귀 검사가 통과했다. 서명 APK/AAB 760개 작업 빌드를 완료하고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 `1.0.3 (4)`을 덮어 설치했다. `com.timeagent.app/.MainActivity` 전면 실행과 최근 로그의 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `679443f43d1fff8f4e24f43e6c84cab6ca6a56199409f3762eae58bbc6a893af`, AAB SHA-256은 `c6bb692fdee000fea4d968fcdaa195608319ffb2fcdb85d386164898f64a5b66`이다.
+- Evidence: `src/app/settings.tsx`, `e2e/visual/app.visual.spec.mjs`.
+
+## 2026-08-13 Google Play Alpha 1.0.3 테스트 배포 (업로드 권한 대기)
+
+- Accept: `silverstar0977@gmail.com`을 Alpha 비공개 테스트 대상에 추가하고, 현재 앱을 새 버전으로 빌드해 같은 테스트 트랙에 배포한다.
+- Tester: Google Play Console의 `TimeAgent 내부 테스터`에 이메일을 저장했으며 유효한 테스터 목록은 18명에서 19명으로 증가했다. 참여 인원 집계에는 해당 계정이 웹 참여 링크에서 직접 등록해야 한다.
+- Build: 앱 버전을 `1.0.3`, Android `versionCode 4`로 올렸다. `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·192/192가 통과했으며, 직전 동일 소스의 360×800·390×844·430×932 시각·상호작용 검증 171/171 통과 결과를 유지한다. 서명된 APK/AAB를 생성했고 APK에서 `com.timeagent.app`, `1.0.3 (4)`, targetSdk 36과 APK Signature Scheme v2 서명을 확인했다.
+- Artifact: APK SHA-256은 `1409dc109a82ca04941318eb9f309ca54287f9a05474ade0eee2ba9a92d60605`, AAB SHA-256은 `13123a57334a8612910536c95369e6a3ab3205b08cc9b543b9b1ce7ecd445701`이다.
+- Play: Alpha 트랙의 기존 임시 버전 편집 화면까지 열었으나 Chrome ChatGPT 확장 프로그램의 로컬 파일 URL 접근 권한이 꺼져 AAB 파일 선택이 차단됐다. 해당 권한을 활성화한 뒤 AAB 업로드, 출시 노트 저장, 검토 및 Alpha 출시 제출을 이어서 완료한다.
+- Evidence: `app.json`, `package.json`, `package-lock.json`, `android/app/build/outputs/apk/release/app-release.apk`, `android/app/build/outputs/bundle/release/app-release.aab`.
+
+## 2026-08-13 홈 오늘·내일 캘린더 카테고리 제거 (구현 완료)
+
+- Accept: 홈 화면에서 기기 캘린더의 `오늘·내일 약속` 제목, `+ 말로 추가`, 일정 카드 목록을 표시하지 않는다. 일정 탭의 캘린더 연결·가져오기와 TimeAgent에 확정한 `오늘·내일 등록 약속`은 유지한다.
+- Implement: 홈 전용 캘린더 조회 상태·앱 복귀 재조회·상태별 카드·일정 목록 UI를 제거했다. 홈에서 사용하지 않는 기기 캘린더 권한 및 일정 조회도 더 이상 실행하지 않는다.
+- Verify: 제거 전 회귀 검사가 실패하는 것을 확인한 뒤 제목·일정 카드·추가 버튼 부재를 자동 검증했다. `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·192/192가 통과했고, 360×800·390×844·430×932 전체 시각·상호작용 171/171이 통과했다. 세 해상도의 홈·정시 도착 배지 화면을 갱신하고 육안으로 잘림과 정보 순서를 확인했다.
+- Android: 서명 APK/AAB 760개 작업 빌드를 완료하고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 `1.0.2 (3)`을 덮어 설치했다. `com.timeagent.app/.MainActivity` 전면 실행과 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `f7407175e2c9cba47bd69ab5b0c0668e95ed7851634714194659137dba8cc16e`, AAB SHA-256은 `ed382358d335ad10e1f11ea2279ec8ec19b81105cbc8a1806e3751e027bc9241`이다.
+- Evidence: `src/app/index.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/home.png`, `e2e/visual/__screenshots__/*/home-on-time-streak.png`.
+
+## 2026-08-13 확정 준비 계획 정보·관리 개선 (구현 완료)
+
+- Accept: 여유 시간은 도착 시각 오른쪽에 두 줄로 표시한다. 장소명 뒤의 중복 도착 예정 문구를 제거하고 장소명 오른쪽의 `지도 보기/지도 접기`로 실제 저장 좌표의 도착 지도를 펼친다. 타임라인 이동수단은 색상과 텍스트뿐 아니라 카드 오른쪽 끝의 수단별 아이콘으로 구분한다. 확정 약속은 기존 값을 유지해 수정할 수 있고, 삭제는 명시적 확인 뒤 알림과 저장 계획을 함께 제거한다.
+- Implement: 요약 카드의 도착 시각과 `N분\n여유` pill을 한 행에 배치하고, 장소명과 44px 지도 아코디언 버튼도 같은 행으로 묶었다. 네이티브에서는 읽기 전용 NAVER 지도와 목적지 마커를 표시하며 좌표가 없는 기존 저장본에는 수정 복구 안내를 제공한다. `depart` 타임라인 행에는 청록 테두리·배경과 접근성 레이블을 적용하고, 지하철·버스·도보·택시·자가용·AI 추천별 아이콘을 카드 오른쪽 끝에 독립 배치했다. `걸어서 출발`도 도보 아이콘으로 판별한다. 확정 계획 ID를 편집 상태에 유지해 수정 저장 시 중복 생성 없이 교체하고 이전 알림을 새 알림으로 바꾼다. 삭제는 화면 내 2단계 확인 후 예약 알림·해당 진행 세션·저장 계획을 정리한다.
+- Verify: 교체·선택 삭제 순수 로직 테스트를 먼저 추가해 변경 전 실패를 확인한 뒤 통과시켰다. 수정 화면 기존 값 유지→재계획→같은 항목 교체, 삭제 취소→확인→저장소 제거, 지도 펼침·접힘, 중복 문구 제거, 이동수단 접근성 레이블을 자동화했다. 최종 `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·192/192가 통과했고, 360×800·390×844·430×932 전체 시각·상호작용 171/171이 통과했다. 세 화면 크기의 기본·지도 펼침·하단 관리 기준 이미지를 육안 검토해 가로 잘림이 없음을 확인했다. 출시 서명 APK/AAB 760개 작업 빌드가 성공했고, Samsung Android 12 `SM-N971N`에 기존 데이터를 유지한 채 `1.0.2 (3)` APK를 덮어 설치했다. 설치 후 `com.timeagent.app/.MainActivity` 전면 실행과 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `f0517f7c137b939002601d1a4462f92caac4cb3c52b43a350bba7441fbb79fc2`, AAB SHA-256은 `0d4f3a7cd1eb698aafce6420dcf0ebf98a4e6def82bee944e5fa50d6a2f87198`이다.
+- Evidence: `src/app/plan.tsx`, `src/app/create.tsx`, `src/components/timeline.tsx`, `src/components/destination-map.native.tsx`, `src/state/schedule-context.tsx`, `src/lib/confirmed-plans.ts`, `src/lib/confirmed-plan-notification-service.ts`, `src/lib/__tests__/confirmed-plans.test.ts`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/plan*.png`, `docs/HARNESS.md`.
+
+### 2026-08-13 UI 파인 튜닝
+
+- 장소명 오른쪽 지도 버튼, 도착 시각 오른쪽 2줄 여유 pill, 이동 카드 오른쪽 끝 수단별 아이콘 배치를 실제 요소 좌표로 검증하는 회귀 검사를 추가했다. `npm run verify` 35개 스위트·192/192 및 360×800·390×844·430×932 전체 시각·상호작용 171/171이 통과했다.
+- 서명 APK/AAB 760개 작업 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터를 유지해 `1.0.2 (3)`을 덮어 설치했다. `com.timeagent.app/.MainActivity` 전면 실행과 치명적 Android·React Native 예외 0건을 확인했다. APK SHA-256은 `d58397fe1c09708a8e2203e9171f5b55d535a387b8c316906bff14b308dcafd1`, AAB SHA-256은 `64cb61ccf2884641419fd31c0b0f3242b1fe2a2769265a560c08ed6ae8061b16`이다.
+
+## 2026-08-13 확정 약속 저장 카드 홈 이동 (완료)
+
+- Accept: 확정된 준비 계획 화면 하단의 저장 완료 카드 전체를 누르면 홈으로 돌아간다. 제목은 계획이 아닌 약속을 기준으로 `약속이 저장됐습니다.`라고 표시한다. 체크 아이콘은 완료를 즉시 인지할 수 있도록 크고 굵고 선명하게 제공하며, 카드 전체 터치 영역은 최소 44px을 넘는다.
+- Implement: 정적 저장 카드를 접근성 역할·레이블·힌트를 가진 `Pressable` CTA로 전환하고 홈을 `replace`하도록 연결했다. 체크 아이콘을 20px 일반 체크에서 34px·굵기 3의 원형 완료 아이콘으로 변경하고, 48px 흰색 강조 영역과 2px 성공색 테두리를 적용했다. 카드 높이는 최소 80px, 제목은 17px 굵은 글자로 조정했다.
+- Verify: 변경 전에 새 홈 이동 회귀 테스트가 실패하는 것을 확인한 뒤 구현 후 통과시켰다. 음성 일정 확정→저장 카드 노출→카드 터치→홈 이동 흐름을 검증했다. 최종 `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·190/190이 통과했고, 360×800·390×844·430×932 전체 시각·상호작용 162/162도 통과했다. 세 화면 크기의 저장 카드 전용 기준 이미지로 문구·아이콘·전체 카드 노출과 가로 잘림 없음, 최소 80px 터치 영역을 확인했다. 최신 출시 APK/AAB 760 tasks 빌드가 성공했고, 사용자 승인에 따라 Play 서명 설치본과 데이터를 삭제한 뒤 Samsung Android 12 `SM-N971N`에 `1.0.2 (3)`을 새로 설치했다. `com.timeagent.app/.MainActivity` 실행, 온보딩 첫 화면 표시, 치명적 Android·React Native 오류 0건을 확인했다.
+- Evidence: `src/app/plan.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/plan-saved-confirmation.png`, `docs/HARNESS.md`.
+
+## 2026-08-13 Android 음성 일정 생성 복구 (완료)
+
+- Accept: 작은 음량의 Android 발화도 감지해 침묵 뒤 자동 제출한다. 기기별 음량 측정이 발화를 놓쳐도 사용자가 `말을 마쳤어요`를 눌러 녹음을 제출할 수 있어야 한다. 너무 짧거나 발화 없는 자동 녹음은 서버로 보내지 않고 다시 듣는다. 수동 종료 CTA는 색상 외 텍스트로 상태를 전달하고 최소 44px 터치 영역을 유지한다.
+- Observe: Google Play 설치본 `1.0.0 (1)`은 음성 화면에서 `듣는 중`에 머물러 발화를 제출하지 못했다. 같은 기기에서 assistant 운영 엔드포인트의 텍스트 요청은 약 3초 내 HTTP 200으로 응답해 서버 장애를 배제했다. 소스의 발화 기준이 실기기 검증값 -55dB에서 -48dB로 높아졌고 수동 종료 경로도 제거돼, Samsung 기기의 작은 입력이나 음량 측정 누락을 복구할 방법이 없었다.
+- Implement: 음성 활동 판단을 UI 밖 순수 로직에 유지하면서 기본 발화 기준을 -55dB, 연속 발화 시작 시간을 120ms로 복구했다. 발화 감지 또는 0.35초 이상의 명시적 종료만 전송하는 `shouldSubmitVoiceRecording`을 추가하고, 녹음 중 하나의 핵심 CTA `말을 마쳤어요`를 제공했다. 자동으로 끝난 빈 녹음은 삭제한 뒤 즉시 다시 듣도록 했다.
+- Verify: 회귀 테스트를 먼저 추가해 변경 전 실패를 확인했고, 작은 음량 발화·명시적 종료·빈 자동 녹음 차단을 포함해 통과시켰다. 최종 `npm run verify`에서 TypeScript·ESLint·Jest 35개 스위트·190/190이 통과했다. 360×800·390×844·430×932의 음성 자동 듣기 기준 이미지를 갱신하고 전체 시각·상호작용 159/159를 통과했다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했다. 원래 Play 앱과 데이터를 보존하기 위해 별도 테스트 패키지를 Samsung Android 12 `SM-N971N`에 설치했고, `내일 오후 세 시 강남역에서 회의`를 실제 녹음한 뒤 `말을 마쳤어요`로 제출해 전사문 `내일 오후 3시 강남역에서 회의`, 제목 `회의`, 날짜 `2026-08-14`, 시간 `15:00–16:00`, 장소 `강남역`이 반환되는 것을 확인했다. 스피커 재생을 이용한 자동 종료 실기기 확인은 음향 결합이 불안정해 성공으로 판정하지 않았으며 낮은 음량 자동 감지는 단위 테스트로 고정했다. Google Play 업로드는 사용자 우선순위 변경에 따라 중단 상태로 유지한다.
+- Evidence: `src/lib/voice-schedule-assistant.ts`, `src/lib/__tests__/voice-schedule-assistant.test.ts`, `src/app/voice-schedule.tsx`, `e2e/visual/app.visual.spec.mjs`, `e2e/visual/__screenshots__/*/voice-schedule-auto.png`.
+
+## 2026-08-13 Google 테스터 로그인 복구 및 1.0.1 재배포
+
+- [x] 배포 앱의 Google 로그인 설정을 점검해 Web OAuth 클라이언트 ID `18828044372-ta832lgj7vetva7u93lqilebvrhgv73j.apps.googleusercontent.com`이 앱 환경설정과 번들에 동일하게 포함됨을 확인했다.
+- [x] 실제 OAuth 프로젝트가 `m4u4-9b513`임을 확인했다. Google 인증 플랫폼 대상 상태가 `테스트 중`이고 테스트 사용자가 0명이었던 제한은 프로덕션 게시로 해소했지만, 실기기 재현 결과 로그인 실패의 직접 원인은 별도 서명 키 미등록이었다.
+- [x] OAuth 앱을 `프로덕션` 상태로 게시해 특정 테스트 사용자 목록 제한 없이 Google 계정 로그인이 가능하도록 변경했다.
+- [x] Play 설치본 `1.0.0 (1)`이 연결된 Samsung Android 12 `SM-N971N`에서 `mangotree@mangonw.com`을 선택해 실패를 재현했다. Android 로그의 `UNREGISTERED_ON_API_CONSOLE`과 서버 메시지로 패키지명·서명 SHA-1 불일치를 확정했다.
+- [x] 설치 APK에서 실제 SHA-1 `C3:A9:BA:67:0B:12:A2:C3:8B:9A:C9:49:AB:1A:DD:03:8C:D8:68:57`을 추출했다. Play Console에서 이 값은 `이전 앱 서명 키`, 기존 OAuth의 `38:97:2A:ED:75:B3:F8:74:C3:D2:6A:3D:24:32:37:EA:05:B1:39:06`은 현재 앱 서명 키임을 확인했다. Android 버전에 따라 두 키가 모두 배포될 수 있으므로 기존 OAuth 클라이언트를 교체하지 않고 이전 키용 클라이언트를 별도로 추가해야 한다.
+- [x] `npm run auth:doctor`가 연결 기기의 설치 경로·버전·실제 APK 서명 SHA-1을 표시하도록 보강하고 파서 회귀 테스트 3개를 추가했다. `npm run verify`에서 35개 스위트·188/188 테스트가 통과했다.
+- [x] release AAB/APK를 생성하고 서명·패키지·버전을 확인했다. AAB SHA-256은 `a70ee86958406ad744cfcf9568a0e03ee777fd20f7314b67c0f5f013f5b43f0c`, APK SHA-256은 `9d7a06ad789370ed07ea8108fda15aa30ddc2905b1f1e03d1b2f123d822101ed`다.
+- [x] Google Cloud에 `TimeAgent Android Play Previous Key`, 패키지 `com.timeagent.app`, SHA-1 `C3:A9:…:68:57` Android OAuth 클라이언트(`18828044372-9h162r7cbub3d63375mt7cua2gan815p.apps.googleusercontent.com`)를 만들었다. 같은 Play 설치본에서 `mangotree@mangonw.com` 선택→홈 진입, `WOOCHUL` 인사 표시, 강제 종료·재실행 후 홈 세션 복원, 설정의 정확한 이메일 표시를 확인했으며 재시험 로그에는 `UNREGISTERED_ON_API_CONSOLE`·`Account reauth failed`·`DEVELOPER_ERROR`가 없었다.
+- [ ] Google Play 비공개 테스트 Alpha에 versionCode 2 AAB를 업로드하고 출시 검토를 제출한다. 현재 Chrome 확장 프로그램의 로컬 파일 접근 권한 활성화가 필요하다.
+- [ ] Play 서명본 1.0.1을 테스터 계정으로 설치해 Google 로그인과 핵심 화면 진입을 수동 확인한다.
+
+## 2026-08-12 Google Play 비공개 테스트 출시 (테스터 참여 대기)
+
+- [x] Google Play Console에 `TimeAgent` 앱을 패키지 `com.timeagent.app`으로 생성하고 Play App Signing을 활성화했다.
+- [x] 최신 서명 AAB(versionCode 1, versionName 1.0.0, targetSdk 36)를 업로드하고 비공개 테스트 Alpha 릴리스에 연결했다.
+- [x] 개인정보처리방침 URL을 등록하고 광고 없음, 정부 앱 아님, 금융 기능 없음, 건강 기능 없음, 광고 ID 미사용을 선언했다. 광고 ID 미사용은 최종 병합 매니페스트에 `com.google.android.gms.permission.AD_ID`가 없음을 대조했다.
+- [x] 테스터 목록 `TimeAgent 내부 테스터`에 `mangonetwork@mangonw.com`을 등록하고 비공개 테스트 Alpha의 대상 국가를 대한민국으로 저장했다. 참여자는 초대된 Google 계정으로 참여 링크에서 직접 등록해야 한다.
+- [x] Play 심사용 계정 `mangonetwork@mangonw.com`의 로그인 정보, 영문 접근 안내, 전체 기능 접근 확인을 저장했다. 2단계 인증은 중단했으며 심사 완료 전까지 비밀번호를 유지한다.
+- [x] IARC 콘텐츠 등급 설문에서 TimeAgent를 `다른 모든 앱 유형`, 생성형 AI에 따른 `온라인 콘텐츠 있음`으로 신고하고 폭력·선정성·비속어·규제 약물·사용자 공유·구매 기능 없음으로 답변했다. 결과는 대한민국 `3세 이상`이다.
+- [x] 타겟층을 ADHD 성인 사용자를 반영해 `만 18세 이상`으로 저장했다.
+- [x] 콘텐츠 등급, 타겟층, 데이터 보안, 백그라운드 위치, foreground-service 선언을 완료했다. 백그라운드 위치와 foreground-service에는 실제 기능 영상 `https://youtu.be/P8qOTB5MJRY`를 제출했다.
+- [x] 공개 지원 이메일 `mangotree@mangonw.com`을 즉시 게시하고 앱 카테고리를 `생산성`으로 저장했다.
+- [x] 스토어 문안, 앱 아이콘, 기능 그래픽, 휴대전화 스크린샷 6장, 일부 공개 YouTube 영상을 등록했다.
+- [x] Play 앱 서명 인증서 SHA-1 `38:97:2A:ED:75:B3:F8:74:C3:D2:6A:3D:24:32:37:EA:05:B1:39:06`을 확인했다.
+- [x] Alpha 릴리스와 앱 콘텐츠·스토어 변경사항 14개를 검토에 제출했고 Google 검토가 끝나 Alpha `1 (1.0.0)`이 `최신 출시 버전`으로 활성화됐다.
+- [x] 제출 직후 `npm run verify`를 재실행해 TypeScript, Expo lint, Jest 34개 스위트·185/185 테스트 통과를 확인했다.
+- [x] Google Cloud 프로젝트 `m4u4`에 Android OAuth 클라이언트 `TimeAgent Android Play`을 생성하고 패키지 `com.timeagent.app`과 Play 앱 서명 SHA-1을 등록했다. 클라이언트 ID는 `18828044372-fcs2rber93fj8vo5rj7p7ioisu59h0oe.apps.googleusercontent.com`이다.
+- [x] `TimeAgent 내부 테스터` 목록에 유효한 이메일 18개를 저장했다. 추가 입력된 `statstar6095@gmail.com`과 `sbl2004pa@gmalil.com`은 Play가 `존재하지 않는 이메일 주소`로 판정해 제외했다.
+- [x] 지원 계정 `mangotree@mangonw.com`으로 웹 참여 링크의 `Become a tester`를 선택해 실제 참여와 Play 스토어 설치 페이지 노출을 확인했다. 2026-08-12 Play 대시보드 최신 집계는 참여를 선택한 테스터 7명이다.
+- [x] 지원 계정의 Google Play 웹 설치 화면에서 `Samsung SM-S931N`이 설치 완료 기기로 표시되는 것을 확인했다.
+- [x] USB 연결된 `Samsung SM-N971N`에 Google Play 설치본 `1.0.0 (1)`이 설치돼 있으며 installer는 `com.android.vending`이다. Android 12에 전달된 APK는 Play의 이전 앱 서명 키 `C3:A9:…:68:57`로 서명됐다.
+- [x] 지원 계정을 제외한 테스터 17명에게 참여 링크, 설치 링크, 14일 유지 조건을 안내하는 Gmail 초안을 `mangotree@mangonw.com` 계정에 만들었다.
+- [ ] 등록된 계정 중 5명 이상이 추가로 참여해 총 12명 이상이 되도록 안내 메일을 검토·발송한다. 이메일 목록 등록만으로 참여 인원에 집계되지 않으며 각 계정이 참여 링크에서 직접 등록해야 한다.
+- [ ] 비공개 테스트에 12명 이상이 참여한 상태로 14일 이상 운영한 뒤 프로덕션 액세스를 신청한다.
+- 증거: Play app ID `4973085320407227118`, Alpha track ID `4698283980079925864`, 비공개 테스트 웹 참여 링크 `https://play.google.com/apps/testing/com.timeagent.app`, 내부 테스트 참여 링크 `https://play.google.com/apps/internaltest/4700868299529463503`, AAB SHA-256 `00d37cd7cdaa2466a856273c36fdc042f1c58971c27913b017156de8e9a3848a`.
+
 ## 2026-08-12 완전 자동 음성 대화 및 저장 안정화 (구현 완료)
 
 - [x] 음성 일정 화면 진입 즉시 안내 음성을 기다리지 않고 녹음을 시작하며, 발화가 확인된 뒤 0.7초 침묵하면 자동 제출한다.
@@ -902,3 +1007,10 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Implement: 공통 `AppLogo`의 워드마크와 접근성 이름을 `Time:Agent`로 변경했다. 로그인 배너의 기존 구성·한국어 문구를 유지하면서 워드마크만 `Time:Agent`로 수정한 1731×909 PNG를 새 자산으로 추가하고 로그인 화면에 연결했다. 브랜드 표기 규칙을 디자인 시스템에 기록했다.
 - Verify: 새 배너의 크기와 `Time:Agent` 철자, 한국어 문구·배경·휴대폰·타임라인 구성 유지를 시각 확인했다. 공통 로고는 로그인 확인·로그인·온보딩 화면에서 같은 워드마크를 사용하며 홈의 아이콘 전용 로고는 기존대로 유지된다. `npm run verify` 33개 스위트·173/173과 360×800·390×844·430×932 시각·상호작용 144/144를 기준 갱신 후 재실행해 통과했다. 출시 서명 2-ABI APK/AAB 760 tasks 빌드가 성공했고 Samsung Android 12 `SM-N971N`에 데이터 유지 방식으로 설치했다. 온보딩 실기기 화면에서 아이콘 옆 `Time:Agent`, 콜론·`Agent` 강조색, 잘림 없음을 확인한 뒤 홈으로 복귀했다. APK SHA-256은 `e41f4543561e584ab3bd5ff5503cf34bab0212e4732a5ea8a04ae2d303925a1b`이다.
 - Evidence: `src/components/app-logo.tsx`, `src/components/auth-gate.tsx`, `assets/images/timeagent-login-hero-wordmark.png`, `docs/DESIGN_SYSTEM.md`, `e2e/visual/__screenshots__/*/google-sign-in.png`, `tmp/timeagent-wordmark-android.png`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-12 Play 백그라운드 위치 심사용 영상 (촬영 완료)
+
+- Accept: Google Play 심사자가 30초 이내에 사용자가 직접 이동 안내를 켜는 동작, 백그라운드 위치 사용의 명확한 고지, Android 시스템의 `항상 허용` 선택, 앱 복귀 후 실제 활성 상태와 중지 수단을 확인할 수 있어야 한다. 영상에는 다른 앱이나 개인 알림을 노출하지 않는다.
+- Implement: Samsung Android 12 `SM-N971N`에서 실제 Journey 화면과 시스템 위치 권한 화면을 세로 화면으로 녹화했다. 개인정보가 노출되거나 다른 앱이 열린 촬영본은 폐기하고, 정상 흐름만 25.20초 H.264 영상으로 편집했다.
+- Verify: 1080×2280, 60fps, 2,589,706바이트, 재생시간 25.204605초를 확인했다. 시작 화면, 전체 고지와 활성화 버튼, `위치 액세스 권한`의 `항상 허용`, 앱 복귀 후 `켜짐` 상태·최근 위치 갱신·`화면 꺼짐 안내 끄기` 버튼을 프레임 단위로 확인했다. `WOOCHUL SHIN` 채널에 아동용 아님·`일부 공개`로 게시했고 비로그인 접근 링크가 활성화된 것을 확인했다. Play 선언 URL 입력은 남아 있다.
+- Evidence: `artifacts/play-store/timeagent-location-review.mp4`, SHA-256 `1581677b697c32a24de11f93d4e9b3b2af00394de794cd8b92949c0e12a2e532`, YouTube `https://youtu.be/P8qOTB5MJRY`, `tmp/play-location-video/contact-sheet-edited.png`.

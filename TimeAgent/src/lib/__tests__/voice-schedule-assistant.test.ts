@@ -9,7 +9,12 @@ import {
   isGuidedVoiceFieldCaptured,
   normalizeVoiceScheduleReply,
   resolveSpokenDateReference,
+  shouldSubmitVoiceRecording,
+  shouldUseCompactClarificationOptions,
   updateVoiceActivity,
+  createVoiceRequiredConfirmations,
+  mergeVoiceRequiredConfirmations,
+  nextRequiredVoiceClarification,
   voiceScheduleMissingFields,
 } from '@/lib/voice-schedule-assistant';
 
@@ -138,16 +143,55 @@ describe('voice schedule assistant domain', () => {
       appointmentTime: '15:00',
       destination: '강남 세브란스병원',
     });
-    expect(canConfirmVoiceSchedule(extracted, true, null)).toBe(false);
+    const unconfirmed = createVoiceRequiredConfirmations();
+    expect(canConfirmVoiceSchedule(extracted, true, null, unconfirmed)).toBe(false);
 
     const located = {
       ...extracted,
       destinationAddress: '서울 강남구 언주로 211',
       destinationCoordinate: { latitude: 37.492, longitude: 127.046 },
     };
-    expect(canConfirmVoiceSchedule(located, false, null)).toBe(false);
-    expect(canConfirmVoiceSchedule(located, true, { field: 'time', prompt: '몇 시인가요?', options: ['13:00'] })).toBe(false);
-    expect(canConfirmVoiceSchedule(located, true, null)).toBe(true);
+    expect(canConfirmVoiceSchedule(located, false, null, unconfirmed)).toBe(false);
+    expect(canConfirmVoiceSchedule(located, true, { field: 'time', prompt: '몇 시인가요?', options: ['13:00'] }, unconfirmed)).toBe(false);
+
+    const requiredConfirmed = mergeVoiceRequiredConfirmations(unconfirmed, {
+      appointmentTime: '15:00',
+      destination: '강남 세브란스병원',
+      transport: '지하철',
+    });
+    expect(canConfirmVoiceSchedule(located, true, null, requiredConfirmed)).toBe(true);
+  });
+
+  it('requires an explicit transport answer instead of accepting the default recommendation', () => {
+    const draft = {
+      ...createVoiceFirstScheduleDraft(createDefaultScheduleDraft()),
+      title: '친구 약속',
+      date: '8월 14일 (내일)',
+      appointmentTime: '15:00',
+      destination: '강남역',
+      destinationCoordinate: { latitude: 37.498, longitude: 127.028 },
+    };
+    const confirmedTimeAndPlace = mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), {
+      appointmentTime: '15:00',
+      destination: '강남역',
+    });
+
+    expect(nextRequiredVoiceClarification(confirmedTimeAndPlace)).toEqual({
+      field: 'transport',
+      prompt: '어떻게 이동할까요?',
+      options: ['도보', '버스', '지하철', '자가용', '택시'],
+    });
+    expect(canConfirmVoiceSchedule(draft, true, null, confirmedTimeAndPlace)).toBe(false);
+  });
+
+  it('lays the five transport options out on a single row and keeps long options wrapped', () => {
+    const transportOptions = nextRequiredVoiceClarification(
+      mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), { appointmentTime: '15:00', destination: '강남역' }),
+    )?.options as string[];
+
+    expect(shouldUseCompactClarificationOptions(transportOptions)).toBe(true);
+    expect(shouldUseCompactClarificationOptions(['13:00', '15:00', '17:00', '직접 입력'])).toBe(false);
+    expect(shouldUseCompactClarificationOptions(['도보', '버스', '지하철'])).toBe(false);
   });
 
   it('turns an extracted preparation duration into an explicit routine when no routine list is supplied', () => {
@@ -220,5 +264,23 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(false);
     expect(activity.state.speechCandidateSinceMs).toBeNull();
     expect(activity.shouldFinish).toBe(false);
+  });
+
+  it('detects quieter Android speech without requiring three loud samples in a row', () => {
+    let activity = updateVoiceActivity({ heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null }, -52, 600);
+    expect(activity.state.heardSpeech).toBe(false);
+    activity = updateVoiceActivity(activity.state, -52, 720);
+    expect(activity.state.heardSpeech).toBe(true);
+    activity = updateVoiceActivity(activity.state, -64, 900);
+    activity = updateVoiceActivity(activity.state, -64, 1_600);
+    expect(activity.shouldFinish).toBe(true);
+  });
+
+  it('allows an explicit finish after a usable recording when device metering misses speech', () => {
+    const silentActivity = { heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null };
+    expect(shouldSubmitVoiceRecording(silentActivity, 349, true)).toBe(false);
+    expect(shouldSubmitVoiceRecording(silentActivity, 350, true)).toBe(true);
+    expect(shouldSubmitVoiceRecording(silentActivity, 2_000, false)).toBe(false);
+    expect(shouldSubmitVoiceRecording({ ...silentActivity, heardSpeech: true }, 2_000, false)).toBe(true);
   });
 });

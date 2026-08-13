@@ -1,20 +1,24 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
 import { AppIcon, IconButton } from '@/components/app-icon';
+import { DestinationMap } from '@/components/destination-map';
 import { Timeline } from '@/components/timeline';
-import { color, space } from '@/constants/design';
+import { color, radius, space } from '@/constants/design';
 import { createSchedulePlan, PlanStatus } from '@/lib/planning';
 import { useSchedule } from '@/state/schedule-context';
 
 export default function PlanScreen() {
-  const { activePlan, activeSchedule, confirmPendingPlan, confirmedPlansStatus, draft, pendingPlan, pendingSchedule, useStandardPlan } = useSchedule();
+  const { activeConfirmedPlanId, activePlan, activeSchedule, beginEditConfirmedPlan, confirmPendingPlan, confirmedPlansStatus, deleteConfirmedPlan, draft, editingConfirmedPlanId, pendingPlan, pendingSchedule, useStandardPlan } = useSchedule();
   const [confirmError, setConfirmError] = useState('');
+  const [mapOpen, setMapOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const schedule = pendingSchedule ?? activeSchedule ?? draft;
   const plan = pendingPlan ?? activePlan ?? createSchedulePlan(schedule);
   const isPending = !!pendingPlan && !!pendingSchedule;
+  const isEditing = isPending && !!editingConfirmedPlanId;
   const confirm = async () => {
     try {
       setConfirmError('');
@@ -24,19 +28,37 @@ export default function PlanScreen() {
       setConfirmError('계획을 저장하지 못했습니다. 다시 시도해 주세요.');
     }
   };
+  const editAppointment = () => {
+    if (!activeConfirmedPlanId) return;
+    beginEditConfirmedPlan(activeConfirmedPlanId);
+    router.push('/create?edit=1');
+  };
+  const removeAppointment = async () => {
+    if (!activeConfirmedPlanId) return;
+    try {
+      setConfirmError('');
+      await deleteConfirmedPlan(activeConfirmedPlanId);
+      router.replace('/');
+    } catch {
+      setConfirmError('약속을 삭제하지 못했습니다. 다시 시도해 주세요.');
+    }
+  };
   return (
     <Screen>
-      <Header title={isPending ? '준비 계획을 확인해 주세요' : '확정된 준비 계획'} eyebrow={isPending ? '확정 전에는 자동 실행되지 않아요' : '준비 시작 시각에 자동으로 실행돼요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
+      <Header title={isPending ? isEditing ? '수정한 준비 계획을 확인해 주세요' : '준비 계획을 확인해 주세요' : '확정된 준비 계획'} eyebrow={isPending ? '저장 전에는 기존 약속이 변경되지 않아요' : '준비 시작 시각에 자동으로 실행돼요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
       <Card dark style={styles.summary}>
-        <StatusPill label={plan.status.label} tone={plan.status.tone} />
         <Text style={styles.summaryTitle}>{schedule.appointmentTime} 약속</Text>
-        <Text style={styles.summaryBody}>{schedule.destination} · {plan.arrival} 도착 예정</Text>
+        <View style={styles.destinationRow}>
+          <Text numberOfLines={2} style={styles.summaryBody}>{schedule.destination}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={mapOpen ? '지도 접기' : '지도 보기'} onPress={() => setMapOpen((open) => !open)} style={({ pressed }) => [styles.mapToggle, pressed && styles.confirmedPressed]}><AppIcon name="location" size={18} iconColor={color.cyan} /><Text style={styles.mapToggleText}>{mapOpen ? '지도 접기' : '지도 보기'}</Text><AppIcon name="chevronRight" size={17} iconColor={color.cyan} style={mapOpen ? styles.mapChevronOpen : undefined} /></Pressable>
+        </View>
         <View style={styles.metrics}>
           <Metric label="준비 시작" value={plan.prepStart} />
           <Metric label="출발" value={plan.departure} />
-          <Metric label="도착" value={plan.arrival} />
+          <Metric label="도착" value={plan.arrival} status={plan.status} />
         </View>
       </Card>
+      {mapOpen ? <Card style={styles.mapCard}><View><Text style={type.heading}>도착 장소 지도</Text><Text style={type.bodyMuted}>{schedule.destinationAddress || schedule.destination}</Text></View>{schedule.destinationCoordinate ? <DestinationMap coordinate={schedule.destinationCoordinate} /> : <View style={styles.mapUnavailable}><AppIcon name="location" size={26} iconColor={color.textMuted} /><Text style={type.bodyMuted}>저장된 지도 좌표가 없습니다. 약속 수정에서 장소를 다시 선택해 주세요.</Text></View>}</Card> : null}
       {plan.personalizationAdjustments.length > 0 ? (
         <Card style={styles.personalized} accessibilityLabel="실제 완료 기록을 반영한 변경 내용">
           <View style={styles.personalizedHeader}><View style={styles.coachIcon}><AppIcon name="coach" size={18} /></View><View style={{ flex: 1 }}><Text style={type.heading}>내 실제 기록을 반영했어요</Text><Text style={type.bodyMuted}>완료한 일정의 실제 소요 시간만 사용했으며 적용 근거를 확인하거나 이번 계획에서 제외할 수 있어요.</Text></View><StatusPill label={`${plan.personalizationAdjustments.length}개 조정`} tone="success" /></View>
@@ -46,17 +68,35 @@ export default function PlanScreen() {
       ) : null}
       <Card style={styles.coach}><View style={styles.coachIcon}><AppIcon name="coach" size={18} /></View><Text style={[type.bodyMuted, { flex: 1 }]}>{coachMessage(plan.status, plan.departure, plan.arrival)}</Text></Card>
       <Text style={type.heading}>전체 타임라인</Text>
-      <Card><Timeline steps={plan.timeline} /></Card>
+      <Card><Timeline steps={plan.timeline} transport={schedule.transport} /></Card>
       <View style={styles.actions}>
-        {isPending ? <Button label={confirmedPlansStatus === 'saving' ? '계획 저장 중…' : '계획 확정'} disabled={confirmedPlansStatus === 'saving'} onPress={() => void confirm()} /> : <Card style={styles.confirmed}><AppIcon name="check" size={20} iconColor={color.success} /><View style={{ flex: 1 }}><Text style={styles.confirmedTitle}>계획이 저장됐습니다</Text><Text style={type.caption}>{plan.prepStart}에 자동으로 준비를 시작하고 알림으로 알려드려요.</Text></View></Card>}
+        {isPending ? <Button label={confirmedPlansStatus === 'saving' ? '계획 저장 중…' : isEditing ? '수정한 약속 저장' : '계획 확정'} disabled={confirmedPlansStatus === 'saving'} onPress={() => void confirm()} /> : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="약속이 저장됐습니다. 홈으로 이동"
+            accessibilityHint="홈 화면으로 돌아갑니다"
+            onPress={() => router.replace('/')}
+            style={({ pressed }) => pressed && styles.confirmedPressed}>
+            <Card style={styles.confirmed}>
+              <View style={styles.confirmedIcon}><AppIcon name="success" size={34} strokeWidth={3} iconColor={color.success} /></View>
+              <View style={{ flex: 1 }}><Text style={styles.confirmedTitle}>약속이 저장됐습니다.</Text><Text style={type.caption}>{plan.prepStart}에 자동으로 준비를 시작하고 알림으로 알려드려요.</Text></View>
+            </Card>
+          </Pressable>
+        )}
         {isPending ? <View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={() => router.push('/create')} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View> : null}
+        {!isPending && activeConfirmedPlanId ? <View style={styles.manageActions}><View style={{ flex: 1 }}><Button label="약속 수정" variant="secondary" onPress={editAppointment} /></View><View style={{ flex: 1 }}><Button label="약속 삭제" variant="ghost" onPress={() => setDeleteOpen(true)} /></View></View> : null}
+        {deleteOpen ? <Card style={styles.deleteConfirm}><Text style={styles.deleteTitle}>이 약속을 삭제할까요?</Text><Text style={type.bodyMuted}>준비 시작 알림과 저장된 준비 계획도 함께 삭제됩니다.</Text><View style={styles.manageActions}><View style={{ flex: 1 }}><Button label="삭제 취소" variant="secondary" onPress={() => setDeleteOpen(false)} /></View><View style={{ flex: 1 }}><Button label="삭제 확인" onPress={() => void removeAppointment()} /></View></View></Card> : null}
         {confirmError ? <Text accessibilityRole="alert" style={styles.error}>{confirmError}</Text> : null}
       </View>
     </Screen>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) { return <View style={{ flex: 1 }}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>; }
+function Metric({ label, value, status }: { label: string; value: string; status?: PlanStatus }) {
+  const statusParts = status?.label.split(/\s+/, 2);
+  const statusLabel = statusParts ? `${statusParts[0]}${statusParts[1] ? `\n${statusParts[1]}` : ''}` : '';
+  return <View accessible={!!status} accessibilityLabel={status ? `${label} ${value}, ${status.label}` : undefined} style={[styles.metric, status && styles.arrivalMetric]}><Text style={styles.metricLabel}>{label}</Text><View style={styles.metricValueRow}><Text style={styles.metricValue}>{value}</Text>{status ? <View style={[styles.arrivalStatus, styles[`arrivalStatus_${status.tone}`]]}><Text style={[styles.arrivalStatusText, styles[`arrivalStatusText_${status.tone}`]]}>{statusLabel}</Text></View> : null}</View></View>;
+}
 
 function coachMessage(status: PlanStatus, departure: string, arrival: string) {
   if (status.kind === 'ready') return `${departure}에 출발하면 ${arrival}에 도착해요. 입력한 준비 행동과 이동 시간을 모두 반영했습니다.`;
@@ -65,5 +105,5 @@ function coachMessage(status: PlanStatus, departure: string, arrival: string) {
 }
 
 const styles = StyleSheet.create({
-  summary: { gap: space.md }, summaryTitle: { fontSize: 32, color: color.surface, fontWeight: '900' }, summaryBody: { fontSize: 15, color: color.ice }, metrics: { flexDirection: 'row', marginTop: space.sm, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,.18)' }, metricLabel: { fontSize: 11, color: color.ice, marginBottom: 4 }, metricValue: { fontSize: 19, color: color.surface, fontWeight: '900' }, personalized: { gap: space.md, borderWidth: 2, borderColor: color.success }, personalizedHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md }, adjustment: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: color.border }, adjustmentLabel: { color: color.navy, fontSize: 15, fontWeight: '800' }, adjustmentBefore: { color: color.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, adjustmentAfter: { color: color.deepBlue, fontSize: 16, fontWeight: '900' }, coach: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#E6F6FB', gap: space.md }, coachIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface }, actions: { gap: space.sm }, secondary: { flexDirection: 'row', gap: space.sm }, confirmed: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: color.successSoft, borderColor: color.success }, confirmedTitle: { color: color.navy, fontSize: 16, fontWeight: '900' }, error: { color: color.danger, fontSize: 13, textAlign: 'center' },
+  summary: { gap: space.md }, summaryTitle: { fontSize: 32, color: color.surface, fontWeight: '900' }, destinationRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm }, summaryBody: { flexShrink: 1, fontSize: 16, color: color.ice, fontWeight: '700' }, mapToggle: { flexShrink: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,.18)' }, mapToggleText: { color: color.surface, fontSize: 14, fontWeight: '800' }, mapChevronOpen: { transform: [{ rotate: '90deg' }] }, mapCard: { gap: space.md, padding: space.lg }, mapUnavailable: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.lg, borderRadius: radius.md, backgroundColor: color.surfaceMuted }, metrics: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,.18)' }, metric: { flex: 0.9, justifyContent: 'flex-end' }, arrivalMetric: { flex: 1.2 }, metricLabel: { fontSize: 11, color: color.ice, marginBottom: 4 }, metricValueRow: { minHeight: 37, flexDirection: 'row', alignItems: 'center', gap: 5 }, metricValue: { flexShrink: 0, fontSize: 19, color: color.surface, fontWeight: '900' }, arrivalStatus: { flexShrink: 0, minWidth: 42, paddingVertical: 5, paddingHorizontal: 6, borderRadius: 12 }, arrivalStatus_success: { backgroundColor: color.successSoft }, arrivalStatus_warning: { backgroundColor: color.warningSoft }, arrivalStatus_danger: { backgroundColor: color.dangerSoft }, arrivalStatusText: { fontSize: 10, lineHeight: 12, fontWeight: '900', textAlign: 'center' }, arrivalStatusText_success: { color: color.success }, arrivalStatusText_warning: { color: color.warning }, arrivalStatusText_danger: { color: color.danger }, personalized: { gap: space.md, borderWidth: 2, borderColor: color.success }, personalizedHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md }, adjustment: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: color.border }, adjustmentLabel: { color: color.navy, fontSize: 15, fontWeight: '800' }, adjustmentBefore: { color: color.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, adjustmentAfter: { color: color.deepBlue, fontSize: 16, fontWeight: '900' }, coach: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#E6F6FB', gap: space.md }, coachIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface }, actions: { gap: space.sm }, secondary: { flexDirection: 'row', gap: space.sm }, confirmed: { minHeight: 80, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: color.successSoft, borderWidth: 2, borderColor: color.success }, confirmedPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] }, confirmedIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface, borderWidth: 2, borderColor: color.success }, confirmedTitle: { color: color.navy, fontSize: 17, lineHeight: 24, fontWeight: '900' }, manageActions: { flexDirection: 'row', gap: space.sm }, deleteConfirm: { gap: space.md, borderWidth: 2, borderColor: color.danger }, deleteTitle: { color: color.navy, fontSize: 18, lineHeight: 25, fontWeight: '900' }, error: { color: color.danger, fontSize: 13, textAlign: 'center' },
 });

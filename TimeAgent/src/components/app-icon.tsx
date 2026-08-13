@@ -139,7 +139,7 @@ export function iconForTransport(value: string): AppIconName {
   if (value.includes('AI')) return 'ai';
   if (value.includes('지하철')) return 'subway';
   if (value.includes('버스')) return 'bus';
-  if (value.includes('도보')) return 'walk';
+  if (value.includes('도보') || value.includes('걸어')) return 'walk';
   if (value.includes('택시')) return 'taxi';
   return 'car';
 }

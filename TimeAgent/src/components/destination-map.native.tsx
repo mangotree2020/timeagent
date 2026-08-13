@@ -10,9 +10,9 @@ export function DestinationMap({ coordinate, onSelect }: DestinationMapProps) {
       style={styles.map}
       mapType="Basic"
       initialCamera={{ ...coordinate, zoom: 16 }}
-      isShowLocationButton
+      isShowLocationButton={!!onSelect}
       isShowZoomControls
-      onTapMap={({ latitude, longitude }) => onSelect({ latitude, longitude })}
+      onTapMap={onSelect ? ({ latitude, longitude }) => onSelect({ latitude, longitude }) : undefined}
     >
       <NaverMapMarkerOverlay
         latitude={coordinate.latitude}

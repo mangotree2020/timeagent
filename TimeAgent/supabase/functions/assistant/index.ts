@@ -139,7 +139,7 @@ function isTaskProposal(value: unknown) {
 function isClarification(value: unknown) {
   if (!isRecord(value)
     || typeof value.field !== "string"
-    || !["title", "date", "time", "destination", "recurrence", "preparation"].includes(value.field)
+    || !["title", "date", "time", "destination", "transport", "recurrence", "preparation"].includes(value.field)
     || !validText(value.prompt, 300)
     || !Array.isArray(value.options)
     || value.options.length > 6) return false;

@@ -10,6 +10,8 @@ import {
   markConfirmedPlanState,
   plansForLocalDate,
   plansForLocalDateRange,
+  removeConfirmedPlan,
+  replaceConfirmedPlan,
   settlePastConfirmedPlans,
   saveConfirmedPlans,
 } from '../confirmed-plans';
@@ -47,6 +49,28 @@ describe('confirmed schedule plans', () => {
 
     await expect(loadConfirmedPlans(storage)).resolves.toEqual([afternoon, evening]);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
+  });
+
+  test('replaces one confirmed appointment without creating a duplicate', () => {
+    const original = planAt('치과', '14:00', morning);
+    const another = planAt('저녁 약속', '19:00', morning + 1);
+    const replacement = {
+      ...planAt('치과 시간 변경', '15:00', morning + 2),
+      id: original.id,
+      confirmedAt: original.confirmedAt,
+    };
+
+    const plans = replaceConfirmedPlan([original, another], original.id, replacement);
+
+    expect(plans).toHaveLength(2);
+    expect(plans.find((plan) => plan.id === original.id)?.schedule.title).toBe('치과 시간 변경');
+  });
+
+  test('removes only the selected confirmed appointment', () => {
+    const first = planAt('치과', '14:00', morning);
+    const second = planAt('저녁 약속', '19:00', morning + 1);
+
+    expect(removeConfirmedPlan([first, second], first.id)).toEqual([second]);
   });
 
   test('selects the earliest due plan without starting a future or completed plan', () => {

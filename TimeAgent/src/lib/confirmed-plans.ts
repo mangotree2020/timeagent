@@ -57,6 +57,19 @@ export function addConfirmedPlan(plans: ConfirmedSchedulePlan[], plan: Confirmed
     .sort((left, right) => left.prepStartAt - right.prepStartAt || left.confirmedAt - right.confirmedAt);
 }
 
+export function replaceConfirmedPlan(
+  plans: ConfirmedSchedulePlan[],
+  id: string,
+  replacement: ConfirmedSchedulePlan,
+) {
+  return plans.map((plan) => plan.id === id ? replacement : plan)
+    .sort((left, right) => left.prepStartAt - right.prepStartAt || left.confirmedAt - right.confirmedAt);
+}
+
+export function removeConfirmedPlan(plans: ConfirmedSchedulePlan[], id: string) {
+  return plans.filter((plan) => plan.id !== id);
+}
+
 export function findDueConfirmedPlan(plans: ConfirmedSchedulePlan[], now = Date.now()) {
   return plans
     .filter((plan) => plan.state === 'scheduled' && plan.prepStartAt <= now)

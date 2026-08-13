@@ -13,13 +13,6 @@ import { color, radius, space } from '@/constants/design';
 import { useSchedule } from '@/state/schedule-context';
 import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
 import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
-import {
-  DeviceCalendarEvent,
-  calendarEventsForLocalDateRange,
-  createTodayCalendarPreviewFixture,
-  formatTodayTomorrowCalendarEventTime,
-} from '@/lib/device-calendar';
-import { deviceCalendarProvider } from '@/lib/device-calendar-provider';
 import { createHomeGreeting } from '@/lib/home-greeting';
 import { shouldAnimateHomeLogo } from '@/lib/home-attention';
 import { loadCurrentDeviceWeather, WeatherPermissionNeededError } from '@/lib/device-weather-provider';
@@ -32,20 +25,13 @@ import {
 import { useAuth } from '@/state/auth-context';
 import { useTaskExecution } from '@/state/task-context';
 
-type TodayCalendarStatus = 'checking' | 'ready' | 'permission-needed' | 'unavailable' | 'error';
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
 
 export default function HomeScreen() {
-  const params = useLocalSearchParams<{ e2eCalendar?: string; e2eWeather?: string; e2eStreak?: string }>();
-  const calendarFixtureMode = __DEV__ && params.e2eCalendar === 'today';
+  const params = useLocalSearchParams<{ e2eWeather?: string; e2eStreak?: string }>();
   const weatherFixtureMode = __DEV__ && params.e2eWeather === 'ready';
   const weatherErrorFixtureMode = __DEV__ && params.e2eWeather === 'error';
   const [today, setToday] = useState(() => new Date());
-  const [todayEvents, setTodayEvents] = useState<DeviceCalendarEvent[]>(() => {
-    if (!calendarFixtureMode) return [];
-    return calendarEventsForLocalDateRange(createTodayCalendarPreviewFixture(today).events, today, 2);
-  });
-  const [todayCalendarStatus, setTodayCalendarStatus] = useState<TodayCalendarStatus>(calendarFixtureMode ? 'ready' : 'checking');
   const [weather, setWeather] = useState<WeatherSnapshot | null>(() => weatherFixtureMode ? createWeatherPreviewFixture() : null);
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>(weatherFixtureMode ? 'ready' : weatherErrorFixtureMode ? 'error' : 'checking');
   const insets = useSafeAreaInsets();
@@ -74,36 +60,8 @@ export default function HomeScreen() {
     delayMinutes,
     weatherIcon: weather?.icon,
     weatherStatus,
-    calendarStatus: todayCalendarStatus,
+    calendarStatus: 'ready',
   });
-  const loadTodayCalendar = useCallback(async () => {
-    const currentDay = new Date();
-    setToday(currentDay);
-    if (calendarFixtureMode) {
-      setTodayEvents(calendarEventsForLocalDateRange(createTodayCalendarPreviewFixture(currentDay).events, currentDay, 2));
-      setTodayCalendarStatus('ready');
-      return;
-    }
-    setTodayCalendarStatus('checking');
-    try {
-      const permission = await deviceCalendarProvider.getPermission();
-      if (permission.state === 'unavailable') {
-        setTodayEvents([]);
-        setTodayCalendarStatus('unavailable');
-        return;
-      }
-      if (permission.state !== 'granted') {
-        setTodayEvents([]);
-        setTodayCalendarStatus('permission-needed');
-        return;
-      }
-      const snapshot = await deviceCalendarProvider.loadUpcoming(currentDay, 2);
-      setTodayEvents(calendarEventsForLocalDateRange(snapshot.events, currentDay, 2));
-      setTodayCalendarStatus('ready');
-    } catch {
-      setTodayCalendarStatus('error');
-    }
-  }, [calendarFixtureMode]);
 
   const loadWeather = useCallback(async () => {
     if (weatherFixtureMode) {
@@ -130,17 +88,6 @@ export default function HomeScreen() {
     const clock = setInterval(() => setToday(new Date()), 60_000);
     return () => clearInterval(clock);
   }, []);
-
-  useEffect(() => {
-    const initialLoad = setTimeout(() => void loadTodayCalendar(), 0);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadTodayCalendar();
-    });
-    return () => {
-      clearTimeout(initialLoad);
-      subscription.remove();
-    };
-  }, [loadTodayCalendar]);
 
   useEffect(() => {
     const initialLoad = setTimeout(() => void loadWeather(), 0);
@@ -192,14 +139,6 @@ export default function HomeScreen() {
           <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/schedules')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable>}>오늘·내일 등록 약속 {homePlans.length}개</SectionTitle>
           <RegisteredPlanList plans={homePlans} onSelect={openRegisteredPlan} />
         </> : null}
-
-        <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/voice-schedule')} style={styles.sectionAction}><Text style={styles.link}>+ 말로 추가</Text></Pressable>}>오늘·내일 약속{todayCalendarStatus === 'ready' ? ` ${todayEvents.length}개` : ''}</SectionTitle>
-        <TodaySchedules
-          status={todayCalendarStatus}
-          events={todayEvents}
-          today={today}
-          onRetry={() => void loadTodayCalendar()}
-        />
 
         {onTimeStreak > 0 ? <OnTimeArrivalBadge
           streak={onTimeStreak}
@@ -323,25 +262,6 @@ function weatherIconName(weather: WeatherSnapshot): AppIconName {
   return 'weatherCloudy';
 }
 
-function TodaySchedules({ status, events, today, onRetry }: { status: TodayCalendarStatus; events: DeviceCalendarEvent[]; today: Date; onRetry: () => void }) {
-  if (status === 'checking') {
-    return <Card style={styles.todayState}><ActivityIndicator color={color.deepBlue} /><View style={styles.todayStateCopy}><Text style={type.heading}>오늘·내일 약속을 확인하고 있어요</Text><Text style={type.bodyMuted}>기기 캘린더에서 오늘과 내일 약속을 불러옵니다.</Text></View></Card>;
-  }
-  if (status === 'error') {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="error" size={24} /></View><Text style={type.heading}>오늘·내일 약속을 불러오지 못했어요</Text><Text style={type.bodyMuted}>캘린더 연결 상태를 확인한 뒤 다시 시도해 주세요.</Text><Button label="약속 다시 불러오기" variant="secondary" onPress={onRetry} /></Card>;
-  }
-  if (status === 'permission-needed' || status === 'unavailable') {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>{status === 'permission-needed' ? '캘린더를 연결하면 오늘·내일 약속을 보여드려요' : '말로 오늘·내일 약속을 추가해 주세요'}</Text><Text style={type.bodyMuted}>{status === 'permission-needed' ? '권한을 허용하기 전에는 기기 일정을 읽지 않습니다.' : '앱이 열리면 바로 듣고 모호한 항목만 다시 물어봅니다.'}</Text><Button label={status === 'permission-needed' ? '캘린더 연결하기' : '말로 일정 만들기'} variant="secondary" onPress={() => status === 'permission-needed' ? router.push({ pathname: '/schedules', params: { tab: 'calendar' } }) : router.push('/voice-schedule')} /></Card>;
-  }
-  if (!events.length) {
-    return <Card style={styles.todayEmpty}><View style={styles.todayStateIcon}><AppIcon name="calendar" size={24} /></View><Text style={type.heading}>오늘·내일 등록된 약속이 없어요</Text><Text style={type.bodyMuted}>말로 새 약속을 추가하면 준비 시작 시간과 다음 행동을 계산해 드립니다.</Text><Button label="말로 약속 추가" variant="secondary" onPress={() => router.push('/voice-schedule')} /></Card>;
-  }
-  return <View accessibilityLabel={`오늘·내일 약속 ${events.length}개`} style={styles.todayList}>{events.map((event) => {
-    const timeLabel = formatTodayTomorrowCalendarEventTime(event, today);
-    return <Pressable key={event.occurrenceKey} accessibilityRole="button" accessibilityLabel={`${timeLabel.replace('\n', ' ')}, ${event.title}${event.location ? `, ${event.location}` : ''}`} accessibilityHint="기기 캘린더 일정 화면으로 이동합니다" onPress={() => router.push({ pathname: '/schedules', params: { tab: 'calendar' } })} style={({ pressed }) => [styles.todayEvent, pressed && styles.todayEventPressed]}><View style={styles.todayTime}><Text style={styles.todayTimeText}>{timeLabel}</Text></View><View style={styles.todayEventCopy}><Text style={styles.todayEventTitle}>{event.title}</Text>{event.location ? <View style={styles.locationRow}><AppIcon name="location" size={15} /><Text style={styles.todayLocation}>{event.location}</Text></View> : null}<Text style={styles.todaySource}>{event.providerLabel} · {event.calendarTitle}</Text></View><AppIcon name="chevronRight" size={20} iconColor={color.textMuted} /></Pressable>;
-  })}</View>;
-}
-
 const styles = StyleSheet.create({
   page: { flex: 1 },
   homeHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
@@ -390,19 +310,8 @@ const styles = StyleSheet.create({
   weatherLinkText: { color: color.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
   link: { color: color.deepBlue, fontSize: 14, fontWeight: '800' },
   sectionAction: { minHeight: 44, minWidth: 52, alignItems: 'flex-end', justifyContent: 'center' },
-  todayList: { gap: space.sm },
-  todayEvent: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
   todayEventPressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
-  todayTime: { width: 58, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: color.border, paddingRight: space.sm },
-  todayTimeText: { color: color.deepBlue, fontSize: 13, lineHeight: 18, fontWeight: '900', textAlign: 'center' },
-  todayEventCopy: { flex: 1, gap: 4 },
-  todayEventTitle: { color: color.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' },
-  todayLocation: { flex: 1, color: color.textMuted, fontSize: 13, lineHeight: 18 },
-  todaySource: { color: color.deepBlue, fontSize: 12, lineHeight: 17, fontWeight: '800' },
-  todayState: { minHeight: 100, flexDirection: 'row', alignItems: 'center', gap: space.md },
-  todayStateCopy: { flex: 1, gap: 4 },
   todayEmpty: { gap: space.md },
-  todayStateIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
   streakPressable: { minHeight: 44, borderRadius: radius.lg },
   streakCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderColor: 'transparent' },
   streakIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFB547', flexShrink: 0 },

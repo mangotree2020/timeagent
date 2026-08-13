@@ -106,13 +106,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 const screens = [
-  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘·내일 등록 약속 1개' },
+  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '좋은 오후예요, 서연님' },
   { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 등록할까요?' },
   { id: 'voice-schedule-auto', path: '/voice-schedule?e2eState=auto-listening', ready: '실시간 대화 · 자동 듣기' },
   { id: 'voice-schedule-clarification', path: '/voice-schedule?e2eState=clarification', ready: '금요일 오후 몇 시로 등록할까요?' },
+  { id: 'voice-schedule-transport', path: '/voice-schedule?e2eState=transport-missing', ready: '어떻게 이동할까요?' },
   { id: 'voice-task-proposal', path: '/voice-schedule?e2eState=task', ready: '지금 시작할 만큼 나눴어요' },
   { id: 'calendar-events', path: '/schedules?e2eCalendar=events', ready: '기기 캘린더 일정' },
   { id: 'plan', path: '/plan', ready: '확정된 준비 계획' },
@@ -151,6 +152,89 @@ for (const screen of screens) {
     await expectVisual(page, screen.id);
   });
 }
+
+test('확정 계획 저장 카드는 선명한 완료 CTA로 홈에 이동함', async ({ page }) => {
+  await page.goto('/plan');
+  const savedAppointment = page.getByRole('button', { name: '약속이 저장됐습니다. 홈으로 이동', exact: true });
+  await savedAppointment.scrollIntoViewIfNeeded();
+  await expect(savedAppointment).toBeVisible();
+  await expect(savedAppointment.getByText('약속이 저장됐습니다.', { exact: true })).toBeVisible();
+  const box = await savedAppointment.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box.height, '저장 완료 카드 터치 영역은 최소 80px이어야 합니다').toBeGreaterThanOrEqual(80);
+  await expectVisual(page, 'plan-saved-confirmation');
+  await savedAppointment.click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test('확정 계획은 지도·이동수단·수정·삭제 행동을 제공함', async ({ page }) => {
+  await page.goto('/plan');
+  await expect(page.getByText('서면 볼링장', { exact: true })).toBeVisible();
+  await expect(page.getByText('서면 볼링장 · 13:56 도착 예정', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('4분\n여유', { exact: true })).toBeVisible();
+  const destination = page.getByText('서면 볼링장', { exact: true });
+  const mapToggle = page.getByRole('button', { name: '지도 보기', exact: true });
+  const arrivalMetric = page.getByLabel('도착 13:56, 4분 여유', { exact: true });
+  const transport = page.getByLabel('이동수단 지하철, 24분', { exact: true });
+  await expect(transport).toBeVisible();
+
+  const [destinationBox, mapToggleBox, arrivalTimeBox, arrivalStatusBox, transportTitleBox, transportIconBox] = await Promise.all([
+    destination.boundingBox(),
+    mapToggle.boundingBox(),
+    arrivalMetric.getByText('13:56', { exact: true }).boundingBox(),
+    arrivalMetric.getByText('4분\n여유', { exact: true }).boundingBox(),
+    transport.getByText('지하철로 출발', { exact: true }).boundingBox(),
+    transport.locator('svg').boundingBox(),
+  ]);
+  expect(Math.abs(destinationBox.y - mapToggleBox.y), '지도 보기는 약속 장소명 옆에 있어야 합니다').toBeLessThan(16);
+  expect(mapToggleBox.x).toBeGreaterThan(destinationBox.x + destinationBox.width);
+  expect(Math.abs(arrivalTimeBox.y - arrivalStatusBox.y), '여유 표시는 도착 시간 옆에 있어야 합니다').toBeLessThan(16);
+  expect(arrivalStatusBox.x).toBeGreaterThan(arrivalTimeBox.x + arrivalTimeBox.width);
+  expect(transportIconBox.x, '이동수단 아이콘은 카드 오른쪽 끝에 있어야 합니다').toBeGreaterThan(transportTitleBox.x + transportTitleBox.width);
+
+  await mapToggle.click();
+  await expect(page.getByText('도착 장소 지도', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '지도 접기', exact: true })).toBeVisible();
+  await expectVisual(page, 'plan-map-open');
+
+  await page.getByRole('button', { name: '약속 수정', exact: true }).click();
+  await expect(page).toHaveURL(/\/create\?edit=1$/);
+  await expect(page.getByRole('textbox', { name: '일정 이름' })).toHaveValue('서면 볼링장 친구 약속');
+  await expect(page.getByRole('heading', { name: '약속 수정', exact: true })).toBeVisible();
+});
+
+test('확정 약속 삭제는 확인 후 저장소와 화면에서 제거함', async ({ page }) => {
+  await page.goto('/plan');
+  await page.getByRole('button', { name: '약속 삭제', exact: true }).click();
+  await expect(page.getByText('이 약속을 삭제할까요?', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '삭제 취소', exact: true }).click();
+  await expect(page.getByText('이 약속을 삭제할까요?', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '약속 삭제', exact: true }).click();
+  await page.getByRole('button', { name: '삭제 확인', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans.length)).toBe(0);
+});
+
+test('확정 약속 수정은 기존 항목을 중복 없이 교체함', async ({ page }) => {
+  await page.addInitScript(() => {
+    const saved = JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans'));
+    saved.plans[0].schedule.destinationCoordinate = { latitude: 35.1577, longitude: 129.0592 };
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify(saved));
+  });
+  await page.goto('/plan');
+  await page.getByRole('button', { name: '약속 수정', exact: true }).click();
+  const title = page.getByRole('textbox', { name: '일정 이름' });
+  await title.fill('수정한 볼링 약속');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByRole('button', { name: '수정 계획 확인', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '수정한 준비 계획을 확인해 주세요', exact: true }).last()).toBeVisible();
+  await page.getByRole('button', { name: '수정한 약속 저장', exact: true }).last().click();
+  await expect(page).toHaveURL(/\/schedules$/);
+  const plans = await page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans);
+  expect(plans).toHaveLength(1);
+  expect(plans[0].schedule.title).toBe('수정한 볼링 약속');
+});
 
 test('로그인 전 온보딩 3개 화면', async ({ page }) => {
   await page.goto('/onboarding');
@@ -217,6 +301,64 @@ test('선택한 성별의 기본 준비 항목을 새 일정에 적용함', asyn
   await expect(page.getByText('화장', { exact: true })).toBeHidden();
 });
 
+test('설정의 이동 수단 선택지를 한 줄로 표시함', async ({ page }) => {
+  await page.goto('/settings');
+  await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /선호 이동수단/ }).click();
+
+  const options = ['도보', '버스', '지하철', '자가용', '택시'];
+  const boxes = await Promise.all(options.map((name) => page.getByRole('radio', { name, exact: true }).boundingBox()));
+  expect(boxes.every(Boolean)).toBe(true);
+  const top = boxes[0].y;
+  for (const box of boxes) {
+    expect(Math.abs(box.y - top), `${box} 이동 수단이 같은 줄에 있어야 합니다`).toBeLessThanOrEqual(1);
+    expect(box.height, '이동 수단의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('음성 일정은 이동수단 확인 전 확정할 수 없음', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=transport-missing');
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '이동수단 확인 필요 수정', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: '이동수단 확인 필요 수정', exact: true }).click();
+  await page.getByRole('radio', { name: '버스', exact: true }).click();
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '이동수단 버스 수정', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeEnabled();
+});
+
+test('음성 이동수단 질문의 다섯 선택지를 한 줄로 표시함', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=transport-missing');
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
+
+  const options = ['도보', '버스', '지하철', '자가용', '택시'];
+  const boxes = await Promise.all(options.map((name) => page.getByRole('button', { name, exact: true }).boundingBox()));
+  expect(boxes.every(Boolean)).toBe(true);
+  const top = boxes[0].y;
+  for (const box of boxes) {
+    expect(Math.abs(box.y - top), '이동수단 선택지가 같은 줄에 있어야 합니다').toBeLessThanOrEqual(1);
+    expect(box.height, '이동수단 선택지의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('음성 정리 결과에 확인한 이동수단을 표시함', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=proposal');
+  await expect(page.getByText('이렇게 등록할까요?', { exact: true })).toBeVisible();
+
+  const transportRow = page.getByRole('button', { name: '이동수단 지하철 수정', exact: true });
+  await expect(transportRow).toBeVisible();
+  const [timeBox, transportBox, destinationBox] = await Promise.all([
+    page.getByRole('button', { name: '시간 15:00–16:00 수정', exact: true }).boundingBox(),
+    transportRow.boundingBox(),
+    page.getByRole('button', { name: '장소 강남 세브란스병원 수정', exact: true }).boundingBox(),
+  ]);
+  expect(transportBox.y, '이동수단은 시간 아래에 있어야 합니다').toBeGreaterThan(timeBox.y);
+  expect(transportBox.y, '이동수단은 장소 위에 있어야 합니다').toBeLessThan(destinationBox.y);
+  expect(transportBox.height, '이동수단 행의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
+});
+
 test('홈 음성 일정 버튼이 내비게이션 위에 고정됨', async ({ page }) => {
   await page.goto('/');
   await page.getByText('좋은 오후예요, 서연님', { exact: true }).waitFor({ state: 'visible' });
@@ -239,19 +381,15 @@ test('홈 음성 일정 버튼이 내비게이션 위에 고정됨', async ({ pa
   expect(after.y).toBeCloseTo(before.y, 0);
 });
 
-test('홈은 오늘·내일 캘린더 약속을 날짜와 시간 상태로 보여줌', async ({ page }) => {
+test('홈은 오늘·내일 캘린더 약속 카테고리를 표시하지 않음', async ({ page }) => {
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
   await expect(page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true })).toBeVisible();
   await expect(page.getByText('비 올 확률 70%. 우산을 챙기세요.', { exact: true })).toBeVisible();
-  await expect(page.getByText('오늘·내일 약속 4개', { exact: true })).toBeVisible();
-  await expect(page.getByText('재택근무', { exact: true })).toBeVisible();
-  await expect(page.getByText('팀 점검 회의', { exact: true })).toBeVisible();
-  await expect(page.getByText('저녁 약속', { exact: true })).toBeVisible();
-  await expect(page.getByText('내일 오전 약속', { exact: true })).toBeVisible();
-  await expect(page.getByText('내일\n09:30', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /오늘 10:30, 팀 점검 회의/ }).click();
-  await expect(page).toHaveURL(/\/schedules\?tab=calendar$/);
-  await expect(page.getByText('캘린더 화면입니다.', { exact: true })).toBeVisible();
+  await expect(page.getByText('재택근무', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('팀 점검 회의', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('저녁 약속', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('내일 오전 약속', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '+ 말로 추가', exact: true })).toHaveCount(0);
 });
 
 test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 이동함', async ({ page }) => {
@@ -638,8 +776,12 @@ test('음성 일정 결과를 한 번에 확정하고 추출 값만 직접 수�
   await expect(page.getByText('16:00–17:00', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '확정하고 일정 등록' }).click();
   await expect(page).toHaveURL(/\/plan/);
-  await expect(page.getByText('계획이 저장됐습니다', { exact: true })).toBeVisible();
+  const savedAppointment = page.getByRole('button', { name: '약속이 저장됐습니다. 홈으로 이동', exact: true });
+  await expect(savedAppointment).toBeVisible();
   await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans') ?? '{"plans":[]}').plans.find((plan) => plan.schedule.title === '병원')?.schedule.appointmentTime)).toBe('16:00');
+  await savedAppointment.click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true })).toBeVisible();
 });
 
 test('말로 일정 생성 X는 이전 화면 기록이 없어도 홈으로 닫힘', async ({ page }) => {
@@ -663,7 +805,8 @@ test('음성 일정 화면은 열리자마자 AI 비서 자동 듣기 상태를 
   await page.goto('/voice-schedule?e2eState=auto-listening');
   await expect(page.getByLabel('AI 실시간 대화 자동 듣기 켜짐', { exact: true })).toBeVisible();
   await expect(page.getByText('듣는 중', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '지금까지 말한 내용 확인', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '말을 마쳤어요', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '말을 마쳤어요', exact: true })).toBeDisabled();
   await expect(page.getByRole('switch', { name: 'AI 음성 출력 끄기', exact: true })).toBeVisible();
   await expect(page.getByLabel(/^사용자 발화:/)).toHaveCount(0);
   await expect(page.getByText('마이크를 누르고 대답해 줘', { exact: true })).toHaveCount(0);

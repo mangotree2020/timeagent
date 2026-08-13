@@ -16,7 +16,7 @@ export type VoiceSchedulePatch = Partial<Pick<ScheduleDraft,
   preparationMinutes?: number;
 };
 
-export type VoiceClarificationField = 'title' | 'date' | 'time' | 'destination' | 'recurrence' | 'preparation';
+export type VoiceClarificationField = 'title' | 'date' | 'time' | 'destination' | 'transport' | 'recurrence' | 'preparation';
 export type VoiceScheduleClarification = {
   field: VoiceClarificationField;
   prompt: string;
@@ -43,6 +43,12 @@ export type VoiceScheduleChange = {
   label: string;
   before: string;
   after: string;
+};
+
+export type VoiceRequiredConfirmations = {
+  time: boolean;
+  destination: boolean;
+  transport: boolean;
 };
 
 export type GuidedVoiceField = 'title' | 'dateTime' | 'destination' | 'transport';
@@ -82,13 +88,45 @@ export function voiceScheduleMissingFields(draft: ScheduleDraft) {
   return missing;
 }
 
+export function createVoiceRequiredConfirmations(): VoiceRequiredConfirmations {
+  return { time: false, destination: false, transport: false };
+}
+
+export function mergeVoiceRequiredConfirmations(
+  current: VoiceRequiredConfirmations,
+  patch: VoiceSchedulePatch,
+): VoiceRequiredConfirmations {
+  return {
+    time: current.time || Boolean(patch.appointmentTime),
+    destination: current.destination || Boolean(patch.destination?.trim()),
+    transport: current.transport || Boolean(patch.transport),
+  };
+}
+
+export function nextRequiredVoiceClarification(confirmations: VoiceRequiredConfirmations): VoiceScheduleClarification | null {
+  if (!confirmations.time) return { field: 'time', prompt: '약속 시간은 몇 시인가요?', options: ['직접 입력'] };
+  if (!confirmations.destination) return { field: 'destination', prompt: '어디에서 만나나요?', options: ['직접 입력'] };
+  if (!confirmations.transport) return { field: 'transport', prompt: '어떻게 이동할까요?', options: ['도보', '버스', '지하철', '자가용', '택시'] };
+  return null;
+}
+
+const COMPACT_OPTION_MIN_COUNT = 4;
+const COMPACT_OPTION_MAX_LENGTH = 3;
+
+export function shouldUseCompactClarificationOptions(options: string[]) {
+  return options.length >= COMPACT_OPTION_MIN_COUNT
+    && options.every((option) => option.trim().length <= COMPACT_OPTION_MAX_LENGTH);
+}
+
 export function canConfirmVoiceSchedule(
   draft: ScheduleDraft,
   assistantReady: boolean,
   clarification: VoiceScheduleClarification | null,
+  requiredConfirmations: VoiceRequiredConfirmations,
 ) {
   return assistantReady
     && clarification === null
+    && nextRequiredVoiceClarification(requiredConfirmations) === null
     && voiceScheduleMissingFields(draft).length === 0
     && Boolean(draft.destinationCoordinate);
 }
@@ -143,9 +181,9 @@ export function updateVoiceActivity(
   metering: number | undefined,
   durationMillis: number,
   {
-    speechThresholdDb = -48,
+    speechThresholdDb = -55,
     minimumListeningMs = 350,
-    speechOnsetMs = 240,
+    speechOnsetMs = 120,
     trailingSilenceMs = 700,
   } = {},
 ) {
@@ -177,6 +215,14 @@ export function updateVoiceActivity(
     state: { ...previous, silenceSinceMs },
     shouldFinish: durationMillis - silenceSinceMs >= trailingSilenceMs,
   };
+}
+
+export function shouldSubmitVoiceRecording(
+  activity: VoiceActivityState,
+  durationMillis: number,
+  explicitlyFinished = false,
+) {
+  return activity.heardSpeech || (explicitlyFinished && durationMillis >= 350);
 }
 
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
@@ -263,7 +309,7 @@ function normalizeTaskProposal(value: unknown): VoiceTaskProposal | null {
 
 function normalizeClarification(value: unknown): VoiceScheduleClarification | null {
   if (value === null || value === undefined) return null;
-  const fields: VoiceClarificationField[] = ['title', 'date', 'time', 'destination', 'recurrence', 'preparation'];
+  const fields: VoiceClarificationField[] = ['title', 'date', 'time', 'destination', 'transport', 'recurrence', 'preparation'];
   if (!isRecord(value)
     || typeof value.field !== 'string'
     || !fields.includes(value.field as VoiceClarificationField)

@@ -169,7 +169,7 @@ export default function SettingsScreen() {
           ) : null}
 
           <Setting icon="subway" title="선호 이동수단" detail={settings.preferredTransport} expanded={expanded === 'transport'} onPress={() => toggleDetail('transport')} />
-          {expanded === 'transport' ? <ChoicePanel options={transports} selected={settings.preferredTransport} onSelect={(preferredTransport) => update({ preferredTransport })} /> : null}
+          {expanded === 'transport' ? <ChoicePanel compact options={transports} selected={settings.preferredTransport} onSelect={(preferredTransport) => update({ preferredTransport })} /> : null}
 
           <Setting icon="time" title="기본 여유 시간" detail={`${settings.bufferMinutes}분`} expanded={expanded === 'buffer'} onPress={() => toggleDetail('buffer')} />
           {expanded === 'buffer' ? <ChoicePanel options={bufferOptions} selected={settings.bufferMinutes} label={(value) => `${value}분`} onSelect={(bufferMinutes) => update({ bufferMinutes })} /> : null}
@@ -275,17 +275,19 @@ function ChoicePanel<T extends string | number>({
   onSelect,
   label = String,
   description,
+  compact = false,
 }: {
   options: readonly T[];
   selected: T;
   onSelect: (value: T) => void;
   label?: (value: T) => string;
   description?: string;
+  compact?: boolean;
 }) {
   return (
     <DetailPanel>
       {description ? <Text style={type.bodyMuted}>{description}</Text> : null}
-      <View style={styles.choices}>
+      <View style={[styles.choices, compact && styles.choicesCompact]}>
         {options.map((option) => {
           const active = option === selected;
           return (
@@ -294,8 +296,8 @@ function ChoicePanel<T extends string | number>({
               accessibilityRole="radio"
               accessibilityState={{ checked: active }}
               onPress={() => onSelect(option)}
-              style={[styles.choice, active && styles.choiceActive]}>
-              <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label(option)}</Text>
+              style={[styles.choice, compact && styles.choiceCompact, active && styles.choiceActive]}>
+              <Text numberOfLines={1} style={[styles.choiceText, compact && styles.choiceTextCompact, active && styles.choiceTextActive]}>{label(option)}</Text>
             </Pressable>
           );
         })}
@@ -354,9 +356,12 @@ const styles = StyleSheet.create({
   detailPanel: { paddingHorizontal: space.sm, paddingVertical: space.md, gap: space.sm, backgroundColor: color.surfaceMuted, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
   input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, paddingHorizontal: space.md, fontSize: 16, color: color.text },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  choicesCompact: { flexWrap: 'nowrap', gap: space.xs },
   choice: { minHeight: 44, borderRadius: radius.pill, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, paddingHorizontal: space.lg, alignItems: 'center', justifyContent: 'center' },
+  choiceCompact: { flex: 1, minWidth: 0, paddingHorizontal: 2 },
   choiceActive: { backgroundColor: color.deepBlue, borderColor: color.deepBlue },
   choiceText: { color: color.textMuted, fontSize: 13, fontWeight: '800' },
+  choiceTextCompact: { fontSize: 12 },
   choiceTextActive: { color: color.surface },
   learningRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
   learningLabel: { color: color.navy, fontSize: 15, fontWeight: '800' },

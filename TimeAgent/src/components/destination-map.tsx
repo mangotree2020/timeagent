@@ -6,7 +6,7 @@ import { Coordinate } from '@/lib/journey';
 
 export type DestinationMapProps = {
   coordinate: Coordinate;
-  onSelect: (coordinate: Coordinate) => void;
+  onSelect?: (coordinate: Coordinate) => void;
 };
 
 export function DestinationMap({ coordinate }: DestinationMapProps) {

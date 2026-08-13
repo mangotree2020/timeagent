@@ -14,7 +14,7 @@ const steps = ['약속 정보', '이동 정보', '준비 행동'];
 const transports: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
 
 export default function CreateScreen() {
-  const { beginDraft, draft, draftStatus, finalizeDraft, setDraftStep, updateDraft } = useSchedule();
+  const { beginDraft, draft, draftStatus, editingConfirmedPlanId, finalizeDraft, setDraftStep, updateDraft } = useSchedule();
   const params = useLocalSearchParams<{ new?: string; calendarImport?: string }>();
   const { step } = draft;
   const [planError, setPlanError] = useState('');
@@ -48,7 +48,7 @@ export default function CreateScreen() {
 
   return (
     <Screen>
-      <Header title="새 일정 만들기" eyebrow="1분 안에 등록할 수 있어요" right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
+      <Header title={editingConfirmedPlanId ? '약속 수정' : '새 일정 만들기'} eyebrow={editingConfirmedPlanId ? '저장하기 전까지 기존 약속은 유지돼요' : '1분 안에 등록할 수 있어요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
       <View style={styles.steps}>{steps.map((label, index) => <View key={label} style={styles.stepItem}><View style={[styles.stepDot, index <= step && styles.stepDotActive]}><Text style={[styles.stepNumber, index <= step && styles.stepNumberActive]}>{index + 1}</Text></View><Text style={[styles.stepLabel, index === step && styles.stepLabelActive]}>{label}</Text></View>)}</View>
 
       {step === 0 && params.calendarImport ? <Card style={styles.importNotice} accessibilityLabel="캘린더 일정 가져오기 안내"><View style={styles.importNoticeTitle}><AppIcon name="calendar" size={20} /><Text style={styles.importNoticeHeading}>캘린더에서 가져왔어요</Text></View><Text style={type.bodyMuted}>{params.calendarImport === 'all-day' ? '종일 일정에는 약속 시간이 없습니다. 다음으로 가기 전에 시간을 입력해 주세요.' : '날짜·시간·목적지를 확인한 뒤 필요한 내용을 수정해 주세요.'}</Text></Card> : null}
@@ -59,7 +59,7 @@ export default function CreateScreen() {
       {step === 0 ? <Button label="음성 대화로 다시 확인" variant="secondary" accessibilityHint="AI가 현재 입력 내용을 바탕으로 모호한 항목만 다시 묻습니다" onPress={() => router.push('/voice-schedule')} /> : null}
       <View style={styles.actions}>
         {step > 0 ? <Button label="이전" variant="secondary" onPress={() => setDraftStep((step - 1) as 0 | 1)} /> : null}
-        <View style={{ flex: 1 }}><Button label={step === 2 ? 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : step === 0 ? nextFromAppointment() : setDraftStep(2)} /></View>
+        <View style={{ flex: 1 }}><Button label={step === 2 ? editingConfirmedPlanId ? '수정 계획 확인' : 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : step === 0 ? nextFromAppointment() : setDraftStep(2)} /></View>
       </View>
       {planError ? <Text accessibilityRole="alert" style={styles.formError}>{planError}</Text> : null}
       <Text accessibilityLiveRegion="polite" style={[styles.saved, draftStatus === 'error' && styles.savedError]}>

@@ -21,12 +21,18 @@ import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import {
   applyVoiceSchedulePatch,
   canConfirmVoiceSchedule,
+  createVoiceRequiredConfirmations,
   createVoiceFirstScheduleDraft,
+  mergeVoiceRequiredConfirmations,
+  nextRequiredVoiceClarification,
+  shouldSubmitVoiceRecording,
+  shouldUseCompactClarificationOptions,
   updateVoiceActivity,
   voiceScheduleMissingFields,
   VoiceScheduleAssistantReply,
   VoiceScheduleClarification,
   VoiceSchedulePatch,
+  VoiceRequiredConfirmations,
   VoiceTaskProposal,
 } from '@/lib/voice-schedule-assistant';
 import {
@@ -41,7 +47,7 @@ import { useAppTheme } from '@/state/theme-context';
 
 type FlowStatus = 'ready' | 'speaking' | 'recording' | 'processing' | 'review' | 'confirmed' | 'error';
 type ChatMessage = { id: string; role: 'assistant' | 'user'; text: string };
-type EditableField = 'title' | 'date' | 'time' | 'destination' | 'duration' | 'recurrence' | 'preparation' | null;
+type EditableField = 'title' | 'date' | 'time' | 'destination' | 'transport' | 'duration' | 'recurrence' | 'preparation' | null;
 
 const INITIAL_PROMPT = '새 일정이나 할 일을 말해 주세요. “내일 3시 강남에서 병원” 또는 “보고서 작성해야 해”처럼 편하게 말하면 돼요.';
 const TTS_RELEASE_DELAY_MS = 500;
@@ -62,11 +68,18 @@ const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
     destination: '강남 세브란스병원',
     destinationAddress: '서울 강남구 언주로 211',
     destinationCoordinate: { latitude: 37.492, longitude: 127.046 },
+    transport: '지하철',
     durationMinutes: 60,
     recurrence: '반복 없음',
     preparationMinutes: 30,
-    transport: 'AI 추천',
   },
+};
+
+const TRANSPORT_MISSING_FIXTURE: VoiceScheduleAssistantReply = {
+  ...RESULT_FIXTURE,
+  transcript: '내일 3시 강남에서 병원 예약이 있어',
+  assistantMessage: '시간과 장소를 확인했어요. 이동수단도 확인해 주세요.',
+  patch: { ...RESULT_FIXTURE.patch, transport: undefined },
 };
 
 const CLARIFICATION_FIXTURE: VoiceScheduleAssistantReply = {
@@ -102,9 +115,10 @@ export default function VoiceScheduleScreen() {
   const params = useLocalSearchParams<{ e2eState?: string }>();
   const fixtureResult = params.e2eState === 'proposal' || params.e2eState === 'result';
   const fixtureClarification = params.e2eState === 'clarification';
+  const fixtureTransportMissing = params.e2eState === 'transport-missing';
   const fixtureAutoListening = params.e2eState === 'auto-listening';
   const fixtureTask = params.e2eState === 'task';
-  const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
+  const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
   const { beginDraft, beginDraftWith, confirmDraftWith, draft, selectConfirmedPlan } = useSchedule();
   const { addTask, startTask } = useTaskExecution();
   const { mode: colorMode, palette } = useAppTheme();
@@ -125,7 +139,13 @@ export default function VoiceScheduleScreen() {
   const [taskSourceText, setTaskSourceText] = useState(() => fixtureReply?.entryType === 'task' ? fixtureReply.transcript : '');
   const [history, setHistory] = useState<VoiceScheduleHistoryTurn[]>([]);
   const [assistantReady, setAssistantReady] = useState(fixtureReply?.readyToApply ?? false);
-  const [clarification, setClarification] = useState<VoiceScheduleClarification | null>(fixtureReply?.clarification ?? null);
+  const [clarification, setClarification] = useState<VoiceScheduleClarification | null>(() => fixtureReply?.clarification
+    ?? (fixtureReply?.entryType === 'schedule' && fixtureReply.readyToApply
+      ? nextRequiredVoiceClarification(mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch))
+      : null));
+  const [requiredConfirmations, setRequiredConfirmations] = useState<VoiceRequiredConfirmations>(() => fixtureReply?.entryType === 'schedule'
+    ? mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch)
+    : createVoiceRequiredConfirmations());
   const [editField, setEditField] = useState<EditableField>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -228,6 +248,11 @@ export default function VoiceScheduleScreen() {
         return;
       }
       const nextProposal = applyVoiceSchedulePatch(base, reply.patch);
+      const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, reply.patch);
+      const requiredClarification = reply.entryType === 'schedule' && reply.readyToApply && !reply.clarification
+        ? nextRequiredVoiceClarification(nextConfirmations)
+        : null;
+      const nextClarification = reply.clarification ?? requiredClarification;
       const assistantText = reply.assistantMessage || reply.question || '이해한 내용을 확인해 주세요.';
       if (reply.entryType === 'task' && reply.task) {
         setTaskProposal(reply.task);
@@ -237,12 +262,13 @@ export default function VoiceScheduleScreen() {
         setProposal(nextProposal);
         setTaskProposal(null);
       }
-      setAssistantReady(reply.readyToApply);
-      setClarification(reply.clarification);
+      setRequiredConfirmations(nextConfirmations);
+      setAssistantReady(reply.readyToApply && nextRequiredVoiceClarification(nextConfirmations) === null);
+      setClarification(nextClarification);
       setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: assistantText }].slice(-8) as VoiceScheduleHistoryTurn[]);
       setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: assistantText }]);
       setStatus('review');
-      void speakThenListen(reply.clarification?.prompt ?? reply.question ?? assistantText);
+      void speakThenListen(nextClarification?.prompt ?? reply.question ?? assistantText);
     } catch (error) {
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
       setStatus('error');
@@ -251,9 +277,9 @@ export default function VoiceScheduleScreen() {
     } finally {
       processingRef.current = false;
     }
-  }, [conversationId, history, proposal, provider, scheduleAutoRestart, speakThenListen, voiceDraft]);
+  }, [conversationId, history, proposal, provider, requiredConfirmations, scheduleAutoRestart, speakThenListen, voiceDraft]);
 
-  const finishRecording = useCallback(async () => {
+  const finishRecording = useCallback(async (explicitlyFinished = false) => {
     if (finishingRef.current) return;
     const generation = flowGenerationRef.current;
     finishingRef.current = true;
@@ -263,8 +289,14 @@ export default function VoiceScheduleScreen() {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       const uri = recorder.uri ?? recorderState.url;
       if (!uri) throw new Error('missing recording');
-      if (!voiceActivityRef.current.heardSpeech || generation !== flowGenerationRef.current || !mountedRef.current) {
+      if (!shouldSubmitVoiceRecording(voiceActivityRef.current, recorderState.durationMillis, explicitlyFinished)
+        || generation !== flowGenerationRef.current
+        || !mountedRef.current) {
         try { new File(uri).delete(); } catch { /* cache may already be gone */ }
+        if (mountedRef.current && generation === flowGenerationRef.current) {
+          setStatus('ready');
+          scheduleAutoRestart(0, generation);
+        }
         return;
       }
       await submitTurn(await recordingToInput(uri));
@@ -277,7 +309,7 @@ export default function VoiceScheduleScreen() {
     } finally {
       finishingRef.current = false;
     }
-  }, [recorder, recorderState.isRecording, recorderState.url, scheduleAutoRestart, submitTurn]);
+  }, [recorder, recorderState.durationMillis, recorderState.isRecording, recorderState.url, scheduleAutoRestart, submitTurn]);
 
   const stopAudioConversation = useCallback(async () => {
     flowGenerationRef.current += 1;
@@ -333,17 +365,19 @@ export default function VoiceScheduleScreen() {
   }, [finishRecording, recorder.uri, recorderState.isRecording, recorderState.url, startRecording, status]);
 
   const applyManualPatch = (patch: VoiceSchedulePatch, resolvedField?: VoiceScheduleClarification['field']) => {
+    const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, patch);
+    setRequiredConfirmations(nextConfirmations);
     setProposal((current) => {
       const next = applyVoiceSchedulePatch(current ?? voiceDraft, patch);
       const nextClarification = clarification?.field === resolvedField ? null : clarification;
       if (clarification?.field === resolvedField) setClarification(null);
-      setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null);
+      setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null && nextRequiredVoiceClarification(nextConfirmations) === null);
       return next;
     });
   };
 
   const confirmSchedule = async () => {
-    if (!proposal || !canConfirmVoiceSchedule(proposal, assistantReady, clarification)) return;
+    if (!proposal || !canConfirmVoiceSchedule(proposal, assistantReady, clarification, requiredConfirmations)) return;
     try {
       setStatus('processing');
       await stopAudioConversation();
@@ -406,6 +440,7 @@ export default function VoiceScheduleScreen() {
         <View style={styles.content}>
           <View style={styles.header}><IconButton name="close" label="음성 입력 닫기" variant="plain" iconColor={palette.text} onPress={closeVoiceInput} /><View style={styles.headerCopy}><Text style={[styles.headerTitle, { color: palette.text }]}>말로 일정·할 일</Text><Text style={[styles.headerHint, { color: palette.textMuted }]}>일정은 확인하고, 할 일은 지금 시작할 만큼 작게 나눠요</Text></View><View style={styles.headerSpacer} /></View>
           <View accessibilityLabel="AI 실시간 대화 자동 듣기 켜짐" style={[styles.aiMode, { backgroundColor: palette.surface, borderColor: palette.border }]}><View style={[styles.aiModeDot, { backgroundColor: palette.primary }]} /><Text style={[styles.aiModeText, { color: palette.text }]}>실시간 대화 · 자동 듣기</Text><Text accessibilityLiveRegion="polite" style={[styles.aiModeState, { color: palette.primary }]}>{conversationState}</Text></View>
+          {status === 'recording' ? <Button label="말을 마쳤어요" disabled={recorderState.durationMillis < 350} onPress={() => void finishRecording(true)} /> : null}
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.chat}>{messages.map((message) => <View accessibilityLabel={`${message.role === 'user' ? '사용자 발화' : 'AI 응답'}: ${message.text}`} key={message.id} style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage, { backgroundColor: message.role === 'user' ? palette.primary : palette.assistantBubble }]}><Text style={[styles.messageText, { color: message.role === 'user' || colorMode === 'dark' ? '#FFFFFF' : palette.text }]}>{message.text}</Text></View>)}</View>
@@ -416,6 +451,7 @@ export default function VoiceScheduleScreen() {
               proposal={proposal}
               assistantReady={assistantReady}
               clarification={clarification}
+              requiredConfirmations={requiredConfirmations}
               detailsOpen={detailsOpen}
               editField={editField}
               palette={palette}
@@ -473,13 +509,15 @@ function TaskReview({ proposal, palette, onChange }: {
 }
 
 function ClarificationCard({ clarification, palette, onChoose }: { clarification: VoiceScheduleClarification; palette: ReturnType<typeof useAppTheme>['palette']; onChoose: (value: string) => void }) {
-  return <View accessibilityRole="alert" style={[styles.clarification, { backgroundColor: palette.surface, borderColor: palette.primary }]}><View style={styles.clarificationTitle}><AppIcon name="quick" size={19} iconColor={palette.primary} /><Text style={[styles.clarificationPrompt, { color: palette.text }]}>{clarification.prompt}</Text></View><View style={styles.optionList}>{clarification.options.map((option) => <Pressable key={option} accessibilityRole="button" onPress={() => onChoose(option)} style={({ pressed }) => [styles.option, { borderColor: palette.border, backgroundColor: palette.surfaceMuted }, pressed && styles.pressed]}><Text style={[styles.optionText, { color: palette.primary }]}>{option}</Text></Pressable>)}</View></View>;
+  const compact = shouldUseCompactClarificationOptions(clarification.options);
+  return <View accessibilityRole="alert" style={[styles.clarification, { backgroundColor: palette.surface, borderColor: palette.primary }]}><View style={styles.clarificationTitle}><AppIcon name="quick" size={19} iconColor={palette.primary} /><Text style={[styles.clarificationPrompt, { color: palette.text }]}>{clarification.prompt}</Text></View><View style={[styles.optionList, compact && styles.optionListCompact]}>{clarification.options.map((option) => <Pressable key={option} accessibilityRole="button" onPress={() => onChoose(option)} style={({ pressed }) => [styles.option, compact && styles.optionCompact, { borderColor: palette.border, backgroundColor: palette.surfaceMuted }, pressed && styles.pressed]}><Text numberOfLines={1} style={[styles.optionText, compact && styles.optionTextCompact, { color: palette.primary }]}>{option}</Text></Pressable>)}</View></View>;
 }
 
-function VoiceReview({ proposal, assistantReady, clarification, detailsOpen, editField, palette, processing, onChange, onConfirm, onEditField, onToggleDetails }: {
+function VoiceReview({ proposal, assistantReady, clarification, requiredConfirmations, detailsOpen, editField, palette, processing, onChange, onConfirm, onEditField, onToggleDetails }: {
   proposal: ScheduleDraft;
   assistantReady: boolean;
   clarification: VoiceScheduleClarification | null;
+  requiredConfirmations: VoiceRequiredConfirmations;
   detailsOpen: boolean;
   editField: EditableField;
   palette: ReturnType<typeof useAppTheme>['palette'];
@@ -490,7 +528,7 @@ function VoiceReview({ proposal, assistantReady, clarification, detailsOpen, edi
   onToggleDetails: () => void;
 }) {
   const missing = voiceScheduleMissingFields(proposal);
-  const canConfirm = canConfirmVoiceSchedule(proposal, assistantReady, clarification);
+  const canConfirm = canConfirmVoiceSchedule(proposal, assistantReady, clarification, requiredConfirmations);
   const endTime = addMinutes(proposal.appointmentTime, proposal.durationMinutes ?? 60);
   const preparationMinutes = proposal.routines.reduce((sum, item) => sum + item.minutes, 0);
   return <View accessibilityLabel="AI가 추출한 일정 확인" style={[styles.review, { backgroundColor: palette.surface, borderColor: palette.border }]}>
@@ -498,19 +536,38 @@ function VoiceReview({ proposal, assistantReady, clarification, detailsOpen, edi
     <EditableRow label="일정명" value={proposal.title} field="title" editing={editField === 'title'} palette={palette} onEdit={onEditField} onSubmit={(title) => onChange({ title }, 'title')} />
     <EditableRow label="날짜" value={proposal.date} field="date" editing={editField === 'date'} palette={palette} onEdit={onEditField} onSubmit={(date) => onChange({ date }, 'date')} />
     <EditableRow label="시간" value={proposal.appointmentTime ? `${proposal.appointmentTime}–${endTime}` : ''} editValue={proposal.appointmentTime} field="time" editing={editField === 'time'} palette={palette} onEdit={onEditField} onSubmit={(appointmentTime) => onChange({ appointmentTime }, 'time')} />
+    <TransportRow value={requiredConfirmations.transport ? proposal.transport : ''} editing={editField === 'transport'} palette={palette} onEdit={onEditField} onSelect={(transport) => { onChange({ transport }, 'transport'); onEditField(null); }} />
     <EditableRow label="장소" value={proposal.destination} field="destination" editing={editField === 'destination'} palette={palette} onEdit={onEditField} onSubmit={(destination) => onChange({ destination, destinationAddress: '', destinationCoordinate: null }, 'destination')} />
     {proposal.destination ? <DestinationPicker title="지도에서 장소 확인" value={proposal} onChange={(value) => onChange(value, 'destination')} autoSearch autoSelectExact showSelectedMap /> : null}
     {detailsOpen ? <View style={styles.details}>
       <EditableRow label="소요 시간" value={`${proposal.durationMinutes ?? 60}분`} editValue={String(proposal.durationMinutes ?? 60)} field="duration" editing={editField === 'duration'} palette={palette} onEdit={onEditField} onSubmit={(value) => onChange({ durationMinutes: Number(value) || 60 })} keyboardType="number-pad" />
       <EditableRow label="반복" value={proposal.recurrence ?? '반복 없음'} field="recurrence" editing={editField === 'recurrence'} palette={palette} onEdit={onEditField} onSubmit={(recurrence) => onChange({ recurrence }, 'recurrence')} />
       <EditableRow label="준비 시간" value={`${preparationMinutes}분`} editValue={String(preparationMinutes)} field="preparation" editing={editField === 'preparation'} palette={palette} onEdit={onEditField} onSubmit={(value) => onChange({ preparationMinutes: Number(value) || preparationMinutes }, 'preparation')} keyboardType="number-pad" />
-      <Text style={[styles.detailLabel, { color: palette.textMuted }]}>이동수단</Text><View style={styles.transportList}>{transports.map((transport) => { const active = proposal.transport === transport; return <Pressable key={transport} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => onChange({ transport })} style={[styles.transport, { borderColor: active ? palette.primary : palette.border, backgroundColor: active ? palette.primary : palette.surfaceMuted }]}><AppIcon name={iconForTransport(transport)} size={18} iconColor={active ? '#FFFFFF' : palette.primary} /><Text style={[styles.transportText, { color: active ? '#FFFFFF' : palette.text }]}>{transport}</Text></Pressable>; })}</View>
     </View> : null}
     {missing.length ? <Text accessibilityLiveRegion="polite" style={styles.missing}>확인할 항목: {missing.join(' · ')}{proposal.destination && !proposal.destinationCoordinate ? ' · 지도 위치' : ''}</Text> : proposal.destination && !proposal.destinationCoordinate ? <Text accessibilityLiveRegion="polite" style={styles.missing}>지도에서 정확한 장소를 선택해 주세요.</Text> : null}
     <View style={styles.reviewActions}><Pressable accessibilityRole="button" onPress={() => onEditField(editField ? null : 'time')} style={styles.textAction}><Text style={[styles.textActionLabel, { color: palette.primary }]}>시간 수정</Text></Pressable><Pressable accessibilityRole="button" onPress={onToggleDetails} style={styles.textAction}><Text style={[styles.textActionLabel, { color: palette.primary }]}>{detailsOpen ? '세부 닫기' : '세부 설정'}</Text></Pressable></View>
     <Button label="확정하고 일정 등록" disabled={!canConfirm || processing} onPress={onConfirm} />
     {!canConfirm ? <Text style={[styles.confirmHint, { color: palette.textMuted }]}>AI 확인 질문과 지도 위치를 완료하면 한 번에 등록할 수 있어요.</Text> : null}
   </View>;
+}
+
+function TransportRow({ value, editing, palette, onEdit, onSelect }: {
+  value: TransportMode | '';
+  editing: boolean;
+  palette: ReturnType<typeof useAppTheme>['palette'];
+  onEdit: (field: EditableField) => void;
+  onSelect: (transport: TransportMode) => void;
+}) {
+  if (editing) return <View style={styles.transportEdit}>
+    <Text style={[styles.detailLabel, { color: palette.textMuted }]}>이동수단</Text>
+    <View style={styles.transportList}>{transports.map((transport) => { const active = value === transport; return <Pressable key={transport} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => onSelect(transport)} style={[styles.transport, { borderColor: active ? palette.primary : palette.border, backgroundColor: active ? palette.primary : palette.surfaceMuted }]}><AppIcon name={iconForTransport(transport)} size={18} iconColor={active ? '#FFFFFF' : palette.primary} /><Text style={[styles.transportText, { color: active ? '#FFFFFF' : palette.text }]}>{transport}</Text></Pressable>; })}</View>
+  </View>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`이동수단 ${value || '확인 필요'} 수정`} onPress={() => onEdit('transport')} style={({ pressed }) => [styles.summaryRow, pressed && styles.pressed]}>
+    <Text style={[styles.summaryLabel, { color: palette.textMuted }]}>이동수단</Text>
+    <Text style={[styles.summaryValue, { color: value ? palette.text : '#B45309' }]}>{value || '확인 필요'}</Text>
+    {value ? <AppIcon name={iconForTransport(value)} size={18} iconColor={palette.primary} /> : null}
+    <AppIcon name="chevronRight" size={17} iconColor={palette.textMuted} />
+  </Pressable>;
 }
 
 function EditableRow({ label, value, editValue = value, field, editing, palette, onEdit, onSubmit, keyboardType = 'default' }: {
@@ -547,6 +604,7 @@ function fieldToEditable(field: VoiceScheduleClarification['field']): EditableFi
   if (field === 'date') return 'date';
   if (field === 'title') return 'title';
   if (field === 'destination') return 'destination';
+  if (field === 'transport') return 'transport';
   if (field === 'recurrence') return 'recurrence';
   if (field === 'preparation') return 'preparation';
   return null;
@@ -566,10 +624,10 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, lineHeight: 27, fontWeight: '900' }, headerHint: { marginTop: 1, textAlign: 'center', fontSize: 12, lineHeight: 17, fontWeight: '700' }, headerSpacer: { width: 44 },
   aiMode: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1 }, aiModeDot: { width: 8, height: 8, borderRadius: 4 }, aiModeText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '800' }, aiModeState: { fontSize: 13, lineHeight: 18, fontWeight: '900' },
   body: { flex: 1, minHeight: 0 }, bodyContent: { gap: space.md, paddingBottom: 76 }, chat: { gap: space.sm, paddingTop: space.sm }, message: { maxWidth: '88%', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: 18 }, assistantMessage: { alignSelf: 'flex-start', borderBottomLeftRadius: 5 }, userMessage: { alignSelf: 'flex-end', borderBottomRightRadius: 5 }, messageText: { fontSize: 15, lineHeight: 22, fontWeight: '700' },
-  clarification: { gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 2 }, clarificationTitle: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, clarificationPrompt: { flex: 1, fontSize: 16, lineHeight: 23, fontWeight: '900' }, optionList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, option: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1 }, optionText: { fontSize: 14, fontWeight: '900' },
+  clarification: { gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 2 }, clarificationTitle: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, clarificationPrompt: { flex: 1, fontSize: 16, lineHeight: 23, fontWeight: '900' }, optionList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, optionListCompact: { flexWrap: 'nowrap', gap: space.xs }, option: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1 }, optionCompact: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 2 }, optionText: { fontSize: 14, fontWeight: '900' }, optionTextCompact: { fontSize: 13 },
   review: { gap: space.sm, padding: space.lg, borderRadius: radius.lg, borderWidth: 1 }, reviewHeading: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }, reviewHeadingCopy: { flex: 1 }, reviewLead: { fontSize: 18, lineHeight: 25, fontWeight: '900' }, reviewHint: { fontSize: 12, lineHeight: 17, fontWeight: '700' }, confidence: { minHeight: 30, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill }, confidenceText: { fontSize: 12, fontWeight: '900' },
   summaryRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: space.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8E3EC' }, summaryLabel: { width: 58, fontSize: 13, fontWeight: '800' }, summaryValue: { flex: 1, textAlign: 'right', fontSize: 15, lineHeight: 21, fontWeight: '900' }, editRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm }, editInput: { flex: 1, minHeight: 46, borderWidth: 2, borderRadius: radius.md, paddingHorizontal: space.md, fontSize: 16, fontWeight: '800' },
-  details: { gap: space.sm, paddingTop: space.xs }, detailLabel: { fontSize: 13, fontWeight: '800' }, transportList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, transport: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1 }, transportText: { fontSize: 12, fontWeight: '900' }, missing: { color: '#B45309', fontSize: 13, lineHeight: 19, fontWeight: '800' },
+  details: { gap: space.sm, paddingTop: space.xs }, detailLabel: { fontSize: 13, fontWeight: '800' }, transportEdit: { gap: space.sm, paddingVertical: space.sm }, transportList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, transport: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1 }, transportText: { fontSize: 12, fontWeight: '900' }, missing: { color: '#B45309', fontSize: 13, lineHeight: 19, fontWeight: '800' },
   reviewActions: { flexDirection: 'row', justifyContent: 'center', gap: space.lg }, textAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textActionLabel: { fontSize: 14, fontWeight: '900' }, confirmHint: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '700' },
   keyboardAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.lg }, keyboardActionText: { fontSize: 13, fontWeight: '900' },
   taskCtaArea: { gap: 2, paddingTop: space.xs },
