@@ -18,6 +18,24 @@ export type ProgressNotificationRequest = {
 
 const MINIMUM_FUTURE_DELAY_MS = 1_000;
 
+const HANGUL_START = 0xAC00;
+const HANGUL_END = 0xD7A3;
+const JONGSEONG_COUNT = 28;
+const RIEUL_JONGSEONG = 8;
+
+/**
+ * Korean writes `로` after a vowel or ㄹ and `으로` otherwise, so a fixed suffix reads wrong for
+ * half the step names. This picks the one that matches the word it follows.
+ */
+export function withDirectionParticle(word: string) {
+  const trimmed = word.trim();
+  if (!trimmed) return '';
+  const code = trimmed.charCodeAt(trimmed.length - 1);
+  if (code < HANGUL_START || code > HANGUL_END) return `${trimmed}로`;
+  const jongseong = (code - HANGUL_START) % JONGSEONG_COUNT;
+  return `${trimmed}${jongseong === 0 || jongseong === RIEUL_JONGSEONG ? '로' : '으로'}`;
+}
+
 export const PROGRESS_STEP_ACTION_CATEGORY = 'on-time-progress-step';
 export const PROGRESS_ADVANCE_ACTION = 'progress-advance';
 export const PROGRESS_EXTEND_ACTION = 'progress-extend';
@@ -89,7 +107,7 @@ export function buildProgressNotificationRequests(
         stepId: step.id,
         fireAt: startAt,
         title: '이제 출발할 시간이에요',
-        body: `${session.route}(으)로 ${session.schedule.destination}까지 이동을 시작해 주세요.`,
+        body: `${withDirectionParticle(session.route)} ${session.schedule.destination}까지 이동을 시작해 주세요.`,
         actionCategory: null,
       });
     }
@@ -102,7 +120,7 @@ export function buildProgressNotificationRequests(
         kind: 'transition-preview',
         stepId: step.id,
         fireAt: previewAt,
-        title: `15분 뒤 ${next.title}(으)로 전환해요`,
+        title: `15분 뒤 ${withDirectionParticle(next.title)} 전환해요`,
         body: `지금 하는 ${step.title}을 천천히 마무리할 시점이에요.`,
         actionCategory: null,
       });
@@ -115,7 +133,7 @@ export function buildProgressNotificationRequests(
         kind: 'transition-wrap',
         stepId: step.id,
         fireAt: wrapAt,
-        title: `5분 뒤 ${next.title}(으)로 이동해요`,
+        title: `5분 뒤 ${withDirectionParticle(next.title)} 이동해요`,
         body: `새 일을 벌이지 말고 현재 행동을 정리하세요. 다음 행동은 ${next.title}입니다.`,
         actionCategory: null,
       });
@@ -129,7 +147,7 @@ export function buildProgressNotificationRequests(
         fireAt: endAt,
         title: `${step.title} 예정 시간이 끝났어요`,
         body: next
-          ? `알림에서 바로 다음 행동 ${next.title}으로 넘어가거나 ${PROGRESS_EXTEND_MINUTES}분 더 할 수 있어요.`
+          ? `알림에서 바로 다음 행동 ${withDirectionParticle(next.title)} 넘어가거나 ${PROGRESS_EXTEND_MINUTES}분 더 할 수 있어요.`
           : `알림에서 바로 완료하거나 ${PROGRESS_EXTEND_MINUTES}분 더 할 수 있어요.`,
         actionCategory: PROGRESS_STEP_ACTION_CATEGORY,
       });

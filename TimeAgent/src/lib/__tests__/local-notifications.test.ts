@@ -6,6 +6,7 @@ import {
   PROGRESS_EXTEND_MINUTES,
   PROGRESS_STEP_ACTION_CATEGORY,
   PROGRESS_STEP_ACTIONS,
+  withDirectionParticle,
 } from '../local-notifications';
 import { advanceProgressSession, createProgressSession } from '../progress-session';
 import { createSchedulePlan } from '../planning';
@@ -71,6 +72,26 @@ describe('local notification plan', () => {
     while (session.state === 'active') session = advanceProgressSession(session, session.updatedAt + 1_000);
 
     expect(buildProgressNotificationRequests(session, session.updatedAt)).toEqual([]);
+  });
+
+  test('attaches the Korean direction particle that matches the preceding word', () => {
+    expect(withDirectionParticle('화장')).toBe('화장으로');
+    expect(withDirectionParticle('짐 챙기기')).toBe('짐 챙기기로');
+    expect(withDirectionParticle('옷 입기')).toBe('옷 입기로');
+    expect(withDirectionParticle('걸어서 출발')).toBe('걸어서 출발로');
+    expect(withDirectionParticle('지하철')).toBe('지하철로');
+    expect(withDirectionParticle('버스')).toBe('버스로');
+    expect(withDirectionParticle('')).toBe('');
+    expect(withDirectionParticle('bus')).toBe('bus로');
+  });
+
+  test('reads the step alarm body without a broken particle', () => {
+    const requests = buildProgressNotificationRequests(createFixture(), 1_000_000);
+    const bodies = requests.filter((request) => request.kind === 'step-end').map((request) => request.body);
+
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies.some((body) => body.includes('기으로') || body.includes('발으로'))).toBe(false);
+    expect(requests.every((request) => !request.title.includes('(으)로') && !request.body.includes('(으)로'))).toBe(true);
   });
 
   test('offers the next-step and extend choices on the alarm that ends a step', () => {

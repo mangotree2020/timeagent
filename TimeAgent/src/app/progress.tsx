@@ -7,6 +7,7 @@ import { AppIcon, IconButton } from '@/components/app-icon';
 import { Timeline } from '@/components/timeline';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
+import { withDirectionParticle } from '@/lib/local-notifications';
 import { getProgressRemainingSeconds } from '@/lib/progress-session';
 import { formatCountdown, shiftClock } from '@/lib/schedule';
 import { useSchedule } from '@/state/schedule-context';
@@ -79,7 +80,7 @@ export default function ProgressScreen() {
       <Header title="실시간 준비" eyebrow={`${schedule.appointmentTime} · ${schedule.destination}`} right={<IconButton name="close" label="진행 최소화" variant="plain" onPress={() => router.replace('/')} />} />
       <View style={styles.statusRow}><View><Text style={styles.statusLabel}>예상 도착</Text><Text style={styles.arrival}>{delayedArrival}</Text></View><StatusPill label={delayMinutes ? `${delayMinutes}분 지연` : '정시 도착 가능'} tone={delayMinutes ? 'warning' : 'success'} /></View>
 
-      {delayMinutes > 0 ? <Pressable onPress={() => router.push('/plan-b')} style={styles.solution}><View style={styles.solutionIcon}><AppIcon name="coach" size={20} iconColor={c.warning} /></View><View style={{ flex: 1 }}><Text style={styles.solutionTitle}>정시 도착 가능한 방법이 있어요</Text><Text style={styles.solutionBody}>옷 준비를 2분 줄이고 {route}(으)로 이동하면 됩니다.</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.warning} /></Pressable> : null}
+      {delayMinutes > 0 ? <Pressable onPress={() => router.push('/plan-b')} style={styles.solution}><View style={styles.solutionIcon}><AppIcon name="coach" size={20} iconColor={c.warning} /></View><View style={{ flex: 1 }}><Text style={styles.solutionTitle}>정시 도착 가능한 방법이 있어요</Text><Text style={styles.solutionBody}>옷 준비를 2분 줄이고 {withDirectionParticle(route)} 이동하면 됩니다.</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.warning} /></Pressable> : null}
 
       <Card dark style={styles.currentCard}>
         <Text style={styles.currentLabel}>현재 · {current?.title ?? '이동 중'}</Text>
