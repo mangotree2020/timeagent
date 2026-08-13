@@ -113,7 +113,9 @@ function parseAssistantResult(outputText: string, input: Input) {
 function isAssistantResult(value: unknown): value is Record<string, unknown> & { transcript: string } {
   return isRecord(value)
     && (value.entryType === "schedule" || value.entryType === "task")
-    && validText(value.transcript, 2_000)
+    // An empty transcript is a valid answer: it means the audio carried no intelligible speech.
+    && typeof value.transcript === "string"
+    && value.transcript.length <= 2_000
     && validText(value.assistantMessage, 1_000)
     && (value.question === null || validText(value.question, 500))
     && typeof value.readyToApply === "boolean"
