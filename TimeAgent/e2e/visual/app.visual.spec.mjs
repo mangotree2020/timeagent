@@ -124,6 +124,98 @@ const screens = [
   { id: 'settings', path: '/settings', ready: '내 생활에 맞게 TimeAgent를 조정하세요' },
 ];
 
+const darkSettings = {
+  version: 3,
+  defaultLocation: '부산진구 부전동',
+  preferredTransport: '지하철',
+  bufferMinutes: 5,
+  routinePreset: '기본 외출 준비',
+  preparationGender: 'unspecified',
+  coachTone: '친근하게',
+  voiceControl: true,
+  notifications: true,
+  colorMode: 'dark',
+};
+
+const darkScreens = [
+  { id: 'dark-home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '좋은 오후예요, 서연님' },
+  { id: 'dark-plan', path: '/plan', ready: '확정된 준비 계획' },
+  { id: 'dark-schedules', path: '/schedules', ready: '내 일정' },
+  { id: 'dark-settings', path: '/settings', ready: '내 생활에 맞게 TimeAgent를 조정하세요' },
+];
+
+for (const screen of darkScreens) {
+  test(`${screen.id} 화면`, async ({ page }) => {
+    await page.addInitScript((settings) => {
+      window.localStorage.setItem('@on-time/app-settings', JSON.stringify(settings));
+    }, darkSettings);
+    await page.goto(screen.path);
+    await page.getByText(screen.ready, { exact: true }).waitFor({ state: 'visible' });
+    await expectVisual(page, screen.id);
+  });
+}
+
+test('되돌릴 수 없는 삭제는 일반 확인과 다르게 보임', async ({ page }) => {
+  await page.goto('/plan');
+  const deleteEntry = page.getByRole('button', { name: '약속 삭제', exact: true });
+  await deleteEntry.scrollIntoViewIfNeeded();
+  await deleteEntry.click();
+
+  const confirm = page.getByRole('button', { name: '삭제 확인', exact: true });
+  const cancel = page.getByRole('button', { name: '삭제 취소', exact: true });
+  await expect(confirm).toBeVisible();
+
+  const [confirmColor, cancelColor] = await Promise.all([
+    confirm.evaluate((node) => getComputedStyle(node).backgroundColor),
+    cancel.evaluate((node) => getComputedStyle(node).backgroundColor),
+  ]);
+  const primaryColor = await page.getByRole('button', { name: '약속 수정', exact: true })
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+
+  expect(confirmColor, '삭제 확인은 일반 확인 버튼과 같은 색이면 안 됩니다').not.toBe(primaryColor);
+  expect(confirmColor).not.toBe(cancelColor);
+  expect(redShare(confirmColor), '삭제 확인은 경고 색이어야 합니다').toBeGreaterThan(0.45);
+});
+
+function redShare(cssColor) {
+  const [r, g, b] = cssColor.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+  const total = r + g + b;
+  return total ? r / total : 0;
+}
+
+test('다크 모드는 배경과 본문 대비를 뒤집어 적용함', async ({ page }) => {
+  await page.addInitScript((settings) => {
+    window.localStorage.setItem('@on-time/app-settings', JSON.stringify(settings));
+  }, darkSettings);
+  await page.goto('/settings');
+  await expect(page.getByText('내 생활에 맞게 TimeAgent를 조정하세요', { exact: true })).toBeVisible();
+
+  const heading = page.getByRole('heading', { name: '설정', exact: true });
+  const headingColor = await heading.evaluate((node) => getComputedStyle(node).color);
+  // The screen background is the innermost painted element covering the most area, so the router's
+  // own container behind the app does not win the comparison.
+  const pageBackground = await page.evaluate(() => {
+    let best = { area: 0, color: 'rgb(255, 255, 255)' };
+    for (const node of document.querySelectorAll('div')) {
+      const background = getComputedStyle(node).backgroundColor;
+      if (!background || background === 'rgba(0, 0, 0, 0)') continue;
+      const box = node.getBoundingClientRect();
+      const area = box.width * box.height;
+      if (area >= best.area) best = { area, color: background };
+    }
+    return best.color;
+  });
+
+  expect(luminance(headingColor), '다크 모드 제목은 밝아야 합니다').toBeGreaterThan(0.6);
+  expect(luminance(pageBackground), '다크 모드 배경은 어두워야 합니다').toBeLessThan(0.25);
+  await expect(page.getByText('다크 모드', { exact: true })).toBeVisible();
+});
+
+function luminance(cssColor) {
+  const [r, g, b] = cssColor.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
 async function expectVisual(page, id, { resetScroll = false } = {}) {
   await page.evaluate(async (shouldResetScroll) => {
     await document.fonts.ready;
@@ -341,6 +433,60 @@ test('음성 이동수단 질문의 다섯 선택지를 한 줄로 표시함', a
     expect(Math.abs(box.y - top), '이동수단 선택지가 같은 줄에 있어야 합니다').toBeLessThanOrEqual(1);
     expect(box.height, '이동수단 선택지의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
   }
+});
+
+test('확정 계획 지도는 출발지에서 목적지까지 이동 경로를 표시함', async ({ page }) => {
+  await page.route('**/mobility*', (route) => route.abort());
+  await page.addInitScript((plan) => {
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [plan] }));
+  }, {
+    ...confirmedPlanFixture,
+    schedule: { ...confirmedPlanFixture.schedule, destinationCoordinate: { latitude: 35.1595, longitude: 129.0606 } },
+  });
+
+  await page.goto('/plan?e2eRoute=ready');
+  await page.getByRole('button', { name: '지도 보기', exact: true }).click();
+
+  await expect(page.getByText('도착 장소와 이동 경로', { exact: true })).toBeVisible();
+  const summary = page.getByText(/^이동 경로 · /);
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText('예상 직선 경로');
+  await expect(summary).toContainText('분');
+});
+
+test('발화에서 빠진 약속 항목을 순서대로 되물음', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=missing-fields');
+  await expect(page.getByText('무슨 약속인가요?', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
+
+  await page.getByRole('button', { name: '일정명 확인 필요 수정', exact: true }).click();
+  await page.getByLabel('일정명 직접 수정', { exact: true }).fill('병원');
+  await page.getByLabel('일정명 직접 수정', { exact: true }).press('Enter');
+
+  await expect(page.getByText('언제 만나나요?', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '내일', exact: true }).click();
+  await expect(page.getByText('언제 만나나요?', { exact: true })).toHaveCount(0);
+});
+
+test('음성 이동수단은 서버 왕복 없이 즉시 반영됨', async ({ page }) => {
+  const assistantCalls = [];
+  await page.route('**/assistant*', async (route) => {
+    assistantCalls.push(route.request().url());
+    await route.abort();
+  });
+  await page.goto('/voice-schedule?e2eState=transport-missing');
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
+
+  const started = Date.now();
+  await page.getByRole('button', { name: '지하철', exact: true }).click();
+  await expect(page.getByRole('button', { name: '이동수단 지하철 수정', exact: true })).toBeVisible();
+  const elapsed = Date.now() - started;
+
+  expect(elapsed, '선택은 서버 응답을 기다리지 않고 즉시 반영돼야 합니다').toBeLessThan(1_000);
+  expect(assistantCalls, '로컬에서 답할 수 있는 선택은 AI 비서를 부르지 않아야 합니다').toEqual([]);
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('사용자 발화: 지하철', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeEnabled();
 });
 
 test('음성 정리 결과에 확인한 이동수단을 표시함', async ({ page }) => {
@@ -805,8 +951,7 @@ test('음성 일정 화면은 열리자마자 AI 비서 자동 듣기 상태를 
   await page.goto('/voice-schedule?e2eState=auto-listening');
   await expect(page.getByLabel('AI 실시간 대화 자동 듣기 켜짐', { exact: true })).toBeVisible();
   await expect(page.getByText('듣는 중', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '말을 마쳤어요', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '말을 마쳤어요', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '말을 마쳤어요', exact: true }), '발화 종료는 자동 감지하므로 수동 종료 버튼이 없어야 합니다').toHaveCount(0);
   await expect(page.getByRole('switch', { name: 'AI 음성 출력 끄기', exact: true })).toBeVisible();
   await expect(page.getByLabel(/^사용자 발화:/)).toHaveCount(0);
   await expect(page.getByText('마이크를 누르고 대답해 줘', { exact: true })).toHaveCount(0);

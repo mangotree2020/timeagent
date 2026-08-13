@@ -40,7 +40,8 @@ import Zap from 'lucide-react-native/icons/zap';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
-import { color, radius } from '@/constants/design';
+import { radius } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 
 const icons = {
   alert: Bell,
@@ -90,7 +91,7 @@ export type AppIconName = keyof typeof icons;
 export function AppIcon({
   name,
   size = 20,
-  iconColor = color.deepBlue,
+  iconColor,
   strokeWidth = 2,
   style,
 }: {
@@ -100,10 +101,12 @@ export function AppIcon({
   strokeWidth?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const c = useAppTheme().palette;
+  const styles = useThemedStyles(createStyles);
   const Icon = icons[name];
   return (
     <View accessible={false} importantForAccessibility="no-hide-descendants" style={[styles.iconBox, { width: size, height: size }, style]}>
-      <Icon color={iconColor} size={size} strokeWidth={strokeWidth} />
+      <Icon color={iconColor ?? c.deepBlue} size={size} strokeWidth={strokeWidth} />
     </View>
   );
 }
@@ -113,7 +116,7 @@ export function IconButton({
   label,
   onPress,
   size = 22,
-  iconColor = color.deepBlue,
+  iconColor,
   variant = 'surface',
 }: {
   name: AppIconName;
@@ -123,6 +126,8 @@ export function IconButton({
   iconColor?: string;
   variant?: 'surface' | 'plain' | 'primary';
 }) {
+  const c = useAppTheme().palette;
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       accessibilityLabel={label}
@@ -130,7 +135,7 @@ export function IconButton({
       hitSlop={4}
       onPress={onPress}
       style={({ pressed }) => [styles.button, styles[`button_${variant}`], pressed && styles.pressed]}>
-      <AppIcon name={name} size={size} iconColor={variant === 'primary' ? color.surface : iconColor} />
+      <AppIcon name={name} size={size} iconColor={variant === 'primary' ? c.surface : iconColor} />
     </Pressable>
   );
 }
@@ -152,11 +157,11 @@ export function iconForRoutine(id: string, legacyIcon?: string): AppIconName {
   return 'ready';
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => StyleSheet.create({
   iconBox: { alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   button: { width: 44, height: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  button_surface: { backgroundColor: color.surface },
+  button_surface: { backgroundColor: c.surface },
   button_plain: { backgroundColor: 'transparent' },
-  button_primary: { backgroundColor: color.deepBlue },
+  button_primary: { backgroundColor: c.deepBlue },
   pressed: { opacity: 0.68, transform: [{ scale: 0.96 }] },
 });

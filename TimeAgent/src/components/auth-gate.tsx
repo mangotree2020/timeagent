@@ -4,19 +4,23 @@ import { ShieldCheck } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppLogo } from '@/components/app-logo';
-import { type } from '@/components/app-ui';
+import { appType, useAppType } from '@/components/app-ui';
 import { GoogleAuthButton } from '@/components/google-auth-button';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { useAuth } from '@/state/auth-context';
 
 export function AuthGate({ children }: React.PropsWithChildren) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const { configured, error, signIn, status, user } = useAuth();
 
   if (status === 'checking') {
     return (
       <SafeAreaView accessibilityLabel="로그인 확인 중" style={styles.safe}>
         <AppLogo size={48} />
-        <ActivityIndicator accessibilityLabel="Google 로그인 확인 중" color={color.deepBlue} size="large" />
+        <ActivityIndicator accessibilityLabel="Google 로그인 확인 중" color={c.deepBlue} size="large" />
         <Text style={type.body}>로그인 정보를 확인하고 있어요</Text>
       </SafeAreaView>
     );
@@ -64,8 +68,10 @@ export function AuthGate({ children }: React.PropsWithChildren) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F7FC', alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16 },
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.background, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16 },
   content: { width: '100%', maxWidth: 480, gap: 14 },
   topLogo: { alignSelf: 'flex-start' },
   heroFrame: {
@@ -76,12 +82,13 @@ const styles = StyleSheet.create({
   },
   heroImage: { width: '100%', height: '100%' },
   intro: { paddingHorizontal: 2, paddingVertical: 2 },
-  subtitle: { fontSize: 16, lineHeight: 24, color: color.text, fontWeight: '600', letterSpacing: -0.2 },
-  notice: { padding: space.lg, gap: space.xs, borderRadius: radius.md, backgroundColor: color.warningSoft, borderWidth: 1, borderColor: '#F4D58D' },
-  noticeTitle: { fontSize: 16, lineHeight: 24, color: color.warning, fontWeight: '900' },
-  noticeText: { fontSize: 14, lineHeight: 21, color: color.text },
-  error: { ...type.body, color: color.danger },
-  signingIn: { ...type.caption, textAlign: 'center', color: color.textMuted },
+  subtitle: { fontSize: 16, lineHeight: 24, color: c.text, fontWeight: '600', letterSpacing: -0.2 },
+  notice: { padding: space.lg, gap: space.xs, borderRadius: radius.md, backgroundColor: c.warningSoft, borderWidth: 1, borderColor: '#F4D58D' },
+  noticeTitle: { fontSize: 16, lineHeight: 24, color: c.warning, fontWeight: '900' },
+  noticeText: { fontSize: 14, lineHeight: 21, color: c.text },
+  error: { ...type.body, color: c.danger },
+  signingIn: { ...type.caption, textAlign: 'center', color: c.textMuted },
   privacyRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
   privacy: { flex: 1, maxWidth: 360, fontSize: 13, lineHeight: 19, color: '#627087', textAlign: 'left' },
-});
+  });
+};

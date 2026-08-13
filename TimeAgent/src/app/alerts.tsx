@@ -2,9 +2,10 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
-import { Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
+import { Card, Header, Screen, StatusPill, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName } from '@/components/app-icon';
-import { color, space } from '@/constants/design';
+import { space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { AlertAction, getAlertActionTarget } from '@/lib/alert-navigation';
 
 const alerts = [
@@ -14,6 +15,9 @@ const alerts = [
 ] satisfies { icon: AppIconName; title: string; body: string; time: string; tone: 'info' | 'success' | 'warning'; action: AlertAction; actionLabel: string }[];
 
 export default function AlertsScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   return (
     <View style={{ flex: 1 }}>
       <Screen>
@@ -34,7 +38,7 @@ export default function AlertsScreen() {
                 <Text style={[type.bodyMuted, styles.body]}>{alert.body}</Text>
                 <Text style={styles.actionLabel}>{alert.actionLabel}</Text>
               </View>
-              <AppIcon name="chevronRight" size={20} iconColor={color.textMuted} />
+              <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
             </Card>
           </Pressable>
         ))}
@@ -44,13 +48,13 @@ export default function AlertsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => StyleSheet.create({
   action: { minHeight: 44 },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
   alert: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: color.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: space.sm },
   body: { marginTop: 5 },
-  actionLabel: { marginTop: space.sm, color: color.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  actionLabel: { marginTop: space.sm, color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '800' },
 });

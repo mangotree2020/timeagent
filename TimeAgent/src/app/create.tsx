@@ -2,10 +2,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Button, Card, Header, Screen, SectionTitle, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, SectionTitle, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName, IconButton, iconForRoutine, iconForTransport } from '@/components/app-icon';
 import { DestinationPicker } from '@/components/destination-picker';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { isGeneratedScheduleTitle, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import { addRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
@@ -14,6 +15,8 @@ const steps = ['약속 정보', '이동 정보', '준비 행동'];
 const transports: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
 
 export default function CreateScreen() {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const { beginDraft, draft, draftStatus, editingConfirmedPlanId, finalizeDraft, setDraftStep, updateDraft } = useSchedule();
   const params = useLocalSearchParams<{ new?: string; calendarImport?: string }>();
   const { step } = draft;
@@ -73,14 +76,20 @@ export default function CreateScreen() {
 }
 
 function AppointmentForm({ draft, onChange }: DraftFormProps) {
+  const styles = useThemedStyles(createStyles);
   return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} replaceOnInput={isGeneratedScheduleTitle(draft.title)} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><DestinationPicker value={draft} onChange={onChange} /></View>;
 }
 
 function TransportForm({ draft, onChange }: DraftFormProps) {
-  return <View style={styles.form}><SectionTitle>어떻게 이동할까요?</SectionTitle><View style={styles.choiceGrid}>{transports.map((item) => { const active = draft.transport === item; return <Pressable accessibilityRole="radio" accessibilityState={{ checked: active }} key={item} onPress={() => onChange({ transport: item })} style={[styles.choice, active && styles.choiceActive]}><AppIcon name={iconForTransport(item)} size={26} strokeWidth={2} iconColor={active ? color.cyan : color.deepBlue} /><Text style={[styles.choiceLabel, active && styles.choiceLabelActive]}>{item}</Text></Pressable>; })}</View><Card><Text style={type.heading}>도착 우선순위</Text><Text style={[type.bodyMuted, { marginTop: 4 }]}>중요한 약속이라 정시 도착을 우선해요.</Text><View style={styles.segment}><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'on-time' }} onPress={() => onChange({ priority: 'on-time' })} style={[styles.segmentOption, draft.priority === 'on-time' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'on-time' && styles.segmentTextActive]}>정시 도착 우선</Text></Pressable><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'cost' }} onPress={() => onChange({ priority: 'cost' })} style={[styles.segmentOption, draft.priority === 'cost' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'cost' && styles.segmentTextActive]}>비용 우선</Text></Pressable></View></Card></View>;
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
+  return <View style={styles.form}><SectionTitle>어떻게 이동할까요?</SectionTitle><View style={styles.choiceGrid}>{transports.map((item) => { const active = draft.transport === item; return <Pressable accessibilityRole="radio" accessibilityState={{ checked: active }} key={item} onPress={() => onChange({ transport: item })} style={[styles.choice, active && styles.choiceActive]}><AppIcon name={iconForTransport(item)} size={26} strokeWidth={2} iconColor={active ? c.cyan : c.deepBlue} /><Text style={[styles.choiceLabel, active && styles.choiceLabelActive]}>{item}</Text></Pressable>; })}</View><Card><Text style={type.heading}>도착 우선순위</Text><Text style={[type.bodyMuted, { marginTop: 4 }]}>중요한 약속이라 정시 도착을 우선해요.</Text><View style={styles.segment}><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'on-time' }} onPress={() => onChange({ priority: 'on-time' })} style={[styles.segmentOption, draft.priority === 'on-time' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'on-time' && styles.segmentTextActive]}>정시 도착 우선</Text></Pressable><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'cost' }} onPress={() => onChange({ priority: 'cost' })} style={[styles.segmentOption, draft.priority === 'cost' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'cost' && styles.segmentTextActive]}>비용 우선</Text></Pressable></View></Card></View>;
 }
 
 function RoutineForm({ draft, onChange }: DraftFormProps) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const [showAddRoutine, setShowAddRoutine] = useState(false);
   const [routineLabel, setRoutineLabel] = useState('');
   const changeMinutes = (id: string, delta: number) => {
@@ -103,17 +112,18 @@ type DraftFormProps = {
 };
 
 function Field({ label, value, icon, replaceOnInput = false, onChangeText }: { label: string; value: string; icon?: AppIconName; replaceOnInput?: boolean; onChangeText: (value: string) => void }) {
+  const styles = useThemedStyles(createStyles);
   return <View><Text style={styles.fieldLabel}>{label}</Text><View style={styles.field}>{icon ? <AppIcon name={icon} size={18} /> : null}<TextInput accessibilityLabel={label} accessibilityHint={replaceOnInput ? '입력을 시작하면 기본 이름이 지워집니다' : undefined} value={value} onFocus={() => { if (replaceOnInput) onChangeText(''); }} onChangeText={onChangeText} style={styles.input} /></View></View>;
 }
 
-const styles = StyleSheet.create({
-  importNotice: { gap: space.sm, backgroundColor: color.ice, padding: space.lg }, importNoticeTitle: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, importNoticeHeading: { color: color.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  importNotice: { gap: space.sm, backgroundColor: c.ice, padding: space.lg }, importNoticeTitle: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, importNoticeHeading: { color: c.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' },
   steps: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.md },
-  stepItem: { flex: 1, alignItems: 'center', gap: 5 }, stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted }, stepDotActive: { backgroundColor: color.deepBlue }, stepNumber: { color: color.textMuted, fontSize: 12, fontWeight: '900' }, stepNumberActive: { color: color.surface }, stepLabel: { fontSize: 11, color: color.textMuted }, stepLabelActive: { color: color.deepBlue, fontWeight: '800' },
-  form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: color.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: color.text, paddingVertical: 12 },
-  choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, choice: { width: '31%', minHeight: 92, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, alignItems: 'center', justifyContent: 'center', gap: 8 }, choiceActive: { backgroundColor: color.navy, borderColor: color.navy }, choiceLabel: { fontSize: 13, color: color.textMuted, fontWeight: '700' }, choiceLabelActive: { color: color.surface }, segment: { marginTop: space.lg, flexDirection: 'row', borderRadius: radius.pill, backgroundColor: color.surfaceMuted, padding: 4 }, segmentActive: { backgroundColor: color.deepBlue },
-  segmentOption: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' }, segmentText: { color: color.textMuted, fontSize: 12, fontWeight: '700' }, segmentTextActive: { color: color.surface, fontWeight: '800' },
-  routine: { flexDirection: 'row', alignItems: 'center', padding: space.lg, gap: space.sm }, routineIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted }, minuteControls: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderRadius: radius.pill, backgroundColor: color.surfaceMuted }, minuteButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, minuteText: { minWidth: 36, textAlign: 'center', color: color.deepBlue, fontSize: 13, fontWeight: '800' }, addRoutine: { minHeight: 48, flexDirection: 'row', gap: space.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: color.cyan, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }, addRoutineText: { color: color.deepBlue, fontWeight: '800' },
+  stepItem: { flex: 1, alignItems: 'center', gap: 5 }, stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, stepDotActive: { backgroundColor: c.deepBlue }, stepNumber: { color: c.textMuted, fontSize: 12, fontWeight: '900' }, stepNumberActive: { color: c.onInverse }, stepLabel: { fontSize: 11, color: c.textMuted }, stepLabelActive: { color: c.deepBlue, fontWeight: '800' },
+  form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: c.text, paddingVertical: 12 },
+  choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, choice: { width: '31%', minHeight: 92, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', gap: 8 }, choiceActive: { backgroundColor: c.surfaceInverse, borderColor: c.surfaceInverse }, choiceLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700' }, choiceLabelActive: { color: c.onInverse }, segment: { marginTop: space.lg, flexDirection: 'row', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, padding: 4 }, segmentActive: { backgroundColor: c.deepBlue },
+  segmentOption: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' }, segmentText: { color: c.textMuted, fontSize: 12, fontWeight: '700' }, segmentTextActive: { color: c.onInverse, fontWeight: '800' },
+  routine: { flexDirection: 'row', alignItems: 'center', padding: space.lg, gap: space.sm }, routineIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, minuteControls: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderRadius: radius.pill, backgroundColor: c.surfaceMuted }, minuteButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, minuteText: { minWidth: 36, textAlign: 'center', color: c.deepBlue, fontSize: 13, fontWeight: '800' }, addRoutine: { minHeight: 48, flexDirection: 'row', gap: space.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: c.cyan, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }, addRoutineText: { color: c.deepBlue, fontWeight: '800' },
   addRoutinePanel: { gap: space.md }, addRoutineActions: { flexDirection: 'row', gap: space.sm },
-  actions: { flexDirection: 'row', gap: space.sm, marginTop: space.md }, formError: { color: color.danger, fontSize: 13, lineHeight: 18, textAlign: 'center' }, saved: { textAlign: 'center', color: color.textMuted, fontSize: 12 }, savedError: { color: color.danger },
+  actions: { flexDirection: 'row', gap: space.sm, marginTop: space.md }, formError: { color: c.danger, fontSize: 13, lineHeight: 18, textAlign: 'center' }, saved: { textAlign: 'center', color: c.textMuted, fontSize: 12 }, savedError: { color: c.danger },
 });

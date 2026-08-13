@@ -21,10 +21,12 @@ import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import {
   applyVoiceSchedulePatch,
   canConfirmVoiceSchedule,
+  createVoiceActivityState,
   createVoiceRequiredConfirmations,
   createVoiceFirstScheduleDraft,
   mergeVoiceRequiredConfirmations,
-  nextRequiredVoiceClarification,
+  nextVoiceClarification,
+  resolveVoiceClarificationChoice,
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
   updateVoiceActivity,
@@ -82,6 +84,16 @@ const TRANSPORT_MISSING_FIXTURE: VoiceScheduleAssistantReply = {
   patch: { ...RESULT_FIXTURE.patch, transport: undefined },
 };
 
+const MISSING_FIELDS_FIXTURE: VoiceScheduleAssistantReply = (() => {
+  const { title: _title, date: _date, ...patch } = RESULT_FIXTURE.patch;
+  return {
+    ...RESULT_FIXTURE,
+    transcript: '3시에 강남 세브란스병원',
+    assistantMessage: '시간과 장소를 확인했어요. 남은 항목만 확인할게요.',
+    patch,
+  };
+})();
+
 const CLARIFICATION_FIXTURE: VoiceScheduleAssistantReply = {
   entryType: 'schedule',
   transcript: '금요일 오후에 치과',
@@ -116,9 +128,10 @@ export default function VoiceScheduleScreen() {
   const fixtureResult = params.e2eState === 'proposal' || params.e2eState === 'result';
   const fixtureClarification = params.e2eState === 'clarification';
   const fixtureTransportMissing = params.e2eState === 'transport-missing';
+  const fixtureMissingFields = params.e2eState === 'missing-fields';
   const fixtureAutoListening = params.e2eState === 'auto-listening';
   const fixtureTask = params.e2eState === 'task';
-  const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
+  const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureMissingFields ? MISSING_FIELDS_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
   const { beginDraft, beginDraftWith, confirmDraftWith, draft, selectConfirmedPlan } = useSchedule();
   const { addTask, startTask } = useTaskExecution();
   const { mode: colorMode, palette } = useAppTheme();
@@ -141,7 +154,10 @@ export default function VoiceScheduleScreen() {
   const [assistantReady, setAssistantReady] = useState(fixtureReply?.readyToApply ?? false);
   const [clarification, setClarification] = useState<VoiceScheduleClarification | null>(() => fixtureReply?.clarification
     ?? (fixtureReply?.entryType === 'schedule' && fixtureReply.readyToApply
-      ? nextRequiredVoiceClarification(mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch))
+      ? nextVoiceClarification(
+        applyVoiceSchedulePatch(voiceDraft, fixtureReply.patch),
+        mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch),
+      )
       : null));
   const [requiredConfirmations, setRequiredConfirmations] = useState<VoiceRequiredConfirmations>(() => fixtureReply?.entryType === 'schedule'
     ? mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch)
@@ -157,11 +173,7 @@ export default function VoiceScheduleScreen() {
   const processingRef = useRef(false);
   const recordingStartedRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voiceActivityRef = useRef({
-    heardSpeech: false,
-    speechCandidateSinceMs: null as number | null,
-    silenceSinceMs: null as number | null,
-  });
+  const voiceActivityRef = useRef(createVoiceActivityState());
 
   const startRecording = useCallback(async () => {
     if (recordingStartedRef.current || finishingRef.current) return;
@@ -182,7 +194,7 @@ export default function VoiceScheduleScreen() {
       }
       await recorder.prepareToRecordAsync();
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
-      voiceActivityRef.current = { heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null };
+      voiceActivityRef.current = createVoiceActivityState();
       finishingRef.current = false;
       recordingStartedRef.current = true;
       recorder.record({ forDuration: 60 });
@@ -250,7 +262,7 @@ export default function VoiceScheduleScreen() {
       const nextProposal = applyVoiceSchedulePatch(base, reply.patch);
       const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, reply.patch);
       const requiredClarification = reply.entryType === 'schedule' && reply.readyToApply && !reply.clarification
-        ? nextRequiredVoiceClarification(nextConfirmations)
+        ? nextVoiceClarification(nextProposal, nextConfirmations)
         : null;
       const nextClarification = reply.clarification ?? requiredClarification;
       const assistantText = reply.assistantMessage || reply.question || '이해한 내용을 확인해 주세요.';
@@ -263,7 +275,7 @@ export default function VoiceScheduleScreen() {
         setTaskProposal(null);
       }
       setRequiredConfirmations(nextConfirmations);
-      setAssistantReady(reply.readyToApply && nextRequiredVoiceClarification(nextConfirmations) === null);
+      setAssistantReady(reply.readyToApply && nextVoiceClarification(nextProposal, nextConfirmations) === null);
       setClarification(nextClarification);
       setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: assistantText }].slice(-8) as VoiceScheduleHistoryTurn[]);
       setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: assistantText }]);
@@ -279,7 +291,7 @@ export default function VoiceScheduleScreen() {
     }
   }, [conversationId, history, proposal, provider, requiredConfirmations, scheduleAutoRestart, speakThenListen, voiceDraft]);
 
-  const finishRecording = useCallback(async (explicitlyFinished = false) => {
+  const finishRecording = useCallback(async () => {
     if (finishingRef.current) return;
     const generation = flowGenerationRef.current;
     finishingRef.current = true;
@@ -289,7 +301,7 @@ export default function VoiceScheduleScreen() {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       const uri = recorder.uri ?? recorderState.url;
       if (!uri) throw new Error('missing recording');
-      if (!shouldSubmitVoiceRecording(voiceActivityRef.current, recorderState.durationMillis, explicitlyFinished)
+      if (!shouldSubmitVoiceRecording(voiceActivityRef.current, recorderState.durationMillis)
         || generation !== flowGenerationRef.current
         || !mountedRef.current) {
         try { new File(uri).delete(); } catch { /* cache may already be gone */ }
@@ -369,11 +381,33 @@ export default function VoiceScheduleScreen() {
     setRequiredConfirmations(nextConfirmations);
     setProposal((current) => {
       const next = applyVoiceSchedulePatch(current ?? voiceDraft, patch);
-      const nextClarification = clarification?.field === resolvedField ? null : clarification;
-      if (clarification?.field === resolvedField) setClarification(null);
-      setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null && nextRequiredVoiceClarification(nextConfirmations) === null);
+      const pending = clarification?.field === resolvedField ? null : clarification;
+      const nextClarification = pending ?? nextVoiceClarification(next, nextConfirmations);
+      setClarification(nextClarification);
+      setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null);
       return next;
     });
+  };
+
+  /**
+   * A tapped choice we can resolve on the device is applied straight away. Sending it to the
+   * assistant only to be told what we already know costs the user a visible pause.
+   */
+  const chooseClarificationOption = (option: string) => {
+    if (!clarification) return;
+    if (option === '직접 입력') {
+      setEditField(fieldToEditable(clarification.field));
+      return;
+    }
+    const patch = resolveVoiceClarificationChoice(clarification.field, option);
+    if (!patch) {
+      void submitTurn({ kind: 'text', text: option });
+      return;
+    }
+    const answered = clarification.field;
+    applyManualPatch(patch, answered);
+    setHistory((current) => [...current, { role: 'user', text: option }].slice(-8) as VoiceScheduleHistoryTurn[]);
+    setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: option }]);
   };
 
   const confirmSchedule = async () => {
@@ -440,12 +474,11 @@ export default function VoiceScheduleScreen() {
         <View style={styles.content}>
           <View style={styles.header}><IconButton name="close" label="음성 입력 닫기" variant="plain" iconColor={palette.text} onPress={closeVoiceInput} /><View style={styles.headerCopy}><Text style={[styles.headerTitle, { color: palette.text }]}>말로 일정·할 일</Text><Text style={[styles.headerHint, { color: palette.textMuted }]}>일정은 확인하고, 할 일은 지금 시작할 만큼 작게 나눠요</Text></View><View style={styles.headerSpacer} /></View>
           <View accessibilityLabel="AI 실시간 대화 자동 듣기 켜짐" style={[styles.aiMode, { backgroundColor: palette.surface, borderColor: palette.border }]}><View style={[styles.aiModeDot, { backgroundColor: palette.primary }]} /><Text style={[styles.aiModeText, { color: palette.text }]}>실시간 대화 · 자동 듣기</Text><Text accessibilityLiveRegion="polite" style={[styles.aiModeState, { color: palette.primary }]}>{conversationState}</Text></View>
-          {status === 'recording' ? <Button label="말을 마쳤어요" disabled={recorderState.durationMillis < 350} onPress={() => void finishRecording(true)} /> : null}
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.chat}>{messages.map((message) => <View accessibilityLabel={`${message.role === 'user' ? '사용자 발화' : 'AI 응답'}: ${message.text}`} key={message.id} style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage, { backgroundColor: message.role === 'user' ? palette.primary : palette.assistantBubble }]}><Text style={[styles.messageText, { color: message.role === 'user' || colorMode === 'dark' ? '#FFFFFF' : palette.text }]}>{message.text}</Text></View>)}</View>
 
-            {clarification ? <ClarificationCard clarification={clarification} palette={palette} onChoose={(option) => option === '직접 입력' ? setEditField(fieldToEditable(clarification.field)) : void submitTurn({ kind: 'text', text: option })} /> : null}
+            {clarification ? <ClarificationCard clarification={clarification} palette={palette} onChoose={chooseClarificationOption} /> : null}
 
             {proposal ? <VoiceReview
               proposal={proposal}

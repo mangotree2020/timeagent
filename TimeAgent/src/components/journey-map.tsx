@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 import { JourneyLocation, RoutePlan } from '@/lib/journey';
 
 export type JourneyMapProps = {
@@ -10,6 +11,7 @@ export type JourneyMapProps = {
 };
 
 export function JourneyMap({ route, location, destinationName }: JourneyMapProps) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View accessibilityLabel="지도 텍스트 대체 화면" style={styles.fallback}>
       <Text style={styles.title}>지도 대신 경로 정보를 표시합니다</Text>
@@ -20,9 +22,9 @@ export function JourneyMap({ route, location, destinationName }: JourneyMapProps
   );
 }
 
-const styles = StyleSheet.create({
-  fallback: { minHeight: 300, justifyContent: 'center', gap: space.sm, padding: space.xl, borderRadius: radius.lg, backgroundColor: color.ice, borderWidth: 1, borderColor: color.cyan },
-  title: { color: color.navy, fontSize: 18, lineHeight: 25, fontWeight: '900' },
-  body: { color: color.text, fontSize: 16, lineHeight: 24 },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  fallback: { minHeight: 300, justifyContent: 'center', gap: space.sm, padding: space.xl, borderRadius: radius.lg, backgroundColor: c.ice, borderWidth: 1, borderColor: c.cyan },
+  title: { color: c.navy, fontSize: 18, lineHeight: 25, fontWeight: '900' },
+  body: { color: c.text, fontSize: 16, lineHeight: 24 },
 });
 

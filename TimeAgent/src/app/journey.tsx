@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { AppIcon, IconButton } from '@/components/app-icon';
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { JourneyMap } from '@/components/journey-map';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { ExpoLocationProvider, LocationPermissionDeniedError } from '@/lib/device-location-provider';
 import {
   createFallbackWalkingRoute,
@@ -30,6 +31,9 @@ import {
 import { useSchedule } from '@/state/schedule-context';
 
 export default function JourneyScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const { fontScale } = useWindowDimensions();
   const params = useLocalSearchParams<{ e2eScreenReader?: string; e2eState?: string }>();
   const forcePermissionDenied = __DEV__ && params.e2eState === 'permission-denied';
@@ -221,7 +225,7 @@ export default function JourneyScreen() {
     <Screen>
       <Header title={schedule.destination} eyebrow="이동 중" right={<IconButton name="close" label="이동 안내 최소화" variant="plain" onPress={() => router.back()} />} />
       <Card dark style={styles.statusCard}>
-        <View style={styles.statusHeader}><StatusPill label={isFallback ? '도보 · 임시 경로' : '도보 · TMAP 경로'} tone={isFallback ? 'warning' : 'success'} /><Pressable accessibilityRole="button" accessibilityState={{ disabled: screenReaderActive }} accessibilityLabel={effectiveScreenReaderState === 'checking' ? '화면 읽기 상태 확인 중, 앱 음성 자동 재생 대기' : screenReaderActive ? '화면 읽기 사용 중, 앱 음성 자동 재생 중지됨' : voiceEnabled ? '음성 안내 끄기' : '음성 안내 켜기'} disabled={screenReaderActive} onPress={toggleVoice} style={({ pressed }) => [styles.voiceStatus, pressed && styles.voicePressed]}>{loading ? <ActivityIndicator size="small" color={color.cyan} /> : <AppIcon name={screenReaderActive || !voiceEnabled ? 'mute' : 'voice'} size={16} iconColor={color.cyan} />}<Text style={styles.voiceText}>{loading ? '경로 확인 중' : effectiveScreenReaderState === 'checking' ? '화면 읽기 확인' : screenReaderActive ? '화면 읽기 사용' : voiceEnabled ? '음성 켜짐' : '음성 꺼짐'}</Text></Pressable></View>
+        <View style={styles.statusHeader}><StatusPill label={isFallback ? '도보 · 임시 경로' : '도보 · TMAP 경로'} tone={isFallback ? 'warning' : 'success'} /><Pressable accessibilityRole="button" accessibilityState={{ disabled: screenReaderActive }} accessibilityLabel={effectiveScreenReaderState === 'checking' ? '화면 읽기 상태 확인 중, 앱 음성 자동 재생 대기' : screenReaderActive ? '화면 읽기 사용 중, 앱 음성 자동 재생 중지됨' : voiceEnabled ? '음성 안내 끄기' : '음성 안내 켜기'} disabled={screenReaderActive} onPress={toggleVoice} style={({ pressed }) => [styles.voiceStatus, pressed && styles.voicePressed]}>{loading ? <ActivityIndicator size="small" color={c.cyan} /> : <AppIcon name={screenReaderActive || !voiceEnabled ? 'mute' : 'voice'} size={16} iconColor={c.cyan} />}<Text style={styles.voiceText}>{loading ? '경로 확인 중' : effectiveScreenReaderState === 'checking' ? '화면 읽기 확인' : screenReaderActive ? '화면 읽기 사용' : voiceEnabled ? '음성 켜짐' : '음성 꺼짐'}</Text></Pressable></View>
         <View style={[styles.metrics, largeText && styles.metricsLarge]}>
           <Metric label="도착까지" value={`${Math.ceil(journey.remainingDurationSeconds / 60)}분`} large={largeText} />
           <Metric label="약속까지" value={`${Math.ceil(journey.appointmentRemainingSeconds / 60)}분`} large={largeText} />
@@ -258,6 +262,7 @@ export default function JourneyScreen() {
 }
 
 function Metric({ label, value, large }: { label: string; value: string; large: boolean }) {
+  const styles = useThemedStyles(createStyles);
   return <View style={[styles.metric, large && styles.metricLarge]}><Text style={styles.metricLabel}>{label}</Text><Text numberOfLines={1} style={[styles.metricValue, large && styles.metricValueLarge]}>{value}</Text></View>;
 }
 
@@ -290,29 +295,32 @@ function backgroundStatusDescription(status: BackgroundJourneyStatus) {
   return '필요할 때 직접 켜며 앱을 닫거나 화면을 꺼도 상단 알림에서 사용 중임을 확인할 수 있습니다.';
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
   statusCard: { gap: space.lg },
   statusHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
   voiceStatus: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  voiceText: { color: color.ice, fontSize: 13, fontWeight: '800' },
+  voiceText: { color: c.onInverseMuted, fontSize: 13, fontWeight: '800' },
   voicePressed: { opacity: 0.65 },
   metrics: { flexDirection: 'row', gap: space.sm },
   metricsLarge: { flexDirection: 'column', gap: space.md },
   metric: { flex: 1 },
   metricLarge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
-  metricLabel: { color: color.ice, fontSize: 12, lineHeight: 18 },
-  metricValue: { color: color.surface, fontSize: 22, lineHeight: 29, fontWeight: '900' },
+  metricLabel: { color: c.onInverseMuted, fontSize: 12, lineHeight: 18 },
+  metricValue: { color: c.onInverse, fontSize: 22, lineHeight: 29, fontWeight: '900' },
   metricValueLarge: { flexShrink: 0, textAlign: 'right' },
-  buffer: { color: color.cyan, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  buffer: { color: c.cyan, fontSize: 14, lineHeight: 20, fontWeight: '800' },
   nextCard: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  nextIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
-  nextLabel: { color: color.deepBlue, fontSize: 13, lineHeight: 18, fontWeight: '800', marginBottom: 3 },
-  updated: { color: color.textMuted, fontSize: 13, lineHeight: 19, marginTop: space.sm },
+  nextIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice },
+  nextLabel: { color: c.deepBlue, fontSize: 13, lineHeight: 18, fontWeight: '800', marginBottom: 3 },
+  updated: { color: c.textMuted, fontSize: 13, lineHeight: 19, marginTop: space.sm },
   backgroundCard: { gap: space.md },
   backgroundHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  backgroundIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
-  backgroundDetail: { ...type.caption, color: color.deepBlue, fontWeight: '700' },
-  privacy: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: color.surfaceMuted },
+  backgroundIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice },
+  backgroundDetail: { ...type.caption, color: c.deepBlue, fontWeight: '700' },
+  privacy: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted },
   fallbackCard: { gap: space.md },
-  disclaimer: { padding: space.md, borderRadius: radius.md, color: color.textMuted, backgroundColor: color.surfaceMuted, fontSize: 13, lineHeight: 19 },
-});
+  disclaimer: { padding: space.md, borderRadius: radius.md, color: c.textMuted, backgroundColor: c.surfaceMuted, fontSize: 13, lineHeight: 19 },
+  });
+};

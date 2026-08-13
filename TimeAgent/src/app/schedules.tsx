@@ -4,8 +4,9 @@ import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { AppIcon } from '@/components/app-icon';
 import { BottomNav } from '@/components/bottom-nav';
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
-import { color, radius, space } from '@/constants/design';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { ConfirmedSchedulePlan } from '@/lib/confirmed-plans';
 import {
   CalendarProviderKind,
@@ -28,6 +29,7 @@ type ProviderFilter = 'all' | CalendarProviderKind;
 const emptyPermission: DeviceCalendarPermission = { state: 'undetermined', canAskAgain: true };
 
 export default function SchedulesScreen() {
+  const styles = useThemedStyles(createStyles);
   const params = useLocalSearchParams<{ e2eCalendar?: string; tab?: string }>();
   const fixtureMode = __DEV__ && params.e2eCalendar === 'events';
   const [tab, setTab] = useState<ScheduleTab>(params.tab === 'past' ? '지난 일정' : fixtureMode || params.tab === 'calendar' ? '캘린더' : '내 일정');
@@ -153,6 +155,9 @@ export default function SchedulesScreen() {
 }
 
 function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedulePlan[]; status: 'loading' | 'saving' | 'saved' | 'error'; onSelect: (id: string) => void }) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   if (status === 'loading') return <StateCard icon="calendar" title="저장된 계획을 불러오고 있어요" body="확정한 계획을 시간순으로 정리합니다." />;
   return <>
     {status === 'error' ? <StateCard icon="error" title="저장된 계획을 불러오지 못했어요" body="앱을 다시 열어 확인해 주세요. 새 계획은 입력 화면에 자동 저장됩니다." /> : null}
@@ -160,7 +165,7 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
     {plans.map((item) => <View key={item.id} style={styles.planGroup}>
       <Text style={styles.date}>{item.schedule.date || '오늘'}</Text>
       <Pressable accessibilityRole="button" accessibilityHint="저장된 준비 계획을 엽니다" onPress={() => onSelect(item.id)}>
-        <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View><Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.textMuted} style={styles.arrow} /></Card>
+        <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View><Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.textMuted} style={styles.arrow} /></Card>
       </Pressable>
     </View>)}
     <Button label="말로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} />
@@ -168,6 +173,8 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
 }
 
 function ClosedSchedules({ plans, status }: { plans: ConfirmedSchedulePlan[]; status: 'loading' | 'saving' | 'saved' | 'error' }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   if (status === 'loading') return <StateCard icon="calendar" title="지난 일정을 정리하고 있어요" body="완료 여부를 확인해 종결 상태로 표시합니다." />;
   if (!plans.length) return <StateCard icon="calendar" title="종결된 일정이 없어요" body="시간이 지난 일정은 완료 또는 미완료로 이곳에 정리됩니다." />;
   return <>
@@ -205,6 +212,8 @@ type CalendarPanelProps = {
 };
 
 function CalendarPanel(props: CalendarPanelProps) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   if (props.calendarView === 'checking' || props.calendarView === 'loading') return <StateCard icon="calendar" title={props.calendarView === 'checking' ? '캘린더 연결 상태를 확인하고 있어요' : '향후 30일 일정을 불러오고 있어요'} body="기기에 있는 일정만 잠시 확인합니다." />;
   if (props.calendarView === 'intro') return <><StateCard icon="calendar" title="기기 캘린더 일정을 확인할까요?" body="Google·Apple/iCloud·기기 캘린더의 향후 30일 일정을 읽습니다. 선택한 일정만 새 TimeAgent 초안으로 가져오며 원문은 서버에 저장하지 않습니다." /><Button label="캘린더 연결하기" onPress={props.onRequest} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
   if (props.calendarView === 'denied') return <><StateCard icon="error" title="캘린더 권한이 필요해요" body="권한을 다시 허용하거나 말로 일정을 만들 수 있습니다." /><Button label="권한 다시 요청" onPress={props.onRequest} /><Button label="말로 일정 만들기" variant="secondary" onPress={props.onManual} /></>;
@@ -222,35 +231,45 @@ function CalendarPanel(props: CalendarPanelProps) {
 }
 
 function StateCard({ icon, title, body }: { icon: 'calendar' | 'error'; title: string; body: string }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return <Card style={styles.stateCard}><View style={styles.stateIcon}><AppIcon name={icon} size={26} /></View><Text accessibilityRole="header" style={type.heading}>{title}</Text><Text style={type.bodyMuted}>{body}</Text></Card>;
 }
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(createStyles);
   return <Pressable accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={onPress} style={[styles.filterChip, active && styles.filterChipActive]}><Text style={[styles.filterLabel, active && styles.filterLabelActive]}>{label}</Text></Pressable>;
 }
 
 function EventCard({ event, selected, onPress }: { event: DeviceCalendarEvent; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${event.title}, ${formatCalendarEventTime(event)}, ${event.providerLabel} ${event.calendarTitle}`} onPress={onPress} style={[styles.eventCard, selected && styles.eventCardSelected]}><View style={styles.eventTime}><Text style={styles.eventTimeText}>{event.allDay ? '종일' : formatCalendarEventTime(event).split('–')[0]}</Text></View><View style={styles.flexContent}><Text style={styles.eventTitle}>{event.title}</Text>{event.location ? <View style={styles.locationRow}><AppIcon name="location" size={15} /><Text style={styles.eventLocation}>{event.location}</Text></View> : null}<Text style={styles.eventSource}>{event.providerLabel} · {event.calendarTitle}</Text></View><AppIcon name="chevronRight" size={20} iconColor={selected ? color.deepBlue : color.textMuted} style={styles.arrow} /></Pressable>;
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${event.title}, ${formatCalendarEventTime(event)}, ${event.providerLabel} ${event.calendarTitle}`} onPress={onPress} style={[styles.eventCard, selected && styles.eventCardSelected]}><View style={styles.eventTime}><Text style={styles.eventTimeText}>{event.allDay ? '종일' : formatCalendarEventTime(event).split('–')[0]}</Text></View><View style={styles.flexContent}><Text style={styles.eventTitle}>{event.title}</Text>{event.location ? <View style={styles.locationRow}><AppIcon name="location" size={15} /><Text style={styles.eventLocation}>{event.location}</Text></View> : null}<Text style={styles.eventSource}>{event.providerLabel} · {event.calendarTitle}</Text></View><AppIcon name="chevronRight" size={20} iconColor={selected ? c.deepBlue : c.textMuted} style={styles.arrow} /></Pressable>;
 }
 
 function EventPreview({ event, onImport }: { event: DeviceCalendarEvent; onImport: () => void }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return <Card style={styles.preview} accessibilityLabel="선택한 일정 미리보기"><View style={styles.previewTitleRow}><StatusPill label="가져오기 전 미리보기" /><Text style={styles.previewSource}>{event.providerLabel} · {event.calendarTitle}</Text></View><Text style={type.heading}>{event.title}</Text><Text style={type.body}>{formatCalendarEventTime(event)}{event.location ? ` · ${event.location}` : ''}</Text>{event.allDay ? <Text style={styles.previewWarning}>종일 일정은 약속 시간을 직접 입력해야 합니다.</Text> : null}<Button label="이 일정 가져오기" onPress={onImport} /></Card>;
 }
 
-const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', backgroundColor: color.surfaceMuted, borderRadius: radius.pill, padding: 4 },
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
+  tabs: { flexDirection: 'row', backgroundColor: c.surfaceMuted, borderRadius: radius.pill, padding: 4 },
   tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
-  tabActive: { backgroundColor: color.surface },
-  tabText: { color: color.textMuted, fontSize: 13, fontWeight: '700' },
-  tabTextActive: { color: color.deepBlue, fontWeight: '900' },
+  tabActive: { backgroundColor: c.surface },
+  tabText: { color: c.textMuted, fontSize: 13, fontWeight: '700' },
+  tabTextActive: { color: c.deepBlue, fontWeight: '900' },
   tabDescription: { ...type.caption, marginTop: -space.md },
-  planGroup: { gap: space.sm }, date: { fontSize: 14, color: color.textMuted, fontWeight: '800', marginTop: space.sm },
+  planGroup: { gap: space.sm }, date: { fontSize: 14, color: c.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
-  timeRail: { width: 54, gap: 4 }, time: { fontSize: 17, color: color.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: color.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: color.cyan, marginTop: 8, marginLeft: 18 },
-  flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: color.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
-  stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: color.ice, alignItems: 'center', justifyContent: 'center' },
-  calendarHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textButtonLabel: { color: color.deepBlue, fontSize: 13, fontWeight: '800' },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, filterChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface }, filterChipActive: { backgroundColor: color.navy, borderColor: color.navy }, filterLabel: { color: color.textMuted, fontSize: 13, fontWeight: '800' }, filterLabelActive: { color: color.surface },
-  eventGroup: { gap: space.sm }, eventCard: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface }, eventCardSelected: { borderWidth: 2, borderColor: color.cyan, backgroundColor: '#F7FDFF' }, eventTime: { width: 48, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: color.border, paddingRight: space.sm }, eventTimeText: { color: color.deepBlue, fontSize: 14, fontWeight: '900' }, eventTitle: { color: color.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' }, eventLocation: { flex: 1, color: color.textMuted, fontSize: 13, lineHeight: 18 }, eventSource: { color: color.deepBlue, fontSize: 12, lineHeight: 17, fontWeight: '800' },
-  preview: { gap: space.md, borderColor: color.cyan }, previewTitleRow: { gap: space.sm }, previewSource: { color: color.textMuted, fontSize: 12, fontWeight: '700' }, previewWarning: { color: color.warning, fontSize: 13, lineHeight: 19, fontWeight: '800' },
-});
+  timeRail: { width: 54, gap: 4 }, time: { fontSize: 17, color: c.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: c.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: c.cyan, marginTop: 8, marginLeft: 18 },
+  flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: c.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
+  stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.ice, alignItems: 'center', justifyContent: 'center' },
+  calendarHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textButtonLabel: { color: c.deepBlue, fontSize: 13, fontWeight: '800' },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, filterChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }, filterChipActive: { backgroundColor: c.surfaceInverse, borderColor: c.surfaceInverse }, filterLabel: { color: c.textMuted, fontSize: 13, fontWeight: '800' }, filterLabelActive: { color: c.onInverse },
+  eventGroup: { gap: space.sm }, eventCard: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }, eventCardSelected: { borderWidth: 2, borderColor: c.cyan, backgroundColor: c.selectedSoft }, eventTime: { width: 48, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: c.border, paddingRight: space.sm }, eventTimeText: { color: c.deepBlue, fontSize: 14, fontWeight: '900' }, eventTitle: { color: c.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' }, eventLocation: { flex: 1, color: c.textMuted, fontSize: 13, lineHeight: 18 }, eventSource: { color: c.deepBlue, fontSize: 12, lineHeight: 17, fontWeight: '800' },
+  preview: { gap: space.md, borderColor: c.cyan }, previewTitleRow: { gap: space.sm }, previewSource: { color: c.textMuted, fontSize: 12, fontWeight: '700' }, previewWarning: { color: c.warning, fontSize: 13, lineHeight: 19, fontWeight: '800' },
+  });
+};

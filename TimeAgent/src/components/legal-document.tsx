@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Header, Screen, type } from '@/components/app-ui';
+import { Header, Screen, appType, useAppType } from '@/components/app-ui';
 import { IconButton } from '@/components/app-icon';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 
 export type LegalSection = { title: string; paragraphs: string[] };
 
@@ -18,6 +19,8 @@ export function LegalDocument({
   sections: LegalSection[];
   title: string;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return (
     <Screen>
       <Header title={title} eyebrow={`시행일 ${effectiveDate}`} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
@@ -32,7 +35,10 @@ export function LegalDocument({
   );
 }
 
-const styles = StyleSheet.create({
-  section: { gap: space.sm, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
-  paragraph: { ...type.body, color: color.textMuted },
-});
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
+  section: { gap: space.sm, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+  paragraph: { ...type.body, color: c.textMuted },
+  });
+};

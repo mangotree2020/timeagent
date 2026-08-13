@@ -3,12 +3,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconButton } from '@/components/app-icon';
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
-import { color, radius, space } from '@/constants/design';
+import { Button, Card, Header, Screen, StatusPill, useAppType } from '@/components/app-ui';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 import { getFocusRemainingSeconds } from '@/lib/task-execution';
 import { useTaskExecution } from '@/state/task-context';
 
 export default function TaskFocusScreen() {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const { currentTask, status, startTask, completeCurrentAction } = useTaskExecution();
   const [now, setNow] = useState(0);
   const remaining = currentTask ? now === 0 && currentTask.status === 'active' ? 300 : getFocusRemainingSeconds(currentTask, now) : 0;
@@ -51,20 +54,20 @@ function formatCountdown(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => StyleSheet.create({
   nowCard: { gap: space.md },
   labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  nowLabel: { color: color.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 1 },
-  action: { color: color.surface, fontSize: 24, lineHeight: 32, fontWeight: '900' },
-  timer: { color: color.surface, fontSize: 52, lineHeight: 60, fontWeight: '900', letterSpacing: -1.5 },
+  nowLabel: { color: c.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  action: { color: c.onInverse, fontSize: 24, lineHeight: 32, fontWeight: '900' },
+  timer: { color: c.onInverse, fontSize: 52, lineHeight: 60, fontWeight: '900', letterSpacing: -1.5 },
   track: { height: 10, overflow: 'hidden', borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.2)' },
-  fill: { height: '100%', borderRadius: radius.pill, backgroundColor: color.cyan },
-  support: { color: color.ice, fontSize: 15, lineHeight: 22, fontWeight: '700' },
+  fill: { height: '100%', borderRadius: radius.pill, backgroundColor: c.cyan },
+  support: { color: c.onInverseMuted, fontSize: 15, lineHeight: 22, fontWeight: '700' },
   extend: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  extendText: { color: color.ice, fontSize: 14, fontWeight: '900' },
-  sequence: { gap: space.sm }, sequenceLabel: { color: color.deepBlue, fontSize: 13, fontWeight: '900' },
-  sequenceAction: { color: color.navy, fontSize: 18, lineHeight: 25, fontWeight: '900' },
-  divider: { height: 1, marginVertical: space.sm, backgroundColor: color.border },
-  later: { color: color.textMuted, fontSize: 15, lineHeight: 22 },
-  saved: { color: color.textMuted, textAlign: 'center', fontSize: 12 }, error: { color: color.danger },
+  extendText: { color: c.onInverseMuted, fontSize: 14, fontWeight: '900' },
+  sequence: { gap: space.sm }, sequenceLabel: { color: c.deepBlue, fontSize: 13, fontWeight: '900' },
+  sequenceAction: { color: c.navy, fontSize: 18, lineHeight: 25, fontWeight: '900' },
+  divider: { height: 1, marginVertical: space.sm, backgroundColor: c.border },
+  later: { color: c.textMuted, fontSize: 15, lineHeight: 22 },
+  saved: { color: c.textMuted, textAlign: 'center', fontSize: 12 }, error: { color: c.danger },
 });

@@ -6,10 +6,13 @@ import {
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { JourneyMapProps } from '@/components/journey-map';
 
 export function JourneyMap({ route, location, destinationName }: JourneyMapProps) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
   const [interactive, setInteractive] = useState(false);
   const coordinates = [location.coordinate, ...route.path, route.destination];
   const latitudes = coordinates.map((coordinate) => coordinate.latitude);
@@ -52,16 +55,16 @@ export function JourneyMap({ route, location, destinationName }: JourneyMapProps
           bearing: location.headingDegrees ?? 0,
           circleRadius: Math.min(80, location.accuracyMeters ?? 12),
           circleColor: 'rgba(0,180,216,0.18)',
-          circleOutlineColor: color.cyan,
+          circleOutlineColor: c.cyan,
           circleOutlineWidth: 1,
         }}>
         <NaverMapPathOverlay
           coords={route.path}
           width={8}
           outlineWidth={3}
-          color={color.navy}
+          color={c.navy}
           outlineColor="white"
-          passedColor={color.textMuted}
+          passedColor={c.textMuted}
           passedOutlineColor="white"
           progress={0}
         />
@@ -69,19 +72,19 @@ export function JourneyMap({ route, location, destinationName }: JourneyMapProps
           latitude={route.destination.latitude}
           longitude={route.destination.longitude}
           image={{ symbol: 'red' }}
-          caption={{ text: destinationName, color: color.navy, haloColor: 'white', textSize: 13 }}
+          caption={{ text: destinationName, color: c.navy, haloColor: 'white', textSize: 13 }}
         />
       </NaverMapView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { height: 380, overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.ice },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  container: { height: 380, overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.ice },
   map: { flex: 1 },
-  toolbar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, paddingHorizontal: space.md, backgroundColor: color.surface },
-  toolbarText: { flex: 1, color: color.textMuted, fontSize: 12, fontWeight: '700' },
-  toolbarButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, borderColor: color.cyan, backgroundColor: color.surface },
+  toolbar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, paddingHorizontal: space.md, backgroundColor: c.surface },
+  toolbarText: { flex: 1, color: c.textMuted, fontSize: 12, fontWeight: '700' },
+  toolbarButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.cyan, backgroundColor: c.surface },
   toolbarButtonPressed: { opacity: 0.7 },
-  toolbarButtonText: { color: color.deepBlue, fontSize: 12, fontWeight: '800' },
+  toolbarButtonText: { color: c.deepBlue, fontSize: 12, fontWeight: '800' },
 });

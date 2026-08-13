@@ -1,6 +1,8 @@
 import {
   createJourneyState,
   createFallbackWalkingRoute,
+  describeRoutePlan,
+  mapRegionForPath,
   getNextAppointmentAt,
   formatJourneyDistance,
   buildJourneyVoiceMessage,
@@ -131,6 +133,39 @@ describe('journey domain', () => {
       destination: fixtureRoutePlan.destination,
     })).resolves.toEqual(fixtureRoutePlan);
     await expect(locationProvider.getCurrentLocation()).resolves.toEqual(fixtureLocation);
+  });
+
+  it('frames a map region that contains the whole route with room to spare', () => {
+    const region = mapRegionForPath(fixtureRoutePlan.path);
+
+    const latitudes = fixtureRoutePlan.path.map((point) => point.latitude);
+    const longitudes = fixtureRoutePlan.path.map((point) => point.longitude);
+    expect(region.latitude).toBeCloseTo((Math.min(...latitudes) + Math.max(...latitudes)) / 2, 6);
+    expect(region.longitude).toBeCloseTo((Math.min(...longitudes) + Math.max(...longitudes)) / 2, 6);
+    expect(region.latitudeDelta).toBeGreaterThan(Math.max(...latitudes) - Math.min(...latitudes));
+    expect(region.longitudeDelta).toBeGreaterThan(Math.max(...longitudes) - Math.min(...longitudes));
+  });
+
+  it('keeps a usable region for a single point so one coordinate still renders', () => {
+    const region = mapRegionForPath([{ latitude: 37.5, longitude: 127.03 }]);
+
+    expect(region).toMatchObject({ latitude: 37.5, longitude: 127.03 });
+    expect(region.latitudeDelta).toBeGreaterThan(0);
+    expect(region.longitudeDelta).toBeGreaterThan(0);
+  });
+
+  it('describes a route in text so the map is not the only way to read it', () => {
+    expect(describeRoutePlan({ ...fixtureRoutePlan, provider: 'tmap' })).toMatchObject({
+      distanceText: formatJourneyDistance(fixtureRoutePlan.distanceMeters),
+      sourceText: 'TMAP 실제 경로',
+    });
+    expect(describeRoutePlan(fixtureRoutePlan).durationText).toMatch(/분$/);
+
+    const fallback = createFallbackWalkingRoute({
+      origin: { latitude: 37.5, longitude: 127.03 },
+      destination: { latitude: 37.51, longitude: 127.04 },
+    });
+    expect(describeRoutePlan(fallback).sourceText).toBe('예상 직선 경로');
   });
 
   it('calculates remaining path distance from the nearest segment', () => {

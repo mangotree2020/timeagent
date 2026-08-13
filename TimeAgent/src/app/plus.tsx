@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, IconButton } from '@/components/app-icon';
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
-import { color, radius, space } from '@/constants/design';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 import { loadAnalyticsStore, recordAnalyticsEvent } from '@/lib/analytics';
 import {
   PLUS_PLAN_OPTIONS,
@@ -29,6 +30,8 @@ const emptyEligibility: PlusOfferEligibility = {
 };
 
 export default function PlusScreen() {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const viewed = useRef(false);
   const [status, setStatus] = useState<ScreenStatus>('loading');
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -209,39 +212,44 @@ export default function PlusScreen() {
 }
 
 function Benefit({ text }: { text: string }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return <View style={styles.benefit}><AppIcon name="check" size={18} /><Text style={[type.bodyMuted, styles.flex]}>{text}</Text></View>;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
   flex: { flex: 1 },
   hero: { gap: space.md },
-  heroTitle: { color: color.surface, fontSize: 28, lineHeight: 35, fontWeight: '900' },
-  heroBody: { color: color.ice, fontSize: 16, lineHeight: 24 },
+  heroTitle: { color: c.onInverse, fontSize: 28, lineHeight: 35, fontWeight: '900' },
+  heroBody: { color: c.onInverseMuted, fontSize: 16, lineHeight: 24 },
   gateCard: { gap: space.md },
   gateHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  gateIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
+  gateIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice },
   section: { gap: space.xs },
   planList: { gap: space.sm },
-  plan: { minHeight: 116, flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
-  planSelected: { borderWidth: 2, borderColor: color.deepBlue, backgroundColor: '#F3FAFD' },
-  radioOuter: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: color.deepBlue, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: color.deepBlue },
+  plan: { minHeight: 116, flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+  planSelected: { borderWidth: 2, borderColor: c.deepBlue, backgroundColor: c.selectedSoft },
+  radioOuter: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.deepBlue, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: c.deepBlue },
   planTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  planName: { color: color.navy, fontSize: 16, lineHeight: 23, fontWeight: '900' },
-  selectedText: { color: color.deepBlue, fontSize: 12, fontWeight: '900' },
-  planPrice: { color: color.deepBlue, fontSize: 20, lineHeight: 28, fontWeight: '900', marginVertical: 2 },
+  planName: { color: c.navy, fontSize: 16, lineHeight: 23, fontWeight: '900' },
+  selectedText: { color: c.deepBlue, fontSize: 12, fontWeight: '900' },
+  planPrice: { color: c.deepBlue, fontSize: 20, lineHeight: 28, fontWeight: '900', marginVertical: 2 },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },
   benefits: { gap: space.md },
   benefit: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  candidate: { ...type.caption, color: color.warning },
-  notice: { gap: space.md, backgroundColor: color.surfaceMuted },
+  candidate: { ...type.caption, color: c.warning },
+  notice: { gap: space.md, backgroundColor: c.surfaceMuted },
   noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  errorCard: { gap: space.sm, borderColor: color.danger, backgroundColor: color.dangerSoft },
-  errorTitle: { ...type.heading, color: color.danger },
-  registered: { gap: space.md, borderColor: color.success, backgroundColor: color.successSoft },
+  errorCard: { gap: space.sm, borderColor: c.danger, backgroundColor: c.dangerSoft },
+  errorTitle: { ...type.heading, color: c.danger },
+  registered: { gap: space.md, borderColor: c.success, backgroundColor: c.successSoft },
   withdrawPanel: { gap: space.md },
   actions: { flexDirection: 'row', gap: space.sm },
   status: { ...type.caption, textAlign: 'center', paddingHorizontal: space.md },
-  errorText: { color: color.danger },
-});
+  errorText: { color: c.danger },
+  });
+};

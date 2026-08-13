@@ -56,6 +56,13 @@ export type VoiceActivityState = {
   heardSpeech: boolean;
   speechCandidateSinceMs: number | null;
   silenceSinceMs: number | null;
+  /** Quietest level measured so far. Speech is judged against this, not only against a fixed level. */
+  noiseFloorDb?: number | null;
+  /** Loudest level measured since speech started, used to spot the drop back to the room. */
+  peakDb?: number | null;
+  meteringMissingSinceMs?: number | null;
+  /** True once the device has stayed silent about levels long enough that we stop waiting for them. */
+  meteringUnavailable?: boolean;
 };
 export const GUIDED_VOICE_QUESTIONS: { field: GuidedVoiceField; prompt: string }[] = [
   { field: 'title', prompt: '안녕! 새 약속 잡아줄게. 무슨 약속이야?' },
@@ -101,6 +108,37 @@ export function mergeVoiceRequiredConfirmations(
     destination: current.destination || Boolean(patch.destination?.trim()),
     transport: current.transport || Boolean(patch.transport),
   };
+}
+
+/**
+ * Turns a tapped quick choice into a patch the screen can apply on its own. Returning null means the
+ * answer is open-ended and still needs the assistant.
+ */
+export function resolveVoiceClarificationChoice(
+  field: VoiceClarificationField,
+  option: string,
+  now = Date.now(),
+): VoiceSchedulePatch | null {
+  const answer = option.trim();
+  if (!answer || answer === '직접 입력') return null;
+  if (field === 'transport') return transportModes.includes(answer as TransportMode) ? { transport: answer as TransportMode } : null;
+  if (field === 'time') return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(answer) ? { appointmentTime: answer } : null;
+  if (field === 'recurrence') return { recurrence: answer };
+  if (field === 'date') {
+    const spoken = /^(오늘|내일)$/.test(answer) || /^[일월화수목금토]요일$/.test(answer) || /^\d{1,2}월\s*\d{1,2}일$/.test(answer);
+    return spoken ? { date: resolveSpokenDateReference(answer, now) } : null;
+  }
+  return null;
+}
+
+/** The next thing to ask about, covering the appointment fields a speaker most often leaves out. */
+export function nextVoiceClarification(
+  draft: ScheduleDraft,
+  confirmations: VoiceRequiredConfirmations,
+): VoiceScheduleClarification | null {
+  if (!draft.title?.trim()) return { field: 'title', prompt: '무슨 약속인가요?', options: ['직접 입력'] };
+  if (!draft.date?.trim()) return { field: 'date', prompt: '언제 만나나요?', options: ['오늘', '내일', '직접 입력'] };
+  return nextRequiredVoiceClarification(confirmations);
 }
 
 export function nextRequiredVoiceClarification(confirmations: VoiceRequiredConfirmations): VoiceScheduleClarification | null {
@@ -176,7 +214,42 @@ export function voicePatchForGuidedField(field: GuidedVoiceField, patch: VoiceSc
   return patch.transport ? { transport: patch.transport } : {};
 }
 
+export function createVoiceActivityState(): VoiceActivityState {
+  return {
+    heardSpeech: false,
+    speechCandidateSinceMs: null,
+    silenceSinceMs: null,
+    noiseFloorDb: null,
+    peakDb: null,
+    meteringMissingSinceMs: null,
+    meteringUnavailable: false,
+  };
+}
+
 export function updateVoiceActivity(
+  previous: VoiceActivityState,
+  metering: number | undefined,
+  durationMillis: number,
+  options: {
+    speechThresholdDb?: number;
+    minimumListeningMs?: number;
+    speechOnsetMs?: number;
+    trailingSilenceMs?: number;
+    noiseFloorRiseDb?: number;
+    speechDropDb?: number;
+    missingMeteringGraceMs?: number;
+    maxListeningMs?: number;
+  } = {},
+) {
+  const { maxListeningMs = 15_000 } = options;
+  const measured = measureVoiceActivity(previous, metering, durationMillis, options);
+  // Every turn has to end on its own. Without an upper bound a room whose noise never drops would
+  // keep the microphone open until the recorder's own limit, which is what forced a manual button.
+  if (durationMillis >= maxListeningMs) return { ...measured, shouldFinish: true };
+  return measured;
+}
+
+function measureVoiceActivity(
   previous: VoiceActivityState,
   metering: number | undefined,
   durationMillis: number,
@@ -185,34 +258,65 @@ export function updateVoiceActivity(
     minimumListeningMs = 350,
     speechOnsetMs = 120,
     trailingSilenceMs = 700,
-  } = {},
+    noiseFloorRiseDb = 12,
+    speechDropDb = 18,
+    missingMeteringGraceMs = 4_000,
+  }: {
+    speechThresholdDb?: number;
+    minimumListeningMs?: number;
+    speechOnsetMs?: number;
+    trailingSilenceMs?: number;
+    noiseFloorRiseDb?: number;
+    speechDropDb?: number;
+    missingMeteringGraceMs?: number;
+  },
 ) {
-  if (metering === undefined || durationMillis < minimumListeningMs) {
-    return { state: previous, shouldFinish: false };
+  if (durationMillis < minimumListeningMs) return { state: previous, shouldFinish: false };
+
+  // Some devices never report levels. Waiting for speech we cannot measure would strand the turn,
+  // so after a grace period the recording is submitted and the transcript decides whether it counted.
+  if (metering === undefined) {
+    const meteringMissingSinceMs = previous.meteringMissingSinceMs ?? durationMillis;
+    const meteringUnavailable = durationMillis - meteringMissingSinceMs >= missingMeteringGraceMs;
+    return {
+      state: { ...previous, meteringMissingSinceMs, meteringUnavailable },
+      shouldFinish: meteringUnavailable,
+    };
   }
-  if (metering >= speechThresholdDb) {
+
+  const noiseFloorDb = previous.noiseFloorDb === null || previous.noiseFloorDb === undefined
+    ? metering
+    : Math.min(previous.noiseFloorDb, metering);
+  const base = { ...previous, noiseFloorDb, meteringMissingSinceMs: null, meteringUnavailable: false };
+  const isSpeechLevel = metering >= speechThresholdDb || metering >= noiseFloorDb + noiseFloorRiseDb;
+  // A room noisier than the fixed threshold stays "speech" forever by absolute level alone, so the
+  // drop back down from the loudest measured level also counts as the speaker stopping.
+  const droppedFromSpeech = previous.peakDb !== null && previous.peakDb !== undefined
+    && metering <= previous.peakDb - speechDropDb;
+
+  if (isSpeechLevel && !droppedFromSpeech) {
+    const peakDb = previous.peakDb === null || previous.peakDb === undefined
+      ? metering
+      : Math.max(previous.peakDb, metering);
     if (previous.heardSpeech) {
-      return { state: { ...previous, silenceSinceMs: null }, shouldFinish: false };
+      return { state: { ...base, peakDb, silenceSinceMs: null }, shouldFinish: false };
     }
     const speechCandidateSinceMs = previous.speechCandidateSinceMs ?? durationMillis;
+    const heardSpeech = durationMillis - speechCandidateSinceMs >= speechOnsetMs;
     return {
-      state: {
-        heardSpeech: durationMillis - speechCandidateSinceMs >= speechOnsetMs,
-        speechCandidateSinceMs,
-        silenceSinceMs: null,
-      },
+      state: { ...base, peakDb: heardSpeech ? peakDb : previous.peakDb ?? null, speechCandidateSinceMs, heardSpeech, silenceSinceMs: null },
       shouldFinish: false,
     };
   }
   if (!previous.heardSpeech) {
     return {
-      state: { heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null },
+      state: { ...base, heardSpeech: false, speechCandidateSinceMs: null, silenceSinceMs: null, peakDb: null },
       shouldFinish: false,
     };
   }
   const silenceSinceMs = previous.silenceSinceMs ?? durationMillis;
   return {
-    state: { ...previous, silenceSinceMs },
+    state: { ...base, silenceSinceMs },
     shouldFinish: durationMillis - silenceSinceMs >= trailingSilenceMs,
   };
 }
@@ -222,7 +326,9 @@ export function shouldSubmitVoiceRecording(
   durationMillis: number,
   explicitlyFinished = false,
 ) {
-  return activity.heardSpeech || (explicitlyFinished && durationMillis >= 350);
+  return activity.heardSpeech
+    || activity.meteringUnavailable === true
+    || (explicitlyFinished && durationMillis >= 350);
 }
 
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];

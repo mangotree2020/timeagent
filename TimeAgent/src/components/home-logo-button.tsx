@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppLogo } from '@/components/app-logo';
-import { color, radius } from '@/constants/design';
+import { radius } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 
 export function HomeLogoButton({ hasMessage, onPress }: { hasMessage: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(createStyles);
   const [motion] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -44,9 +46,9 @@ export function HomeLogoButton({ hasMessage, onPress }: { hasMessage: boolean; o
   );
 }
 
-const styles = StyleSheet.create({
-  button: { width: 52, height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface },
-  badge: { position: 'absolute', right: 0, top: 0, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: color.danger, borderWidth: 2, borderColor: color.background },
-  badgeText: { color: color.surface, fontSize: 11, lineHeight: 13, fontWeight: '900' },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  button: { width: 52, height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface },
+  badge: { position: 'absolute', right: 0, top: 0, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: c.danger, borderWidth: 2, borderColor: c.background },
+  badgeText: { color: c.onInverse, fontSize: 11, lineHeight: 13, fontWeight: '900' },
   pressed: { opacity: 0.7, transform: [{ scale: 0.96 }] },
 });

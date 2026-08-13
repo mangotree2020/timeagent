@@ -4,12 +4,13 @@ import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNav } from '@/components/bottom-nav';
-import { Button, Card, Screen, SectionTitle, StatusPill, type } from '@/components/app-ui';
+import { Button, Card, Screen, SectionTitle, StatusPill, useAppType } from '@/components/app-ui';
 import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { HomeLogoButton } from '@/components/home-logo-button';
 import { VoicePulseButton } from '@/components/voice-pulse-button';
 import { Timeline } from '@/components/timeline';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { useSchedule } from '@/state/schedule-context';
 import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
 import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
@@ -28,6 +29,9 @@ import { useTaskExecution } from '@/state/task-context';
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
 
 export default function HomeScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const params = useLocalSearchParams<{ e2eWeather?: string; e2eStreak?: string }>();
   const weatherFixtureMode = __DEV__ && params.e2eWeather === 'ready';
   const weatherErrorFixtureMode = __DEV__ && params.e2eWeather === 'error';
@@ -123,12 +127,12 @@ export default function HomeScreen() {
           <Card style={styles.hero}>
             <View style={styles.heroTop}>
               <Text style={styles.nextLabel}>다음 약속</Text>
-              <AppIcon name="chevronRight" size={20} iconColor={color.textMuted} />
+              <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
             </View>
             <Text numberOfLines={2} style={styles.heroTitle}>{schedule.title}</Text>
             <View style={styles.appointmentMeta}>
-              <View style={styles.appointmentDetail}><AppIcon name="time" size={17} iconColor={color.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
-              <View style={styles.appointmentDetail}><AppIcon name="location" size={17} iconColor={color.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
+              <View style={styles.appointmentDetail}><AppIcon name="time" size={17} iconColor={c.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
+              <View style={styles.appointmentDetail}><AppIcon name="location" size={17} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
             </View>
           </Card>
         </Pressable> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '말로 일정을 등록하면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="말로 새 일정 만들기" variant="secondary" onPress={() => router.push('/voice-schedule')} /> : null}</View></Card>}
@@ -156,6 +160,7 @@ export default function HomeScreen() {
 }
 
 function NowTaskCard({ task, onPress }: { task: NonNullable<ReturnType<typeof useTaskExecution>['currentTask']>; onPress: () => void }) {
+  const styles = useThemedStyles(createStyles);
   const current = task.actions.find((action) => action.status === 'current');
   const next = task.actions.find((action) => action.status === 'upcoming');
   if (!current) return null;
@@ -169,6 +174,7 @@ function NowTaskCard({ task, onPress }: { task: NonNullable<ReturnType<typeof us
 }
 
 function OnTimeArrivalBadge({ streak, onPress }: { streak: number; onPress: () => void }) {
+  const styles = useThemedStyles(createStyles);
   const remaining = Math.max(0, 6 - streak);
   const detail = remaining === 0
     ? '‘시간의 달인’ 뱃지를 달성했어요'
@@ -193,6 +199,8 @@ function OnTimeArrivalBadge({ streak, onPress }: { streak: number; onPress: () =
 }
 
 function RegisteredPlanList({ plans, onSelect }: { plans: ConfirmedSchedulePlan[]; onSelect: (id: string) => void }) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
   return (
     <View accessibilityLabel={`등록한 일정 ${plans.length}개`} style={styles.registeredList}>
       {plans.map((item) => (
@@ -208,9 +216,9 @@ function RegisteredPlanList({ plans, onSelect }: { plans: ConfirmedSchedulePlan[
             <View style={styles.registeredTime}><Text style={styles.registeredTimeText}>{item.schedule.appointmentTime}</Text><Text style={styles.registeredDate}>{formatConfirmedPlanDate(item.appointmentAt)}</Text></View>
             <View style={styles.registeredCopy}>
               <View style={styles.registeredTitleRow}><Text numberOfLines={1} style={styles.registeredTitle}>{item.schedule.title}</Text><StatusPill label={item.state === 'active' ? '실행 중' : `${item.plan.prepStart} 시작`} tone={item.state === 'active' ? 'success' : 'info'} /></View>
-              <View style={styles.locationRow}><AppIcon name="location" size={15} iconColor={color.textMuted} /><Text numberOfLines={1} style={styles.registeredLocation}>{item.schedule.destination}</Text></View>
+              <View style={styles.locationRow}><AppIcon name="location" size={15} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.registeredLocation}>{item.schedule.destination}</Text></View>
             </View>
-            <AppIcon name="chevronRight" size={20} iconColor={color.textMuted} />
+            <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
           </Card>
         </Pressable>
       ))}
@@ -219,8 +227,10 @@ function RegisteredPlanList({ plans, onSelect }: { plans: ConfirmedSchedulePlan[
 }
 
 function HomeWeather({ status, weather, fixtureMode, onRetry }: { status: WeatherStatus; weather: WeatherSnapshot | null; fixtureMode: boolean; onRetry: () => void }) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
   if (status === 'checking') {
-    return <Card style={styles.weatherState}><ActivityIndicator color={color.deepBlue} /><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>현재 날씨 확인 중</Text><Text style={styles.weatherStateBody}>승인된 현재 위치로 날씨를 불러오고 있어요.</Text></View></Card>;
+    return <Card style={styles.weatherState}><ActivityIndicator color={c.deepBlue} /><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>현재 날씨 확인 중</Text><Text style={styles.weatherStateBody}>승인된 현재 위치로 날씨를 불러오고 있어요.</Text></View></Card>;
   }
 
   if (status === 'permission-needed') {
@@ -247,7 +257,7 @@ function HomeWeather({ status, weather, fixtureMode, onRetry }: { status: Weathe
           <Text style={styles.weatherCondition}>{locationName} · {weather.condition} {roundTemperature(weather.temperatureC)}°</Text>
           <Text numberOfLines={2} style={styles.weatherAdvice}>{weatherPreparationAdvice(weather)}</Text>
         </View>
-        <AppIcon name="chevronRight" size={20} iconColor={color.textMuted} />
+        <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
       </Card>
     </Pressable>
   );
@@ -262,53 +272,53 @@ function weatherIconName(weather: WeatherSnapshot): AppIconName {
   return 'weatherCloudy';
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => StyleSheet.create({
   page: { flex: 1 },
   homeHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   homeHeaderCopy: { flex: 1, gap: 1 },
-  greeting: { flexShrink: 1, color: color.navy, fontSize: 23, lineHeight: 30, fontWeight: '900', letterSpacing: -0.55 },
-  headerMeta: { color: color.textMuted, fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  greeting: { flexShrink: 1, color: c.navy, fontSize: 23, lineHeight: 30, fontWeight: '900', letterSpacing: -0.55 },
+  headerMeta: { color: c.textMuted, fontSize: 13, lineHeight: 19, fontWeight: '700' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroPressable: { minHeight: 44, borderRadius: radius.lg },
   nowTaskPressable: { minHeight: 44, borderRadius: radius.lg },
   nowTaskCard: { minHeight: 142, gap: space.md, padding: space.xl },
   nowTaskTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  nowTaskLabel: { color: color.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  nowTaskAction: { color: color.surface, fontSize: 24, lineHeight: 31, fontWeight: '900' },
-  nowTaskNext: { color: color.ice, fontSize: 14, lineHeight: 20, fontWeight: '700' },
+  nowTaskLabel: { color: c.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
+  nowTaskAction: { color: c.onInverse, fontSize: 24, lineHeight: 31, fontWeight: '900' },
+  nowTaskNext: { color: c.onInverseMuted, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   hero: { minHeight: 148, gap: space.md, padding: space.xl, borderColor: 'transparent', boxShadow: '0 10px 28px rgba(15,23,42,0.055)', elevation: 2 },
   emptyPlan: { minHeight: 132, flexDirection: 'row', alignItems: 'center', gap: space.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
-  nextLabel: { color: color.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
-  heroTitle: { color: color.navy, fontSize: 22, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
+  nextLabel: { color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  heroTitle: { color: c.navy, fontSize: 22, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
   appointmentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg },
   appointmentDetail: { minHeight: 24, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7 },
-  appointmentDetailText: { color: color.deepBlue, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  heroLocation: { flexShrink: 1, color: color.textMuted, fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  appointmentDetailText: { color: c.deepBlue, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  heroLocation: { flexShrink: 1, color: c.textMuted, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   buttonPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   registeredList: { gap: space.sm },
   registeredPressable: { minHeight: 44, borderRadius: radius.lg },
   registeredCard: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
-  registeredTime: { width: 76, alignSelf: 'stretch', justifyContent: 'center', borderRightWidth: 1, borderRightColor: color.border, paddingRight: space.sm },
-  registeredTimeText: { color: color.deepBlue, fontSize: 18, lineHeight: 24, fontWeight: '900' },
-  registeredDate: { color: color.textMuted, fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  registeredTime: { width: 76, alignSelf: 'stretch', justifyContent: 'center', borderRightWidth: 1, borderRightColor: c.border, paddingRight: space.sm },
+  registeredTimeText: { color: c.deepBlue, fontSize: 18, lineHeight: 24, fontWeight: '900' },
+  registeredDate: { color: c.textMuted, fontSize: 11, lineHeight: 16, fontWeight: '700' },
   registeredCopy: { flex: 1, gap: 6 },
   registeredTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  registeredTitle: { flex: 1, color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  registeredLocation: { flex: 1, color: color.textMuted, fontSize: 13, lineHeight: 18 },
+  registeredTitle: { flex: 1, color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  registeredLocation: { flex: 1, color: c.textMuted, fontSize: 13, lineHeight: 18 },
   weatherPressable: { minHeight: 44, borderRadius: radius.lg },
   weatherCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderColor: 'transparent', boxShadow: '0 6px 18px rgba(15,23,42,0.035)' },
-  weatherIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice, flexShrink: 0 },
+  weatherIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice, flexShrink: 0 },
   weatherCopy: { flex: 1, gap: 2 },
-  weatherCondition: { color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  weatherAdvice: { color: color.textMuted, fontSize: 13, lineHeight: 18 },
+  weatherCondition: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  weatherAdvice: { color: c.textMuted, fontSize: 13, lineHeight: 18 },
   weatherState: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
   weatherStateCopy: { flex: 1, gap: 3 },
-  weatherStateTitle: { color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  weatherStateBody: { color: color.textMuted, fontSize: 13, lineHeight: 19 },
+  weatherStateTitle: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  weatherStateBody: { color: c.textMuted, fontSize: 13, lineHeight: 19 },
   weatherLink: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  weatherLinkText: { color: color.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
-  link: { color: color.deepBlue, fontSize: 14, fontWeight: '800' },
+  weatherLinkText: { color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  link: { color: c.deepBlue, fontSize: 14, fontWeight: '800' },
   sectionAction: { minHeight: 44, minWidth: 52, alignItems: 'flex-end', justifyContent: 'center' },
   todayEventPressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
   todayEmpty: { gap: space.md },
@@ -316,8 +326,8 @@ const styles = StyleSheet.create({
   streakCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderColor: 'transparent' },
   streakIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFB547', flexShrink: 0 },
   streakCopy: { flex: 1, gap: 2 },
-  streakTitle: { color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  streakDetail: { color: color.textMuted, fontSize: 12, lineHeight: 18 },
-  streakLink: { minWidth: 44, minHeight: 44, textAlign: 'right', textAlignVertical: 'center', color: color.deepBlue, fontSize: 13, lineHeight: 44, fontWeight: '900' },
+  streakTitle: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  streakDetail: { color: c.textMuted, fontSize: 12, lineHeight: 18 },
+  streakLink: { minWidth: 44, minHeight: 44, textAlign: 'right', textAlignVertical: 'center', color: c.deepBlue, fontSize: 13, lineHeight: 44, fontWeight: '900' },
   fab: { position: 'absolute', right: 14, zIndex: 10 },
 });

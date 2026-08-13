@@ -3,9 +3,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName, IconButton } from '@/components/app-icon';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useThemedStyles } from '@/state/theme-context';
 import { AppSettings, createDefaultAppSettings, loadAppSettings, saveAppSettings } from '@/lib/app-settings';
 import {
   getDevicePermissionSnapshot,
@@ -17,6 +18,8 @@ import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
 type PermissionKind = 'location' | 'notifications';
 
 export default function PermissionsScreen() {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const params = useLocalSearchParams<{ focus?: PermissionKind }>();
   const [locationState, setLocationState] = useState<PermissionState>('loading');
   const [notificationState, setNotificationState] = useState<PermissionState>('loading');
@@ -177,6 +180,8 @@ function PermissionCard({
   emphasized: boolean;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return (
     <Card style={[styles.permissionCard, emphasized && styles.emphasized]}>
       <View style={styles.permissionHeader}>
@@ -195,16 +200,19 @@ function permissionTone(state: PermissionState) {
   return 'info' as const;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
   intro: { gap: space.sm },
-  introTitle: { color: color.surface, fontSize: 19, lineHeight: 26, fontWeight: '900' },
-  introBody: { color: color.ice, fontSize: 15, lineHeight: 23 },
+  introTitle: { color: c.onInverse, fontSize: 19, lineHeight: 26, fontWeight: '900' },
+  introBody: { color: c.onInverseMuted, fontSize: 15, lineHeight: 23 },
   permissionCard: { gap: space.md },
-  emphasized: { borderWidth: 2, borderColor: color.cyan },
+  emphasized: { borderWidth: 2, borderColor: c.cyan },
   permissionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted },
-  fallback: { gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: color.surfaceMuted },
-  fallbackTitle: { color: color.navy, fontSize: 14, fontWeight: '900' },
-  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, paddingHorizontal: space.md, color: color.text, fontSize: 16 },
-  message: { ...type.bodyMuted, textAlign: 'center', color: color.deepBlue, fontWeight: '700' },
-});
+  icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted },
+  fallback: { gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted },
+  fallbackTitle: { color: c.navy, fontSize: 14, fontWeight: '900' },
+  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: space.md, color: c.text, fontSize: 16 },
+  message: { ...type.bodyMuted, textAlign: 'center', color: c.deepBlue, fontWeight: '700' },
+  });
+};

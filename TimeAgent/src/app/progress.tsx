@@ -2,15 +2,19 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { AppIcon, IconButton } from '@/components/app-icon';
 import { Timeline } from '@/components/timeline';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { getProgressRemainingSeconds } from '@/lib/progress-session';
 import { formatCountdown, shiftClock } from '@/lib/schedule';
 import { useSchedule } from '@/state/schedule-context';
 
 export default function ProgressScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const params = useLocalSearchParams<{ source?: string; planId?: string }>();
   const {
     activePlan,
@@ -75,7 +79,7 @@ export default function ProgressScreen() {
       <Header title="실시간 준비" eyebrow={`${schedule.appointmentTime} · ${schedule.destination}`} right={<IconButton name="close" label="진행 최소화" variant="plain" onPress={() => router.replace('/')} />} />
       <View style={styles.statusRow}><View><Text style={styles.statusLabel}>예상 도착</Text><Text style={styles.arrival}>{delayedArrival}</Text></View><StatusPill label={delayMinutes ? `${delayMinutes}분 지연` : '정시 도착 가능'} tone={delayMinutes ? 'warning' : 'success'} /></View>
 
-      {delayMinutes > 0 ? <Pressable onPress={() => router.push('/plan-b')} style={styles.solution}><View style={styles.solutionIcon}><AppIcon name="coach" size={20} iconColor={color.warning} /></View><View style={{ flex: 1 }}><Text style={styles.solutionTitle}>정시 도착 가능한 방법이 있어요</Text><Text style={styles.solutionBody}>옷 준비를 2분 줄이고 {route}(으)로 이동하면 됩니다.</Text></View><AppIcon name="chevronRight" size={22} iconColor={color.warning} /></Pressable> : null}
+      {delayMinutes > 0 ? <Pressable onPress={() => router.push('/plan-b')} style={styles.solution}><View style={styles.solutionIcon}><AppIcon name="coach" size={20} iconColor={c.warning} /></View><View style={{ flex: 1 }}><Text style={styles.solutionTitle}>정시 도착 가능한 방법이 있어요</Text><Text style={styles.solutionBody}>옷 준비를 2분 줄이고 {route}(으)로 이동하면 됩니다.</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.warning} /></Pressable> : null}
 
       <Card dark style={styles.currentCard}>
         <Text style={styles.currentLabel}>현재 · {current?.title ?? '이동 중'}</Text>
@@ -129,11 +133,15 @@ export default function ProgressScreen() {
 }
 
 function ComparisonRow({ label, before, after, last = false }: { label: string; before: string; after: string; last?: boolean }) {
+  const styles = useThemedStyles(createStyles);
   return <View style={[styles.comparisonRow, !last && styles.comparisonDivider]}><Text style={styles.comparisonLabel}>{label}</Text><Text style={styles.comparisonBefore}>{before}</Text><Text style={styles.comparisonAfter}>{after}</Text></View>;
 }
 
-const styles = StyleSheet.create({
-  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, statusLabel: { ...type.caption, fontWeight: '700' }, arrival: { fontSize: 28, color: color.navy, fontWeight: '900' }, solution: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: color.warningSoft, borderRadius: radius.md, padding: space.lg }, solutionIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface }, solutionTitle: { fontSize: 14, fontWeight: '900', color: color.warning }, solutionBody: { fontSize: 13, lineHeight: 19, color: '#7C4A0A', marginTop: 2 }, currentCard: { gap: space.md }, currentLabel: { fontSize: 13, color: color.cyan, fontWeight: '900', letterSpacing: 1 }, timer: { fontSize: 58, lineHeight: 66, color: color.surface, fontWeight: '900', letterSpacing: -2 }, overdue: { color: '#FDE68A', fontSize: 13, lineHeight: 19, fontWeight: '700' }, expected: { color: color.ice, fontSize: 14 }, progressTrack: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.2)', overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 4, backgroundColor: color.cyan }, next: { color: color.ice, fontSize: 14 }, quickActions: { flexDirection: 'row', gap: space.sm }, quick: { flex: 1, minHeight: 46, borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,.25)', alignItems: 'center', justifyContent: 'center' }, quickText: { color: color.ice, fontSize: 13, fontWeight: '800' }, delayChoices: { flexDirection: 'row', gap: space.sm, marginVertical: space.lg }, delayChoice: { flex: 1, minHeight: 48, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted }, delayText: { color: color.deepBlue, fontWeight: '900' },
-  comparison: { gap: space.md, borderWidth: 2, borderColor: color.cyan }, comparisonHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, comparisonLabels: { flexDirection: 'row', paddingTop: space.sm }, comparisonValueLabel: { width: 76, textAlign: 'right', color: color.textMuted, fontSize: 11, fontWeight: '800' }, comparisonRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center' }, comparisonDivider: { borderBottomWidth: 1, borderBottomColor: color.border }, comparisonLabel: { flex: 1, color: color.textMuted, fontSize: 13, fontWeight: '700' }, comparisonBefore: { width: 76, textAlign: 'right', color: color.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, comparisonAfter: { width: 76, textAlign: 'right', color: color.deepBlue, fontSize: 16, fontWeight: '900' }, comparisonReason: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: color.surfaceMuted }, comparisonActions: { flexDirection: 'row', gap: space.sm }, decisionMessage: { ...type.caption, textAlign: 'center', color: color.deepBlue, fontWeight: '700' },
-  timelineHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, link: { color: color.deepBlue, fontWeight: '800' }, sessionStatus: { textAlign: 'center', color: color.textMuted, fontSize: 12 }, sessionError: { color: color.danger },
-});
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
+  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, statusLabel: { ...type.caption, fontWeight: '700' }, arrival: { fontSize: 28, color: c.navy, fontWeight: '900' }, solution: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: c.warningSoft, borderRadius: radius.md, padding: space.lg }, solutionIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface }, solutionTitle: { fontSize: 14, fontWeight: '900', color: c.warning }, solutionBody: { fontSize: 13, lineHeight: 19, color: '#7C4A0A', marginTop: 2 }, currentCard: { gap: space.md }, currentLabel: { fontSize: 13, color: c.cyan, fontWeight: '900', letterSpacing: 1 }, timer: { fontSize: 58, lineHeight: 66, color: c.onInverse, fontWeight: '900', letterSpacing: -2 }, overdue: { color: '#FDE68A', fontSize: 13, lineHeight: 19, fontWeight: '700' }, expected: { color: c.onInverseMuted, fontSize: 14 }, progressTrack: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.2)', overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 4, backgroundColor: c.cyan }, next: { color: c.onInverseMuted, fontSize: 14 }, quickActions: { flexDirection: 'row', gap: space.sm }, quick: { flex: 1, minHeight: 46, borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,.25)', alignItems: 'center', justifyContent: 'center' }, quickText: { color: c.onInverseMuted, fontSize: 13, fontWeight: '800' }, delayChoices: { flexDirection: 'row', gap: space.sm, marginVertical: space.lg }, delayChoice: { flex: 1, minHeight: 48, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, delayText: { color: c.deepBlue, fontWeight: '900' },
+  comparison: { gap: space.md, borderWidth: 2, borderColor: c.cyan }, comparisonHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, comparisonLabels: { flexDirection: 'row', paddingTop: space.sm }, comparisonValueLabel: { width: 76, textAlign: 'right', color: c.textMuted, fontSize: 11, fontWeight: '800' }, comparisonRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center' }, comparisonDivider: { borderBottomWidth: 1, borderBottomColor: c.border }, comparisonLabel: { flex: 1, color: c.textMuted, fontSize: 13, fontWeight: '700' }, comparisonBefore: { width: 76, textAlign: 'right', color: c.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, comparisonAfter: { width: 76, textAlign: 'right', color: c.deepBlue, fontSize: 16, fontWeight: '900' }, comparisonReason: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted }, comparisonActions: { flexDirection: 'row', gap: space.sm }, decisionMessage: { ...type.caption, textAlign: 'center', color: c.deepBlue, fontWeight: '700' },
+  timelineHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, link: { color: c.deepBlue, fontWeight: '800' }, sessionStatus: { textAlign: 'center', color: c.textMuted, fontSize: 12 }, sessionError: { color: c.danger },
+  });
+};

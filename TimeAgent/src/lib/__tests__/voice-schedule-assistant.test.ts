@@ -12,9 +12,12 @@ import {
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
   updateVoiceActivity,
+  createVoiceActivityState,
   createVoiceRequiredConfirmations,
   mergeVoiceRequiredConfirmations,
   nextRequiredVoiceClarification,
+  nextVoiceClarification,
+  resolveVoiceClarificationChoice,
   voiceScheduleMissingFields,
 } from '@/lib/voice-schedule-assistant';
 
@@ -194,6 +197,43 @@ describe('voice schedule assistant domain', () => {
     expect(shouldUseCompactClarificationOptions(['도보', '버스', '지하철'])).toBe(false);
   });
 
+  it('answers a quick choice locally so the screen does not wait for the assistant', () => {
+    expect(resolveVoiceClarificationChoice('transport', '버스')).toEqual({ transport: '버스' });
+    expect(resolveVoiceClarificationChoice('time', '15:00')).toEqual({ appointmentTime: '15:00' });
+    expect(resolveVoiceClarificationChoice('recurrence', '매주')).toEqual({ recurrence: '매주' });
+
+    const friday = new Date(2026, 7, 14, 9).getTime();
+    expect(resolveVoiceClarificationChoice('date', '내일', friday)).toEqual({ date: '8월 15일 (내일)' });
+    expect(resolveVoiceClarificationChoice('date', '오늘', friday)).toEqual({ date: '8월 14일 (오늘)' });
+    expect(resolveVoiceClarificationChoice('date', '그때쯤', friday)).toBeNull();
+
+    expect(resolveVoiceClarificationChoice('transport', '직접 입력')).toBeNull();
+    expect(resolveVoiceClarificationChoice('transport', '헬리콥터')).toBeNull();
+    expect(resolveVoiceClarificationChoice('time', '오후에')).toBeNull();
+    expect(resolveVoiceClarificationChoice('destination', '강남역')).toBeNull();
+  });
+
+  it('asks for every appointment field the speaker left out, starting with the title', () => {
+    const blank = createVoiceFirstScheduleDraft(createDefaultScheduleDraft());
+    const unconfirmed = createVoiceRequiredConfirmations();
+    expect(nextVoiceClarification(blank, unconfirmed)?.field).toBe('title');
+
+    const titled = applyVoiceSchedulePatch(blank, { title: '병원' });
+    expect(nextVoiceClarification(titled, unconfirmed)?.field).toBe('date');
+
+    const dated = applyVoiceSchedulePatch(titled, { date: '8월 14일 (내일)' });
+    expect(nextVoiceClarification(dated, unconfirmed)?.field).toBe('time');
+
+    const confirmedTime = mergeVoiceRequiredConfirmations(unconfirmed, { appointmentTime: '15:00' });
+    expect(nextVoiceClarification(dated, confirmedTime)?.field).toBe('destination');
+
+    const confirmedPlace = mergeVoiceRequiredConfirmations(confirmedTime, { destination: '강남역' });
+    expect(nextVoiceClarification(dated, confirmedPlace)?.field).toBe('transport');
+
+    const confirmedAll = mergeVoiceRequiredConfirmations(confirmedPlace, { transport: '버스' });
+    expect(nextVoiceClarification(dated, confirmedAll)).toBeNull();
+  });
+
   it('turns an extracted preparation duration into an explicit routine when no routine list is supplied', () => {
     const draft = createVoiceFirstScheduleDraft(createDefaultScheduleDraft());
     const applied = applyVoiceSchedulePatch(draft, { preparationMinutes: 30 });
@@ -282,5 +322,75 @@ describe('voice schedule assistant domain', () => {
     expect(shouldSubmitVoiceRecording(silentActivity, 350, true)).toBe(true);
     expect(shouldSubmitVoiceRecording(silentActivity, 2_000, false)).toBe(false);
     expect(shouldSubmitVoiceRecording({ ...silentActivity, heardSpeech: true }, 2_000, false)).toBe(true);
+  });
+
+  it('ends the turn in a noisy room where ambient sound stays above the absolute speech threshold', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), -42, 400);
+    activity = updateVoiceActivity(activity.state, -42, 700);
+    expect(activity.shouldFinish).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, -16, 900);
+    activity = updateVoiceActivity(activity.state, -14, 1_100);
+    expect(activity.state.heardSpeech).toBe(true);
+
+    activity = updateVoiceActivity(activity.state, -42, 1_400);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -42, 2_150);
+    expect(activity.shouldFinish).toBe(true);
+  });
+
+  it('detects speech that never crosses the absolute threshold by comparing it to the measured noise floor', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), -78, 400);
+    activity = updateVoiceActivity(activity.state, -76, 600);
+    expect(activity.state.heardSpeech).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, -62, 800);
+    activity = updateVoiceActivity(activity.state, -61, 1_000);
+    expect(activity.state.heardSpeech).toBe(true);
+
+    activity = updateVoiceActivity(activity.state, -77, 1_200);
+    activity = updateVoiceActivity(activity.state, -77, 1_950);
+    expect(activity.shouldFinish).toBe(true);
+  });
+
+  it('submits the recording when the device never reports metering so no manual finish is needed', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), undefined, 400);
+    expect(activity.shouldFinish).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, 400)).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, undefined, 2_000);
+    expect(activity.shouldFinish).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, undefined, 4_400);
+    expect(activity.shouldFinish).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 4_400)).toBe(true);
+  });
+
+  it('always ends a turn within the maximum listening window so no manual finish is needed', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), -20, 400);
+    activity = updateVoiceActivity(activity.state, -20, 600);
+    expect(activity.state.heardSpeech).toBe(true);
+
+    activity = updateVoiceActivity(activity.state, -20, 14_900);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -20, 15_000);
+    expect(activity.shouldFinish).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(true);
+  });
+
+  it('restarts instead of submitting when the maximum window passes without any speech', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), -80, 400);
+    activity = updateVoiceActivity(activity.state, -80, 15_000);
+
+    expect(activity.shouldFinish).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(false);
+  });
+
+  it('keeps trusting metering once the device reports it after a silent start', () => {
+    let activity = updateVoiceActivity(createVoiceActivityState(), undefined, 400);
+    activity = updateVoiceActivity(activity.state, -70, 2_000);
+    activity = updateVoiceActivity(activity.state, -70, 5_000);
+    expect(activity.shouldFinish).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, 5_000)).toBe(false);
   });
 });

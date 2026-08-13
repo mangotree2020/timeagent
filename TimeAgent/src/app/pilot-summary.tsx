@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, IconButton } from '@/components/app-icon';
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
-import { color, radius, space } from '@/constants/design';
+import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { AnalyticsStore, createEmptyAnalyticsStore, loadAnalyticsStore, recordAnalyticsEvent } from '@/lib/analytics';
 import { PlusInterestState, createEmptyPlusInterestState, loadPlusInterest } from '@/lib/monetization';
 import {
@@ -18,6 +19,9 @@ import {
 type ScreenStatus = 'loading' | 'ready' | 'sharing' | 'awaiting-confirmation' | 'shared' | 'cancelled' | 'error';
 
 export default function PilotSummaryScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const [analytics, setAnalytics] = useState<AnalyticsStore>(createEmptyAnalyticsStore);
   const [interest, setInterest] = useState<PlusInterestState>(createEmptyPlusInterestState);
   const [segment, setSegment] = useState<PilotSegment | null>(null);
@@ -153,7 +157,7 @@ export default function PilotSummaryScreen() {
         onPress={() => setConsented((current) => !current)}
         style={({ pressed }) => [styles.consent, consented && styles.consentChecked, pressed && styles.pressed]}
       >
-        <View style={[styles.checkbox, consented && styles.checkboxChecked]}>{consented ? <AppIcon name="check" size={18} iconColor={color.surface} /> : null}</View>
+        <View style={[styles.checkbox, consented && styles.checkboxChecked]}>{consented ? <AppIcon name="check" size={18} iconColor={c.surface} /> : null}</View>
         <Text style={[type.body, styles.flex]}>공유할 집계값과 제외 정보를 확인했습니다.</Text>
       </Pressable>
 
@@ -201,6 +205,7 @@ export default function PilotSummaryScreen() {
 }
 
 function Metric({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+  const styles = useThemedStyles(createStyles);
   return <View style={[styles.metric, last && styles.metricLast]}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>;
 }
 
@@ -208,36 +213,39 @@ function formatRate(value: number | null) {
   return value === null ? '측정 대기' : `${value}%`;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
   flex: { flex: 1 },
   hero: { gap: space.md },
-  heroTitle: { color: color.surface, fontSize: 28, lineHeight: 35, fontWeight: '900' },
-  heroBody: { color: color.ice, fontSize: 16, lineHeight: 24 },
+  heroTitle: { color: c.onInverse, fontSize: 28, lineHeight: 35, fontWeight: '900' },
+  heroBody: { color: c.onInverseMuted, fontSize: 16, lineHeight: 24 },
   section: { gap: space.xs },
   segmentList: { gap: space.sm },
-  segment: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
-  segmentSelected: { borderWidth: 2, borderColor: color.deepBlue, backgroundColor: '#F3FAFD' },
+  segment: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+  segmentSelected: { borderWidth: 2, borderColor: c.deepBlue, backgroundColor: c.selectedSoft },
   segmentTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  segmentLabel: { color: color.navy, fontSize: 16, lineHeight: 23, fontWeight: '900' },
-  selectedText: { color: color.deepBlue, fontSize: 12, fontWeight: '900' },
-  radioOuter: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: color.deepBlue, alignItems: 'center', justifyContent: 'center' },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: color.deepBlue },
+  segmentLabel: { color: c.navy, fontSize: 16, lineHeight: 23, fontWeight: '900' },
+  selectedText: { color: c.deepBlue, fontSize: 12, fontWeight: '900' },
+  radioOuter: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.deepBlue, alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: c.deepBlue },
   pressed: { opacity: 0.72 },
   metrics: { paddingVertical: 4 },
-  metric: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
+  metric: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   metricLast: { borderBottomWidth: 0 },
-  metricLabel: { flex: 1, color: color.textMuted, fontSize: 14, lineHeight: 20 },
-  metricValue: { maxWidth: '48%', color: color.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900', textAlign: 'right' },
-  privacy: { gap: space.md, backgroundColor: color.surfaceMuted },
+  metricLabel: { flex: 1, color: c.textMuted, fontSize: 14, lineHeight: 20 },
+  metricValue: { maxWidth: '48%', color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900', textAlign: 'right' },
+  privacy: { gap: space.md, backgroundColor: c.surfaceMuted },
   privacyHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  consent: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
-  consentChecked: { borderColor: color.deepBlue, backgroundColor: '#F3FAFD' },
-  checkbox: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: color.deepBlue, alignItems: 'center', justifyContent: 'center' },
-  checkboxChecked: { backgroundColor: color.deepBlue },
-  errorCard: { gap: space.sm, borderColor: color.danger, backgroundColor: color.dangerSoft },
-  errorTitle: { ...type.heading, color: color.danger },
-  confirmCard: { gap: space.md, borderColor: color.deepBlue, backgroundColor: '#F3FAFD' },
+  consent: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+  consentChecked: { borderColor: c.deepBlue, backgroundColor: c.selectedSoft },
+  checkbox: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: c.deepBlue, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: c.deepBlue },
+  errorCard: { gap: space.sm, borderColor: c.danger, backgroundColor: c.dangerSoft },
+  errorTitle: { ...type.heading, color: c.danger },
+  confirmCard: { gap: space.md, borderColor: c.deepBlue, backgroundColor: c.selectedSoft },
   confirmActions: { flexDirection: 'row', gap: space.sm },
   status: { ...type.caption, textAlign: 'center', paddingHorizontal: space.md },
-  errorText: { color: color.danger },
-});
+  errorText: { color: c.danger },
+  });
+};

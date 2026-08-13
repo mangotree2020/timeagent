@@ -202,6 +202,39 @@ export function getNextAppointmentAt(clock: string, now = Date.now()) {
   return next.getTime();
 }
 
+export type MapRegion = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+/** Camera frame that keeps a whole path on screen, with a minimum span so one point still reads. */
+export function mapRegionForPath(path: Coordinate[], { minimumDelta = 0.006, padding = 1.6 } = {}): MapRegion {
+  const points = path.length ? path : [{ latitude: 37.5665, longitude: 126.9780 }];
+  const latitudes = points.map((point) => point.latitude);
+  const longitudes = points.map((point) => point.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta: Math.max(minimumDelta, (maxLatitude - minLatitude) * padding),
+    longitudeDelta: Math.max(minimumDelta, (maxLongitude - minLongitude) * padding),
+  };
+}
+
+/** Text form of a route, so the information does not live only in the drawn line. */
+export function describeRoutePlan(route: RoutePlan) {
+  return {
+    distanceText: formatJourneyDistance(route.distanceMeters),
+    durationText: `약 ${Math.max(1, Math.round(route.durationSeconds / 60))}분`,
+    sourceText: route.provider === 'tmap' ? 'TMAP 실제 경로' : '예상 직선 경로',
+  };
+}
+
 export function formatJourneyDistance(distanceMeters: number) {
   const safe = Math.max(0, Math.round(distanceMeters));
   if (safe < 1000) return `${safe}m`;

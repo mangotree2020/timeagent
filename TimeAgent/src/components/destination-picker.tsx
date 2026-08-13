@@ -3,10 +3,11 @@ import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Button, Card, type } from '@/components/app-ui';
+import { Button, Card, appType, useAppType } from '@/components/app-ui';
 import { AppIcon } from '@/components/app-icon';
 import { DestinationMap } from '@/components/destination-map';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { Coordinate, GeocodedPlace } from '@/lib/journey';
 import { createConfiguredMobilityProvider, MobilityApiError } from '@/lib/mobility-api';
 import { displayAddress, loadSavedPlaces, rememberPlace, SavedPlace } from '@/lib/saved-places';
@@ -29,6 +30,9 @@ type DestinationPickerProps = {
 const DEFAULT_MAP_CENTER = { latitude: 35.1796, longitude: 129.0756 };
 
 export function DestinationPicker({ value, onChange, title = '목적지 찾기', autoSearch = false, autoSelectExact = false, showSelectedMap = false }: DestinationPickerProps) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const provider = useMemo(() => {
     try { return createConfiguredMobilityProvider(); } catch { return null; }
   }, []);
@@ -167,7 +171,7 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
     <View style={styles.titleRow}><View style={styles.icon}><AppIcon name="location" size={19} /></View><View style={styles.titleCopy}><Text style={styles.title}>{title}</Text><Text style={type.caption}>장소명을 검색하거나 지도에서 위치를 눌러 지정하세요.</Text></View></View>
 
     {value.destinationCoordinate ? <View accessibilityLiveRegion="polite" style={styles.selected}>
-      <AppIcon name="check" size={18} iconColor={color.success} />
+      <AppIcon name="check" size={18} iconColor={c.success} />
       <View style={styles.flex}><Text style={styles.selectedName}>{value.destination}</Text><Text style={styles.address}>{value.destinationAddress}</Text></View>
     </View> : null}
 
@@ -178,9 +182,9 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
     <View style={styles.section}>
       <Text style={styles.label}>장소명 검색</Text>
-      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={color.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null }); setStatus('idle'); setPlaces([]); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={color.surface} /></Pressable></View>
+      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={c.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null }); setStatus('idle'); setPlaces([]); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={c.surface} /></Pressable></View>
       {message ? <Text accessibilityLiveRegion="polite" style={[styles.message, status === 'error' && styles.error]}>{message}</Text> : null}
-      {places.map((place) => <Pressable key={`${place.name}-${place.coordinate.latitude}-${place.coordinate.longitude}`} accessibilityRole="button" accessibilityLabel={`${place.name}, ${displayAddress(place)} 선택`} onPress={() => void selectPlace(place)} style={styles.result}><View style={styles.resultIcon}><AppIcon name="location" size={18} /></View><View style={styles.flex}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.address}>{displayAddress(place)}</Text></View><AppIcon name="chevronRight" size={18} iconColor={color.textMuted} /></Pressable>)}
+      {places.map((place) => <Pressable key={`${place.name}-${place.coordinate.latitude}-${place.coordinate.longitude}`} accessibilityRole="button" accessibilityLabel={`${place.name}, ${displayAddress(place)} 선택`} onPress={() => void selectPlace(place)} style={styles.result}><View style={styles.resultIcon}><AppIcon name="location" size={18} /></View><View style={styles.flex}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.address}>{displayAddress(place)}</Text></View><AppIcon name="chevronRight" size={18} iconColor={c.textMuted} /></Pressable>)}
     </View>
 
     <Button label={showMap ? '지도 닫기' : '지도에서 직접 지정'} variant="secondary" onPress={openMap} />
@@ -197,25 +201,28 @@ function normalizePlaceName(value: string) {
   return value.replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
   card: { gap: space.lg, backgroundColor: '#E8F7FB', padding: space.lg },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface },
-  titleCopy: { flex: 1, gap: 2 }, title: { color: color.deepBlue, fontSize: 16, lineHeight: 22, fontWeight: '900' },
-  selected: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: color.successSoft, borderWidth: 1, borderColor: color.success },
-  selectedName: { color: color.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  section: { gap: space.sm }, label: { fontSize: 13, color: color.textMuted, fontWeight: '800' },
+  icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface },
+  titleCopy: { flex: 1, gap: 2 }, title: { color: c.deepBlue, fontSize: 16, lineHeight: 22, fontWeight: '900' },
+  selected: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: c.successSoft, borderWidth: 1, borderColor: c.success },
+  selectedName: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  section: { gap: space.sm }, label: { fontSize: 13, color: c.textMuted, fontWeight: '800' },
   savedList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  savedChip: { minHeight: 44, maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border },
-  savedText: { flexShrink: 1, color: color.deepBlue, fontSize: 13, fontWeight: '800' },
+  savedChip: { minHeight: 44, maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  savedText: { flexShrink: 1, color: c.deepBlue, fontSize: 13, fontWeight: '800' },
   searchRow: { flexDirection: 'row', gap: space.sm },
-  input: { flex: 1, minHeight: 48, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, fontSize: 16, color: color.text },
-  searchButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: color.deepBlue },
+  input: { flex: 1, minHeight: 48, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, fontSize: 16, color: c.text },
+  searchButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: c.deepBlue },
   disabled: { opacity: 0.45 }, pressed: { opacity: 0.75 },
-  message: { ...type.caption, color: color.deepBlue, fontWeight: '700' }, error: { color: color.danger },
-  result: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: color.surface, borderWidth: 1, borderColor: color.border },
-  resultIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: color.ice },
-  resultName: { color: color.navy, fontSize: 14, lineHeight: 20, fontWeight: '900' },
-  address: { color: color.textMuted, fontSize: 13, lineHeight: 18 }, flex: { flex: 1 },
-  mapSection: { gap: space.md }, mapConfirm: { gap: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: color.surface },
-});
+  message: { ...type.caption, color: c.deepBlue, fontWeight: '700' }, error: { color: c.danger },
+  result: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  resultIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice },
+  resultName: { color: c.navy, fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  address: { color: c.textMuted, fontSize: 13, lineHeight: 18 }, flex: { flex: 1 },
+  mapSection: { gap: space.md }, mapConfirm: { gap: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: c.surface },
+  });
+};

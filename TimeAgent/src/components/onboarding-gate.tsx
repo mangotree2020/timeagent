@@ -4,13 +4,17 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { AppLogo } from '@/components/app-logo';
 import { OnboardingFlow } from '@/components/onboarding-flow';
-import { type } from '@/components/app-ui';
-import { color, space } from '@/constants/design';
+import { useAppType } from '@/components/app-ui';
+import { space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { completeOnboarding, hasCompletedOnboarding } from '@/lib/onboarding';
 
 type OnboardingStatus = 'checking' | 'required' | 'complete';
 
 export function OnboardingGate({ children }: PropsWithChildren) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const [status, setStatus] = useState<OnboardingStatus>('checking');
 
   useEffect(() => {
@@ -26,7 +30,7 @@ export function OnboardingGate({ children }: PropsWithChildren) {
   }, []);
 
   if (status === 'checking') {
-    return <View accessibilityLabel="첫 실행 확인 중" style={styles.loading}><AppLogo size={42} /><ActivityIndicator color={color.deepBlue} /><Text style={type.caption}>첫 실행을 준비하고 있어요.</Text></View>;
+    return <View accessibilityLabel="첫 실행 확인 중" style={styles.loading}><AppLogo size={42} /><ActivityIndicator color={c.deepBlue} /><Text style={type.caption}>첫 실행을 준비하고 있어요.</Text></View>;
   }
 
   if (status === 'required') {
@@ -36,6 +40,6 @@ export function OnboardingGate({ children }: PropsWithChildren) {
   return children;
 }
 
-const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg, backgroundColor: color.background },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg, backgroundColor: c.background },
 });

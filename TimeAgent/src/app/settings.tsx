@@ -4,9 +4,9 @@ import { PropsWithChildren, useCallback, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
-import { Button, Card, Header, Screen, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, appType, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName } from '@/components/app-icon';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
 import {
   AnalyticsSummary,
   clearAnalyticsStore,
@@ -37,7 +37,7 @@ import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
 import { PreparationGender, preparationGenderLabel } from '@/lib/preparation-profile';
 import { useAuth } from '@/state/auth-context';
 import { useSchedule } from '@/state/schedule-context';
-import { useAppTheme } from '@/state/theme-context';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 
 type DetailKey = 'appearance' | 'location' | 'transport' | 'buffer' | 'routine' | 'tone' | 'gender';
 
@@ -50,6 +50,8 @@ const appearanceOptions: AppColorMode[] = ['light', 'dark'];
 const emptyPlusEligibility: PlusOfferEligibility = { eligible: false, completedSchedules: 0, remainingSchedules: 3 };
 
 export default function SettingsScreen() {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   const { setMode } = useAppTheme();
   const { deleteAccount, error: authError, signOut, status: authStatus, user } = useAuth();
   const { personalizationProfile, personalizationStatus, resetPersonalization, setPersonalizationEnabled } = useSchedule();
@@ -138,14 +140,14 @@ export default function SettingsScreen() {
           <View style={styles.accountAction}>
             <Button label={authStatus === 'signingOut' ? '로그아웃 중…' : 'Google 계정 로그아웃'} variant="secondary" disabled={authStatus === 'signingOut'} onPress={() => void signOut()} />
             {!showAccountDeletion ? (
-              <Button label="계정 연결 및 기기 데이터 삭제" variant="ghost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
+              <Button label="계정 연결 및 기기 데이터 삭제" variant="dangerGhost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
             ) : (
               <View style={styles.resetPanel} accessibilityRole="alert">
                 <Text style={type.body}>TimeAgent와 Google 계정 연결을 해제하고 이 기기의 일정·위치·학습·설정을 모두 삭제할까요?</Text>
                 <Text style={type.caption}>삭제 후 복구할 수 없으며 Google 계정 자체와 기기 캘린더 원본은 삭제하지 않습니다.</Text>
                 <View style={styles.resetActions}>
                   <View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => setShowAccountDeletion(false)} /></View>
-                  <View style={{ flex: 1 }}><Button label={authStatus === 'deleting' ? '삭제 중…' : '연결 및 데이터 삭제'} disabled={authStatus === 'deleting'} onPress={() => void deleteAccount()} /></View>
+                  <View style={{ flex: 1 }}><Button label={authStatus === 'deleting' ? '삭제 중…' : '연결 및 데이터 삭제'} variant="danger" disabled={authStatus === 'deleting'} onPress={() => void deleteAccount()} /></View>
                 </View>
               </View>
             )}
@@ -254,14 +256,18 @@ export default function SettingsScreen() {
 }
 
 function Section({ label, children }: PropsWithChildren<{ label: string }>) {
+  const styles = useThemedStyles(createStyles);
   return <View style={{ gap: space.sm }}><Text style={styles.section}>{label}</Text><Card style={{ paddingVertical: 4 }}>{children}</Card></View>;
 }
 
 function DetailPanel({ children }: PropsWithChildren) {
+  const styles = useThemedStyles(createStyles);
   return <View style={styles.detailPanel}>{children}</View>;
 }
 
 function MetricRow({ label, value, detail }: { label: string; value: string; detail: string }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return <View style={styles.metricRow}><View style={{ flex: 1 }}><Text style={styles.metricLabel}>{label}</Text><Text style={type.caption}>{detail}</Text></View><Text style={styles.metricValue}>{value}</Text></View>;
 }
 
@@ -284,6 +290,8 @@ function ChoicePanel<T extends string | number>({
   description?: string;
   compact?: boolean;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const type = useAppType();
   return (
     <DetailPanel>
       {description ? <Text style={type.bodyMuted}>{description}</Text> : null}
@@ -323,12 +331,15 @@ function Setting({
   onPress?: () => void;
   expanded?: boolean;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const content = (
     <>
       <View style={styles.icon}><AppIcon name={icon} size={20} /></View>
       <View style={{ flex: 1 }}><Text style={type.body}>{title}</Text><Text style={type.caption}>{detail}</Text></View>
-      {onToggle ? <Switch accessibilityLabel={title} value={toggle} onValueChange={onToggle} trackColor={{ false: color.border, true: color.cyan }} thumbColor={color.surface} /> : null}
-      {onPress ? <AppIcon name="chevronRight" size={20} iconColor={color.textMuted} style={[styles.arrow, expanded && styles.arrowExpanded]} /> : null}
+      {onToggle ? <Switch accessibilityLabel={title} value={toggle} onValueChange={onToggle} trackColor={{ false: c.border, true: c.cyan }} thumbColor={c.surface} /> : null}
+      {onPress ? <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} style={[styles.arrow, expanded && styles.arrowExpanded]} /> : null}
     </>
   );
 
@@ -346,42 +357,45 @@ function Setting({
   return <View style={styles.setting}>{content}</View>;
 }
 
-const styles = StyleSheet.create({
-  section: { fontSize: 14, color: color.textMuted, fontWeight: '800', marginLeft: 4 },
-  setting: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
+const createStyles = (c: AppPalette) => {
+  const type = appType(c);
+  return StyleSheet.create({
+  section: { fontSize: 14, color: c.textMuted, fontWeight: '800', marginLeft: 4 },
+  setting: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   pressed: { opacity: 0.7 },
-  icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surfaceMuted },
+  icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted },
   arrow: { transform: [{ rotate: '0deg' }] },
   arrowExpanded: { transform: [{ rotate: '90deg' }] },
-  detailPanel: { paddingHorizontal: space.sm, paddingVertical: space.md, gap: space.sm, backgroundColor: color.surfaceMuted, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
-  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, paddingHorizontal: space.md, fontSize: 16, color: color.text },
+  detailPanel: { paddingHorizontal: space.sm, paddingVertical: space.md, gap: space.sm, backgroundColor: c.surfaceMuted, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: space.md, fontSize: 16, color: c.text },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   choicesCompact: { flexWrap: 'nowrap', gap: space.xs },
-  choice: { minHeight: 44, borderRadius: radius.pill, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, paddingHorizontal: space.lg, alignItems: 'center', justifyContent: 'center' },
+  choice: { minHeight: 44, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: space.lg, alignItems: 'center', justifyContent: 'center' },
   choiceCompact: { flex: 1, minWidth: 0, paddingHorizontal: 2 },
-  choiceActive: { backgroundColor: color.deepBlue, borderColor: color.deepBlue },
-  choiceText: { color: color.textMuted, fontSize: 13, fontWeight: '800' },
+  choiceActive: { backgroundColor: c.deepBlue, borderColor: c.deepBlue },
+  choiceText: { color: c.textMuted, fontSize: 13, fontWeight: '800' },
   choiceTextCompact: { fontSize: 12 },
-  choiceTextActive: { color: color.surface },
-  learningRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
-  learningLabel: { color: color.navy, fontSize: 15, fontWeight: '800' },
-  learningAverage: { color: color.deepBlue, fontSize: 14, fontWeight: '900' },
-  metricIntro: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
-  metricRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.border },
-  metricLabel: { color: color.navy, fontSize: 14, fontWeight: '800' },
-  metricValue: { maxWidth: '45%', color: color.deepBlue, fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  choiceTextActive: { color: c.onInverse },
+  learningRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: space.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  learningLabel: { color: c.navy, fontSize: 15, fontWeight: '800' },
+  learningAverage: { color: c.deepBlue, fontSize: 14, fontWeight: '900' },
+  metricIntro: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  metricRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  metricLabel: { color: c.navy, fontSize: 14, fontWeight: '800' },
+  metricValue: { maxWidth: '45%', color: c.deepBlue, fontSize: 14, fontWeight: '900', textAlign: 'right' },
   emptyLearning: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.lg },
   learningStatus: { ...type.caption, paddingHorizontal: space.md, paddingBottom: space.md },
   resetPanel: { gap: space.sm, paddingTop: space.sm },
   resetActions: { flexDirection: 'row', gap: space.sm },
   saveStatus: { ...type.caption, textAlign: 'center' },
-  error: { color: color.danger },
+  error: { color: c.danger },
   data: { ...type.caption, textAlign: 'center', paddingHorizontal: space.xl },
   plusNote: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.md },
   accountRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm },
-  profile: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.surfaceMuted },
-  profileFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.ice, alignItems: 'center', justifyContent: 'center' },
-  profileInitial: { color: color.deepBlue, fontSize: 20, fontWeight: '900' },
-  accountName: { ...type.body, color: color.navy, fontWeight: '800' },
+  profile: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.surfaceMuted },
+  profileFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.ice, alignItems: 'center', justifyContent: 'center' },
+  profileInitial: { color: c.deepBlue, fontSize: 20, fontWeight: '900' },
+  accountName: { ...type.body, color: c.navy, fontWeight: '800' },
   accountAction: { padding: space.sm, gap: space.sm },
-});
+  });
+};

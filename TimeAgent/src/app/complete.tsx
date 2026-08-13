@@ -1,12 +1,16 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, Header, Screen, StatusPill, type } from '@/components/app-ui';
+import { Button, Card, Header, Screen, StatusPill, useAppType } from '@/components/app-ui';
 import { AppIcon } from '@/components/app-icon';
-import { color, space } from '@/constants/design';
+import { space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { useSchedule } from '@/state/schedule-context';
 
 export default function CompleteScreen() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const type = useAppType();
   const {
     lastPersonalizationLearnedCount,
     personalizationProfile,
@@ -22,7 +26,7 @@ export default function CompleteScreen() {
     <Screen>
       <Header title="일정 완료" eyebrow="오늘도 수고했어요" />
       <Card dark style={styles.hero}>
-        <View style={styles.successIcon}><AppIcon name="success" size={28} iconColor={color.cyan} /></View>
+        <View style={styles.successIcon}><AppIcon name="success" size={28} iconColor={c.cyan} /></View>
         <StatusPill label="실제 시간 기록 완료" tone="success" />
         <Text style={styles.big}>도착 확인</Text>
         <Text style={styles.heroBody}>이번 일정의 실제 소요 시간을 저장했어요.</Text>
@@ -52,19 +56,19 @@ export default function CompleteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: AppPalette) => StyleSheet.create({
   hero: { gap: space.md, alignItems: 'flex-start' },
   successIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,180,216,.16)' },
-  big: { fontSize: 42, color: color.surface, fontWeight: '900' },
-  heroBody: { fontSize: 16, color: color.ice },
-  coach: { flexDirection: 'row', gap: space.md, backgroundColor: '#E6F6FB' },
-  coachIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: color.surface },
-  coachTitle: { fontSize: 15, color: color.deepBlue, fontWeight: '900', marginBottom: 4 },
+  big: { fontSize: 42, color: c.onInverse, fontWeight: '900' },
+  heroBody: { fontSize: 16, color: c.onInverseMuted },
+  coach: { flexDirection: 'row', gap: space.md, backgroundColor: c.infoSoft },
+  coachIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface },
+  coachTitle: { fontSize: 15, color: c.deepBlue, fontWeight: '900', marginBottom: 4 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md, paddingVertical: 14 },
-  divider: { borderBottomWidth: 1, borderBottomColor: color.border },
-  value: { color: color.navy, fontSize: 15, fontWeight: '900' },
-  difference: { color: color.success, fontSize: 12, fontWeight: '800', marginTop: 3 },
-  slower: { color: color.warning },
+  divider: { borderBottomWidth: 1, borderBottomColor: c.border },
+  value: { color: c.navy, fontSize: 15, fontWeight: '900' },
+  difference: { color: c.success, fontSize: 12, fontWeight: '800', marginTop: 3 },
+  slower: { color: c.warning },
   learningCard: { gap: space.md },
   learningHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
 });

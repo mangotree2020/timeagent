@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { AppLogo } from '@/components/app-logo';
 import { Button } from '@/components/app-ui';
-import { color, radius, space } from '@/constants/design';
+import { radius, space } from '@/constants/design';
+import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 
 type OnboardingPage = {
   title: string;
@@ -37,6 +38,7 @@ const pages: OnboardingPage[] = [
 ];
 
 export function OnboardingFlow({ onComplete }: { onComplete: () => Promise<void> | void }) {
+  const styles = useThemedStyles(createStyles);
   const [page, setPage] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: () => Promise<void>
 }
 
 function TimeVisual() {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.timeWheel}>
       <Text style={styles.timeFaded}>6:59</Text>
@@ -112,6 +115,7 @@ function TimeVisual() {
 }
 
 function ReplanVisual() {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.replanWrap}>
       <View style={styles.delayCard}>
@@ -128,27 +132,30 @@ function ReplanVisual() {
 }
 
 function ChangeRow({ before, after, success = false }: { before: string; after: string; success?: boolean }) {
+  const styles = useThemedStyles(createStyles);
   return <View style={styles.changeRow}><Text style={styles.changeBefore}>{before}</Text><Text style={[styles.changeAfter, success && styles.changeSuccess]}>→ {after}</Text></View>;
 }
 
 function VoiceVisual() {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
   return (
     <View style={styles.voiceWrap}>
-      <View style={styles.voiceHalo}><View style={styles.voiceButton}><AppIcon name="voice" size={52} iconColor={color.surface} strokeWidth={2.1} /></View></View>
+      <View style={styles.voiceHalo}><View style={styles.voiceButton}><AppIcon name="voice" size={52} iconColor={c.surface} strokeWidth={2.1} /></View></View>
       <View style={styles.speechBubble}><Text style={styles.speechText}>“토요일 7시에 홍대에서 지수랑 저녁”</Text></View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.navy },
+const createStyles = (c: AppPalette) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.surfaceInverse },
   container: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center', paddingHorizontal: space.xl, paddingTop: space.sm, paddingBottom: space.md, gap: space.md },
   topBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   skipButton: { minWidth: 72, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
   skip: { color: '#AAB4C6', fontSize: 14, lineHeight: 20, fontWeight: '800' },
   visual: { flex: 1, minHeight: 250, maxHeight: 500, alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg, backgroundColor: '#0D1428', borderWidth: 1, borderColor: '#1C2742', padding: space.xl, overflow: 'hidden' },
   copy: { minHeight: 126, alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingHorizontal: space.sm },
-  title: { color: color.surface, fontSize: 28, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, textAlign: 'center' },
+  title: { color: c.onInverse, fontSize: 28, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, textAlign: 'center' },
   description: { color: '#AAB4C6', fontSize: 15, lineHeight: 22, textAlign: 'center' },
   footer: { gap: space.sm },
   dots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
@@ -158,7 +165,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.68 },
   timeWheel: { alignItems: 'center', justifyContent: 'center', gap: 4 },
   timeFaded: { color: '#44506A', fontSize: 35, lineHeight: 44, fontWeight: '500' },
-  timeMain: { color: color.surface, fontSize: 70, lineHeight: 78, fontWeight: '900', letterSpacing: -2 },
+  timeMain: { color: c.onInverse, fontSize: 70, lineHeight: 78, fontWeight: '900', letterSpacing: -2 },
   timeGuide: { marginTop: space.lg, flexDirection: 'row', alignItems: 'center', gap: 8 },
   guideDotActive: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#4C8BF5' },
   guideDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#203052' },
@@ -167,7 +174,7 @@ const styles = StyleSheet.create({
   delayCard: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: space.md, borderRadius: radius.md, padding: space.lg, backgroundColor: '#171F37' },
   warningDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#FF9330' },
   flex: { flex: 1 },
-  delayTitle: { color: color.surface, fontSize: 16, lineHeight: 22, fontWeight: '900' },
+  delayTitle: { color: c.onInverse, fontSize: 16, lineHeight: 22, fontWeight: '900' },
   delayBody: { color: '#8995AB', fontSize: 13, lineHeight: 18 },
   changeCard: { gap: space.md, borderRadius: radius.md, padding: space.lg, backgroundColor: '#171F37' },
   changeRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
