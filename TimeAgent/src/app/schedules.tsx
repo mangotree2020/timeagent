@@ -38,7 +38,7 @@ export default function SchedulesScreen() {
   const [snapshot, setSnapshot] = useState<DeviceCalendarSnapshot | null>(fixtureMode ? createCalendarPreviewFixture() : null);
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<DeviceCalendarEvent | null>(null);
-  const { beginDraftWith, confirmedPlans, confirmedPlansStatus, selectConfirmedPlan } = useSchedule();
+  const { beginDraftWith, confirmedPlans, confirmedPlansStatus, deleteConfirmedPlan, selectConfirmedPlan } = useSchedule();
   const upcomingPlans = confirmedPlans.filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
   const closedPlans = confirmedPlans
     .filter((plan) => plan.state === 'completed' || plan.state === 'incomplete')
@@ -131,7 +131,7 @@ export default function SchedulesScreen() {
         <Text accessibilityLiveRegion="polite" style={styles.tabDescription}>{tab} 화면입니다.</Text>
 
         {tab === '내 일정' ? <UpcomingSchedules plans={upcomingPlans} status={confirmedPlansStatus} onSelect={(id) => { selectConfirmedPlan(id); router.push('/plan'); }} /> : null}
-        {tab === '지난 일정' ? <ClosedSchedules plans={closedPlans} status={confirmedPlansStatus} /> : null}
+        {tab === '지난 일정' ? <ClosedSchedules plans={closedPlans} status={confirmedPlansStatus} onDelete={deleteConfirmedPlan} /> : null}
         {tab === '캘린더' ? <CalendarPanel
           calendarView={calendarView}
           permission={permission}
@@ -172,9 +172,15 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
   </>;
 }
 
-function ClosedSchedules({ plans, status }: { plans: ConfirmedSchedulePlan[]; status: 'loading' | 'saving' | 'saved' | 'error' }) {
+function ClosedSchedules({ plans, status, onDelete }: {
+  plans: ConfirmedSchedulePlan[];
+  status: 'loading' | 'saving' | 'saved' | 'error';
+  onDelete: (id: string) => Promise<void>;
+}) {
   const styles = useThemedStyles(createStyles);
   const type = useAppType();
+  // Deleting a record cannot be undone, so the choice is confirmed on the card it belongs to.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   if (status === 'loading') return <StateCard icon="calendar" title="지난 일정을 정리하고 있어요" body="완료 여부를 확인해 종결 상태로 표시합니다." />;
   if (!plans.length) return <StateCard icon="calendar" title="종결된 일정이 없어요" body="시간이 지난 일정은 완료 또는 미완료로 이곳에 정리됩니다." />;
   return <>
@@ -189,6 +195,15 @@ function ClosedSchedules({ plans, status }: { plans: ConfirmedSchedulePlan[]; st
         <Text style={type.heading}>{item.schedule.title}</Text>
         <View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>
         <Text style={styles.meta}>{item.state === 'completed' ? item.completion ? `${item.completion.delayMinutes > 0 ? `${item.completion.delayMinutes}분 지연 기록` : '지연 없이 완료'} · 준비 행동 완료` : '준비 행동을 모두 완료한 일정' : '약속 시간까지 완료되지 않은 일정'}</Text>
+        {pendingDeleteId === item.id ? <View style={styles.closedConfirm} accessibilityRole="alert">
+          <Text style={type.bodyMuted}>이 기록을 삭제하면 되돌릴 수 없어요.</Text>
+          <View style={styles.closedActions}>
+            <View style={styles.closedAction}><Button label="삭제 취소" variant="secondary" onPress={() => setPendingDeleteId(null)} /></View>
+            <View style={styles.closedAction}><Button label="기록 삭제 확인" variant="danger" onPress={() => { setPendingDeleteId(null); void onDelete(item.id); }} /></View>
+          </View>
+        </View> : <View style={styles.closedActions}>
+          <Button label={`${item.schedule.title} 기록 삭제`} variant="dangerGhost" onPress={() => setPendingDeleteId(item.id)} />
+        </View>}
       </View>
     </Card>)}
   </>;
@@ -264,6 +279,7 @@ const createStyles = (c: AppPalette) => {
   tabDescription: { ...type.caption, marginTop: -space.md },
   planGroup: { gap: space.sm }, date: { fontSize: 14, color: c.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
+  closedConfirm: { gap: space.sm, marginTop: space.sm }, closedActions: { flexDirection: 'row', gap: space.sm, marginTop: space.sm }, closedAction: { flex: 1 },
   timeRail: { width: 54, gap: 4 }, time: { fontSize: 17, color: c.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: c.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: c.cyan, marginTop: 8, marginLeft: 18 },
   flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: c.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
   stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.ice, alignItems: 'center', justifyContent: 'center' },

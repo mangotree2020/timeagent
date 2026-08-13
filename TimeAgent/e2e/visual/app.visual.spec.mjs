@@ -636,6 +636,42 @@ test('시간이 지난 일정은 완료 또는 미완료로 종결됨', async ({
   })).toBe('incomplete');
 });
 
+test('지난 일정 기록은 확인을 거쳐 삭제됨', async ({ page }) => {
+  await page.addInitScript(({ firstPlan, now }) => {
+    const elapsed = {
+      ...firstPlan,
+      id: 'elapsed-incomplete-plan',
+      schedule: { ...firstPlan.schedule, title: '지나간 미완료 일정', appointmentTime: '11:00' },
+      appointmentAt: now - 2 * 60 * 60_000,
+      prepStartAt: now - 3 * 60 * 60_000,
+      state: 'scheduled',
+    };
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [elapsed, firstPlan] }));
+  }, { firstPlan: confirmedPlanFixture, now: fixedNow.getTime() });
+
+  await page.goto('/schedules?tab=past');
+  await expect(page.getByText('지나간 미완료 일정', { exact: true })).toBeVisible();
+
+  const remove = page.getByRole('button', { name: '지나간 미완료 일정 기록 삭제', exact: true });
+  await remove.click();
+  await expect(page.getByText('지나간 미완료 일정', { exact: true }), '확인 전에는 기록이 남아야 합니다').toBeVisible();
+
+  await page.getByRole('button', { name: '삭제 취소', exact: true }).click();
+  await expect(page.getByText('지나간 미완료 일정', { exact: true })).toBeVisible();
+
+  await remove.click();
+  const confirmColor = await page.getByRole('button', { name: '기록 삭제 확인', exact: true })
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  expect(redShare(confirmColor), '기록 삭제 확인은 경고 색이어야 합니다').toBeGreaterThan(0.45);
+
+  await page.getByRole('button', { name: '기록 삭제 확인', exact: true }).click();
+  await expect(page.getByText('지나간 미완료 일정', { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const plans = JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans;
+    return plans.some((plan) => plan.id === 'elapsed-incomplete-plan');
+  })).toBe(false);
+});
+
 test('홈 날씨 카드는 내부 상세 화면으로 이동하고 출처는 상세에서만 보여줌', async ({ page }) => {
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
   await expect(page.getByText('날씨 데이터: 기상청', { exact: true })).toHaveCount(0);
