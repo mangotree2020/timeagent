@@ -1,8 +1,14 @@
 # TimeAgent Android 출시 체크리스트
 
+## Play 개발자 계정 (2026-08-14 확인)
+
+TimeAgent가 있는 계정은 **`winddew71@gmail.com`의 개발자 계정 `신우철`**이다. 개발자 계정 ID는 `5696577809125551196`, Play 앱 ID는 `4973085320407227118`이다. Play Console 접속 시 이 Google 계정으로 로그인해야 하며 URL은 `/console/u/1/developers/5696577809125551196/app/4973085320407227118/...` 형태다.
+
+`mangotree@mangonw.com`에도 개발자 계정 `Manna & Talent`(ID `5249459948074470432`)가 있지만 **2026-02-22에 미사용 사유로 해지**됐다. 이 계정으로 로그인하면 모든 앱 URL이 정책 상태 페이지로 리다이렉트되므로 출시 작업에 사용하지 않는다. 등록 수수료는 환불되지 않으며 이 계정으로 다시 게시하려면 새 계정을 만들어야 한다. `mangotree@mangonw.com`은 앱의 공개 지원 이메일이자 테스터 계정으로만 계속 사용한다.
+
 ## 현재 준비 완료
 
-- 패키지명 `com.timeagent.app`, 현재 배포 준비 버전 `1.0.3`, versionCode `4`
+- 패키지명 `com.timeagent.app`, 현재 배포 준비 버전 `1.0.4`, versionCode `5`
 - targetSdk/compileSdk 36
 - Google 로그인, 로그아웃, 계정 연결 해제 및 기기 데이터 삭제 UI
 - 앱 내 개인정보처리방침·이용약관
@@ -111,6 +117,26 @@ npm run release:android
 - 검증: `npm run verify` 성공(TypeScript, Expo lint, Jest 35개 스위트·192/192), APK Signature Scheme v2 서명 확인
 - 테스터: `silverstar0977@gmail.com` 추가 완료, `TimeAgent 내부 테스터` 유효 목록 19명
 - Play 상태: Alpha 임시 버전 편집 화면 준비 완료. Chrome ChatGPT 확장 프로그램의 `Allow access to file URLs` 권한 활성화 후 AAB 업로드·검토 제출이 남아 있다.
+
+## 2026-08-14 Alpha 1.0.4 업로드 (파일 전송 대기)
+
+- 앱 버전을 `1.0.4`, versionCode `5`로 올리고 `npm run verify` 35개 스위트·214/214를 통과시킨 뒤 서명 AAB/APK 760개 작업 빌드를 완료했다. AAB SHA-256은 `dd9a87ea7d6bef6c7c6cba1f83fb6148cce8b5993b2ed842115515ba8bf5b6f5`, APK SHA-256은 `c4956250195fdd2ea1bb8b453d16aff17d9ef1801ac123d19cf8d9665c7075a7`이다. APK에서 `com.timeagent.app`, `1.0.4 (5)`, targetSdk 36, 업로드 키 `CN=TimeAgent Upload` 서명을 확인했다.
+- Play Console의 비공개 테스트 Alpha 트랙에는 이전 시도에서 남은 임시 버전이 있어 `새 버전 만들기` 대신 `버전 수정`으로 이어받는다. 트랙 URL은 `.../tracks/4698283980079925864`이며 현재 활성 버전은 `1 (1.0.0)`이다.
+- 업로드 화면까지는 브라우저 자동화로 도달했으나 **AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘어 파일 전송을 자동화할 수 없다.** `업로드` 버튼은 운영체제 파일 선택창을 열어 자동화 대상이 아니다. 끌어다 놓기 쉽도록 `artifacts/TimeAgent-1.0.4-versionCode5.aab`로 복사해 두었고, 사람이 직접 업로드한 뒤 출시 노트를 입력하고 검토를 제출했다.
+- 업로드 뒤 Play가 `이 App Bundle 유형과 연결된 가독화 파일이 없습니다`를 안내하지만 이 앱은 난독화를 쓰지 않으므로 무시한다. `android/app/build.gradle`의 `enableMinifyInReleaseBuilds` 기본값이 `false`이고 `android/gradle.properties`에 해당 속성이 없어 `minifyEnabled false`로 빌드되며, 매핑 파일이 생성되는 `android/app/build/outputs/mapping/release/` 디렉터리 자체가 없다. 스택 트레이스는 이미 읽을 수 있는 형태다. 용량을 줄이려고 minify를 켜려면 NAVER 지도와 Nitro Google Signin처럼 리플렉션을 쓰는 모듈의 ProGuard 규칙 검증과 실기기 재확인이 필요하다.
+- 2026-08-14 `5 (1.0.4)`를 비공개 테스트 Alpha에 `전체 출시 시작`으로 제출했다. 대시보드 업데이트 상태는 `검토 중`이며 `관리형 게시`가 사용 중지 상태라 검토를 통과하면 테스터에게 자동 배포된다. 같은 트랙에 새 버전을 올려도 프로덕션 액세스의 14일 카운트는 초기화되지 않았다.
+
+## 프로덕션 액세스 진행 상황 (2026-08-14 확인)
+
+Play Console 대시보드 기준이며 이전 기록의 테스터 7명보다 진전됐다.
+
+- [x] 비공개 테스트 버전 게시
+- [x] 12명 이상의 테스터가 비공개 테스트 참여를 선택
+- [ ] 12명 이상을 대상으로 14일 이상 비공개 테스트 실행 — **현재 1일차**
+
+`신우철`은 개인 계정이라 이 요건이 적용된다. 참여 인원이 12명 아래로 떨어지면 카운트가 끊길 수 있고 현재 인원이 최소선과 같으므로, 참여 링크 `https://play.google.com/apps/testing/com.timeagent.app`으로 여유 인원을 더 확보한다.
+
+**공개 테스트는 비공개 테스트의 대안이 아니다.** Play Console 공개 테스트 화면은 `프로덕션 액세스 권한이 있어야 공개 테스트를 사용할 수 있습니다`라고 안내한다. 순서는 비공개 테스트 요건 충족 → 프로덕션 액세스 신청·승인 → 공개 테스트와 프로덕션 사용이다. 지금 비공개 테스트를 중단하고 공개 테스트로 바꾸는 선택지는 없다.
 
 ## 남은 기술 위험
 

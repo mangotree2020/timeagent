@@ -1,5 +1,16 @@
 # 실행 계획
 
+## 2026-08-14 Alpha 1.0.4 제출과 Play 계정 정리 (검토 대기)
+
+- Accept: 최신 코드를 Google Play에 올린다.
+- Observe: `mangotree@mangonw.com`으로 Play Console에 접속하면 개발자 계정 `Manna & Talent`가 **2026-02-22 미사용 해지** 상태여서 모든 앱 URL이 정책 상태 페이지로 리다이렉트됐다. TimeAgent는 이 계정이 아니라 `winddew71@gmail.com`의 개발자 계정 `신우철`(ID `5696577809125551196`)에 있었다. 기존 문서에 계정이 명시돼 있지 않아 확인에 시간이 걸렸다.
+- Implement: 버전을 `1.0.4`, versionCode `5`로 올리고 서명 AAB/APK를 빌드했다. Alpha 트랙에 이전 시도에서 남은 임시 버전이 있어 `버전 수정`으로 이어받았다. 브라우저 업로드 도구는 10MB까지만 지원해 68MB AAB를 자동 전송할 수 없었고, `업로드` 버튼은 운영체제 파일 선택창이라 자동화 대상이 아니어서 `artifacts/TimeAgent-1.0.4-versionCode5.aab`로 복사해 사용자가 직접 올렸다.
+- Verify: `npm run verify` 35개 스위트·214/214가 통과했다. APK에서 `com.timeagent.app`, `1.0.4 (5)`, targetSdk 36, 업로드 키 `CN=TimeAgent Upload` 서명을 확인했다. AAB SHA-256은 `dd9a87ea7d6bef6c7c6cba1f83fb6148cce8b5993b2ed842115515ba8bf5b6f5`, APK SHA-256은 `c4956250195fdd2ea1bb8b453d16aff17d9ef1801ac123d19cf8d9665c7075a7`이다. Play가 안내한 `가독화 파일 없음`은 이 앱이 `minifyEnabled false`로 빌드돼 매핑 파일 자체가 없기 때문이며 출시를 막지 않는다.
+- Play: `5 (1.0.4)`를 비공개 테스트 Alpha에 `전체 출시 시작`으로 제출했고 업데이트 상태는 `검토 중`이다. `관리형 게시`가 꺼져 있어 검토 통과 시 자동 배포된다. 프로덕션 조건은 테스터 12명을 이미 충족했고 14일 운영 중 1일차이며, 이번 업로드로 초기화되지 않았다. 공개 테스트는 프로덕션 액세스 승인 뒤에만 쓸 수 있음을 Console 화면에서 확인했다.
+- Evidence: `app.json`, `package.json`, `docs/RELEASE_CHECKLIST.md`.
+- 남은 작업: 검토 결과 확인, 14일 운영 유지, 테스터 여유 인원 확보.
+
+
 ## 2026-08-14 지난 일정 기록 삭제 (자동 검증 완료)
 
 - Observe: 테스트로 만든 약속을 지우려다 `지난 일정` 탭에는 카드를 누르는 동작도, 삭제 동작도 없다는 것을 확인했다. `내 일정` 카드만 계획 화면으로 이동해 `약속 삭제`를 쓸 수 있어, 약속 시각이 지나 종결된 기록은 앱에서 지울 방법이 전혀 없었다.
