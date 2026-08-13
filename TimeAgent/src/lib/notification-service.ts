@@ -3,7 +3,11 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { loadAppSettings } from './app-settings';
-import { buildProgressNotificationRequests } from './local-notifications';
+import {
+  buildProgressNotificationRequests,
+  PROGRESS_STEP_ACTION_CATEGORY,
+  PROGRESS_STEP_ACTIONS,
+} from './local-notifications';
 import {
   ProgressSession,
   ScheduledProgressNotification,
@@ -56,6 +60,7 @@ export async function replaceProgressNotifications(
         importance: Notifications.AndroidImportance.HIGH,
       });
     }
+    await registerProgressStepActions();
 
     const scheduled: ScheduledProgressNotification[] = [];
     for (const request of buildProgressNotificationRequests(session, now)) {
@@ -64,6 +69,7 @@ export async function replaceProgressNotifications(
           title: request.title,
           body: request.body,
           sound: true,
+          categoryIdentifier: request.actionCategory ?? undefined,
           data: {
             source: 'progress-session',
             key: request.key,
@@ -97,6 +103,19 @@ export async function replaceProgressNotifications(
       .map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier)));
     return { session: cleared, status: 'error' };
   }
+}
+
+/** Buttons on the alarm itself, so a step can be answered from the notification shade. */
+export async function registerProgressStepActions() {
+  if (Platform.OS === 'web') return;
+  await Notifications.setNotificationCategoryAsync(
+    PROGRESS_STEP_ACTION_CATEGORY,
+    PROGRESS_STEP_ACTIONS.map((action) => ({
+      identifier: action.identifier,
+      buttonTitle: action.title,
+      options: { opensAppToForeground: false },
+    })),
+  );
 }
 
 export async function cancelProgressNotifications(session: ProgressSession | null) {

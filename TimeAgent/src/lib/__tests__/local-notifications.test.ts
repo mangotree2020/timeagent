@@ -1,4 +1,12 @@
-import { buildProgressNotificationRequests } from '../local-notifications';
+import {
+  applyProgressNotificationAction,
+  buildProgressNotificationRequests,
+  PROGRESS_ADVANCE_ACTION,
+  PROGRESS_EXTEND_ACTION,
+  PROGRESS_EXTEND_MINUTES,
+  PROGRESS_STEP_ACTION_CATEGORY,
+  PROGRESS_STEP_ACTIONS,
+} from '../local-notifications';
 import { advanceProgressSession, createProgressSession } from '../progress-session';
 import { createSchedulePlan } from '../planning';
 import { createDefaultScheduleDraft } from '../schedule-draft';
@@ -63,5 +71,65 @@ describe('local notification plan', () => {
     while (session.state === 'active') session = advanceProgressSession(session, session.updatedAt + 1_000);
 
     expect(buildProgressNotificationRequests(session, session.updatedAt)).toEqual([]);
+  });
+
+  test('offers the next-step and extend choices on the alarm that ends a step', () => {
+    const requests = buildProgressNotificationRequests(createFixture(), 1_000_000);
+
+    const stepEnd = requests.find((request) => request.kind === 'step-end')!;
+    expect(stepEnd.actionCategory).toBe(PROGRESS_STEP_ACTION_CATEGORY);
+    expect(PROGRESS_STEP_ACTIONS.map((action) => action.identifier))
+      .toEqual([PROGRESS_ADVANCE_ACTION, PROGRESS_EXTEND_ACTION]);
+    expect(PROGRESS_STEP_ACTIONS.every((action) => action.title.trim().length > 0)).toBe(true);
+
+    const departure = requests.find((request) => request.kind === 'departure')!;
+    expect(departure.actionCategory).toBeNull();
+  });
+
+  test('moves to the next step when the alarm is dismissed with the next-step choice', () => {
+    const session = createFixture();
+    const currentStepId = session.currentStepId!;
+
+    const result = applyProgressNotificationAction(session, PROGRESS_ADVANCE_ACTION, currentStepId, 1_400_000);
+
+    expect(result.applied).toBe(true);
+    if (!result.applied) return;
+    expect(result.session.currentStepId).not.toBe(currentStepId);
+    expect(result.session.timeline.find((step) => step.id === currentStepId)?.status).toBe('done');
+  });
+
+  test('extends the current step when the alarm is dismissed with the extend choice', () => {
+    const session = createFixture();
+    const currentStepId = session.currentStepId!;
+    const before = session.stepDurationSeconds;
+
+    const result = applyProgressNotificationAction(session, PROGRESS_EXTEND_ACTION, currentStepId, 1_400_000);
+
+    expect(result.applied).toBe(true);
+    if (!result.applied) return;
+    expect(result.session.currentStepId).toBe(currentStepId);
+    expect(result.session.stepDurationSeconds).toBe(before + PROGRESS_EXTEND_MINUTES * 60);
+    expect(result.session.delayMinutes).toBe(session.delayMinutes + PROGRESS_EXTEND_MINUTES);
+  });
+
+  test('ignores an alarm choice for a step the user already moved past', () => {
+    const session = createFixture();
+    const staleStepId = session.currentStepId!;
+    const moved = advanceProgressSession(session, 1_200_000);
+
+    const result = applyProgressNotificationAction(moved, PROGRESS_ADVANCE_ACTION, staleStepId, 1_300_000);
+
+    expect(result).toEqual({ applied: false, reason: 'stale-step' });
+  });
+
+  test('ignores alarm choices once the plan is finished or the action is unknown', () => {
+    let session = createFixture();
+    const stepId = session.currentStepId!;
+    expect(applyProgressNotificationAction(session, 'something-else', stepId, 1_200_000))
+      .toEqual({ applied: false, reason: 'unknown-action' });
+
+    while (session.state === 'active') session = advanceProgressSession(session, session.updatedAt + 1_000);
+    expect(applyProgressNotificationAction(session, PROGRESS_ADVANCE_ACTION, stepId, session.updatedAt))
+      .toEqual({ applied: false, reason: 'completed' });
   });
 });

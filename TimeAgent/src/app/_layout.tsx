@@ -31,6 +31,9 @@ export default function RootLayout() {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
       if (data?.source !== 'progress-session' && data?.source !== 'confirmed-plan') return;
+      // A choice made on the alarm is handled where the session lives and must not pull the user
+      // into the app; only opening the notification itself navigates.
+      if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
       void recordAnalyticsEvent(AsyncStorage, 'notification_opened', {
         kind: String(data.kind ?? 'unknown'),
       });

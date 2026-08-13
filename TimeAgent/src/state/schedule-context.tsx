@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { TimelineStep } from '@/data/demo';
 import { recordAnalyticsEvent } from '@/lib/analytics';
@@ -37,6 +38,11 @@ import {
   PersonalizationProfile,
   savePersonalizationProfile,
 } from '@/lib/personalization';
+import {
+  applyProgressNotificationAction,
+  PROGRESS_EXTEND_ACTION,
+  PROGRESS_EXTEND_MINUTES,
+} from '@/lib/local-notifications';
 import {
   cancelProgressNotifications,
   ProgressNotificationSyncResult,
@@ -78,6 +84,7 @@ type ScheduleContextValue = {
   personalizationStatus: 'loading' | 'saving' | 'saved' | 'error';
   lastPersonalizationLearnedCount: number;
   startProgress: (source?: 'notification' | 'direct' | 'auto', confirmedPlanId?: string) => Promise<void>;
+  answerStepAlarm: (actionIdentifier: string, stepId: string | null) => Promise<void>;
   proposeDelay: (minutes: number) => void;
   applyDelayProposal: () => Promise<void>;
   rejectDelayProposal: () => void;
@@ -492,6 +499,33 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     await commitProgress(next);
   }, [applyPersonalizationProfile, commitConfirmedPlans, commitProgress]);
 
+  /** Applies a choice made on the alarm itself, where the user has already decided. */
+  const answerStepAlarm = useCallback(async (actionIdentifier: string, stepId: string | null) => {
+    const current = progressSessionRef.current;
+    if (!current) return;
+    const result = applyProgressNotificationAction(current, actionIdentifier, stepId);
+    if (!result.applied) return;
+    setPendingDelayProposal(null);
+    void recordAnalyticsEvent(AsyncStorage, result.action === PROGRESS_EXTEND_ACTION ? 'delay_applied' : 'step_completed', {
+      source: 'notification-action',
+      ...(result.action === PROGRESS_EXTEND_ACTION ? { minutes: PROGRESS_EXTEND_MINUTES } : { stepId: stepId ?? '' }),
+    });
+    await commitProgress(result.session);
+  }, [commitProgress]);
+
+  // Buttons pressed on the alarm arrive here, so the running session stays the single source of
+  // truth instead of the notification writing to storage behind the screen's back.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.source !== 'progress-session') return;
+      const stepId = typeof data.stepId === 'string' ? data.stepId : null;
+      void answerStepAlarm(response.actionIdentifier, stepId);
+    });
+    return () => subscription.remove();
+  }, [answerStepAlarm]);
+
   const proposeDelay = useCallback((minutes: number) => {
     const current = progressSessionRef.current;
     if (!current) return;
@@ -622,6 +656,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     personalizationStatus,
     lastPersonalizationLearnedCount,
     startProgress,
+    answerStepAlarm,
     proposeDelay,
     applyDelayProposal,
     rejectDelayProposal,
@@ -737,7 +772,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setProgressStatus('saved');
       await removePersistedProgress();
     },
-  }), [activeConfirmedPlanId, activePlan, activeSchedule, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
+  }), [activeConfirmedPlanId, activePlan, activeSchedule, answerStepAlarm, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;
 }
