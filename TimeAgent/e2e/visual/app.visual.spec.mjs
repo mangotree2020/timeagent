@@ -155,6 +155,30 @@ for (const screen of darkScreens) {
   });
 }
 
+test('설정에서 준비 단계 음성 코치를 끄고 켤 수 있음', async ({ page }) => {
+  await page.goto('/settings');
+  await expect(page.getByText('내 생활에 맞게 TimeAgent를 조정하세요', { exact: true })).toBeVisible();
+
+  const coach = page.getByRole('switch', { name: /준비 단계 음성 코치/ });
+  await coach.scrollIntoViewIfNeeded();
+  await expect(coach).toBeVisible();
+  await expect(page.getByText('단계마다 알림과 음성으로 챙겨줘요', { exact: true })).toBeVisible();
+
+  await coach.click();
+  await expect(page.getByText('단계 시작 알림과 음성을 끔', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = window.localStorage.getItem('@on-time/app-settings');
+    return raw ? JSON.parse(raw).stepCoaching : null;
+  })).toBe(false);
+
+  await coach.click();
+  await expect(page.getByText('단계마다 알림과 음성으로 챙겨줘요', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = window.localStorage.getItem('@on-time/app-settings');
+    return raw ? JSON.parse(raw).stepCoaching : null;
+  })).toBe(true);
+});
+
 test('되돌릴 수 없는 삭제는 일반 확인과 다르게 보임', async ({ page }) => {
   await page.goto('/plan');
   const deleteEntry = page.getByRole('button', { name: '약속 삭제', exact: true });

@@ -2,7 +2,7 @@ import { TransportMode } from './schedule-draft';
 import { PreparationGender } from './preparation-profile';
 
 export const APP_SETTINGS_STORAGE_KEY = '@on-time/app-settings';
-const APP_SETTINGS_VERSION = 3;
+const APP_SETTINGS_VERSION = 4;
 
 export type CoachTone = '친근하게' | '간결하게' | '단호하게';
 export type RoutinePreset = '기본 외출 준비' | '빠른 준비';
@@ -20,6 +20,8 @@ export type AppSettings = {
   voiceControl: boolean;
   notifications: boolean;
   colorMode: AppColorMode;
+  /** Per-step start alarms and the spoken coach that goes with them. */
+  stepCoaching: boolean;
 };
 
 type StorageLike = {
@@ -39,6 +41,7 @@ export function createDefaultAppSettings(): AppSettings {
     voiceControl: true,
     notifications: true,
     colorMode: 'light',
+    stepCoaching: true,
   };
 }
 
@@ -49,8 +52,9 @@ export async function loadAppSettings(storage: StorageLike): Promise<AppSettings
   try {
     const parsed: unknown = JSON.parse(raw);
     if (isAppSettings(parsed)) return parsed;
-    if (isVersionTwoSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, colorMode: 'light' };
-    if (isLegacyAppSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, preparationGender: 'unspecified', colorMode: 'light' };
+    if (isVersionThreeSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, stepCoaching: true };
+    if (isVersionTwoSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, colorMode: 'light', stepCoaching: true };
+    if (isLegacyAppSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, preparationGender: 'unspecified', colorMode: 'light', stepCoaching: true };
     return createDefaultAppSettings();
   } catch {
     return createDefaultAppSettings();
@@ -65,6 +69,22 @@ function isAppSettings(value: unknown): value is AppSettings {
   if (!value || typeof value !== 'object') return false;
   const settings = value as Partial<AppSettings>;
   return settings.version === APP_SETTINGS_VERSION
+    && typeof settings.defaultLocation === 'string'
+    && isPreferredTransport(settings.preferredTransport)
+    && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
+    && (settings.routinePreset === '기본 외출 준비' || settings.routinePreset === '빠른 준비')
+    && isPreparationGender(settings.preparationGender)
+    && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
+    && typeof settings.voiceControl === 'boolean'
+    && typeof settings.notifications === 'boolean'
+    && (settings.colorMode === 'light' || settings.colorMode === 'dark')
+    && typeof settings.stepCoaching === 'boolean';
+}
+
+function isVersionThreeSettings(value: unknown): value is Omit<AppSettings, 'version' | 'stepCoaching'> & { version: 3 } {
+  if (!value || typeof value !== 'object') return false;
+  const settings = value as Partial<Omit<AppSettings, 'version'>> & { version?: unknown };
+  return settings.version === 3
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)

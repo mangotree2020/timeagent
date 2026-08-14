@@ -6,6 +6,7 @@ import {
   PROGRESS_EXTEND_MINUTES,
   PROGRESS_STEP_ACTION_CATEGORY,
   PROGRESS_STEP_ACTIONS,
+  buildStepCoachMessage,
   withDirectionParticle,
 } from '../local-notifications';
 import { advanceProgressSession, createProgressSession } from '../progress-session';
@@ -152,5 +153,46 @@ describe('local notification plan', () => {
     while (session.state === 'active') session = advanceProgressSession(session, session.updatedAt + 1_000);
     expect(applyProgressNotificationAction(session, PROGRESS_ADVANCE_ACTION, stepId, session.updatedAt))
       .toEqual({ applied: false, reason: 'completed' });
+  });
+
+  test('raises a start alarm for each upcoming step so every action gets its own cue', () => {
+    const session = createFixture();
+
+    const requests = buildProgressNotificationRequests(session, 1_000_000, { stepCoaching: true });
+
+    const upcoming = session.timeline.slice(1).filter((step) => step.id !== 'depart' && step.duration > 0);
+    expect(upcoming.length).toBeGreaterThan(1);
+    for (const step of upcoming) {
+      const start = requests.find((request) => request.key === `step-start:${step.id}`)!;
+      expect(start).toMatchObject({ kind: 'step-start', stepId: step.id });
+      const end = requests.find((request) => request.key === `step-end:${step.id}`)!;
+      expect(start.fireAt).toBeLessThan(end.fireAt);
+      expect(start.title).toContain(step.title);
+    }
+    // The running step and the departure already have their own cue.
+    expect(requests.some((request) => request.key === `step-start:${session.currentStepId}`)).toBe(false);
+    expect(requests.some((request) => request.key === 'step-start:depart')).toBe(false);
+  });
+
+  test('leaves out the per-step start alarms when the step coach is off', () => {
+    const requests = buildProgressNotificationRequests(createFixture(), 1_000_000, { stepCoaching: false });
+
+    expect(requests.some((request) => request.kind === 'step-start')).toBe(false);
+    expect(requests.some((request) => request.kind === 'step-end')).toBe(true);
+  });
+
+  test('speaks a step coach line that names the action and what follows it', () => {
+    const session = createFixture();
+    const [first, second] = session.timeline;
+
+    const spoken = buildStepCoachMessage(first, second);
+    expect(spoken).toContain(first.title);
+    expect(spoken).toContain(second.title);
+    expect(spoken).toContain(`${first.duration}분`);
+
+    const last = buildStepCoachMessage(first, null);
+    expect(last).toContain(first.title);
+    expect(last).not.toContain('undefined');
+    expect(last.trim().length).toBeGreaterThan(0);
   });
 });

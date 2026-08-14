@@ -230,6 +230,7 @@ export default function SettingsScreen() {
           <Setting icon="coach" title="코치 말투" detail={settings.coachTone} expanded={expanded === 'tone'} onPress={() => toggleDetail('tone')} />
           {expanded === 'tone' ? <ChoicePanel options={toneOptions} selected={settings.coachTone} onSelect={(coachTone) => update({ coachTone })} /> : null}
           <Setting icon="voice" title="음성으로 일정 제어" detail="등록 · 수정 · 확인" toggle={settings.voiceControl} onToggle={(voiceControl) => update({ voiceControl })} />
+          <Setting icon="coach" title="준비 단계 음성 코치" detail={settings.stepCoaching ? '단계마다 알림과 음성으로 챙겨줘요' : '단계 시작 알림과 음성을 끔'} toggle={settings.stepCoaching} onToggle={(stepCoaching) => update({ stepCoaching })} />
         </Section>
 
         <Section label="알림 및 권한">

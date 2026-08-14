@@ -7,7 +7,12 @@ import { AppIcon, IconButton } from '@/components/app-icon';
 import { Timeline } from '@/components/timeline';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
-import { withDirectionParticle } from '@/lib/local-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Speech from 'expo-speech';
+
+import { loadAppSettings } from '@/lib/app-settings';
+import { buildStepCoachMessage, withDirectionParticle } from '@/lib/local-notifications';
+import { canUseAppTts } from '@/lib/screen-reader-state';
 import { getProgressRemainingSeconds } from '@/lib/progress-session';
 import { formatCountdown, shiftClock } from '@/lib/schedule';
 import { useSchedule } from '@/state/schedule-context';
@@ -51,6 +56,25 @@ export default function ProgressScreen() {
   useEffect(() => {
     if (progressSession?.state === 'completed') router.replace('/complete');
   }, [progressSession?.state]);
+  // The coach speaks once per step, when it becomes the current one and the screen is open.
+  const spokenStepId = useRef<string | null>(null);
+  useEffect(() => {
+    const stepId = progressSession?.currentStepId ?? null;
+    if (!stepId || progressSession?.state !== 'active' || spokenStepId.current === stepId) return;
+    spokenStepId.current = stepId;
+    let cancelled = false;
+    void (async () => {
+      const settings = await loadAppSettings(AsyncStorage);
+      if (cancelled || !settings.stepCoaching || !await canUseAppTts()) return;
+      const steps = progressSession.timeline;
+      const index = steps.findIndex((step) => step.id === stepId);
+      if (index < 0) return;
+      await Speech.stop();
+      if (cancelled) return;
+      Speech.speak(buildStepCoachMessage(steps[index], steps[index + 1] ?? null), { language: 'ko-KR', rate: 0.95 });
+    })();
+    return () => { cancelled = true; };
+  }, [progressSession?.currentStepId, progressSession?.state, progressSession?.timeline]);
   useEffect(() => {
     const initialTick = setTimeout(() => setNow(Date.now()), 0);
     const timer = setInterval(() => setNow(Date.now()), 1000);

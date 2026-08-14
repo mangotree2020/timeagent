@@ -63,7 +63,7 @@ export async function replaceProgressNotifications(
     await registerProgressStepActions();
 
     const scheduled: ScheduledProgressNotification[] = [];
-    for (const request of buildProgressNotificationRequests(session, now)) {
+    for (const request of buildProgressNotificationRequests(session, now, { stepCoaching: settings.stepCoaching })) {
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
           title: request.title,

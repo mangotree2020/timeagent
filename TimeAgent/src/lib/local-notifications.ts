@@ -72,9 +72,21 @@ export function applyProgressNotificationAction(
   return { applied: true, session: session_, action: actionIdentifier };
 }
 
+/** What the coach says when a step becomes the current one. */
+export function buildStepCoachMessage(
+  step: { title: string; duration: number },
+  next: { title: string } | null,
+) {
+  const opening = `이제 ${step.title} 시작할 시간이에요.`;
+  const length = step.duration > 0 ? ` ${step.duration}분 잡아 두었어요.` : '';
+  const following = next ? ` 끝나면 ${withDirectionParticle(next.title)} 넘어갈게요.` : ' 이게 마지막 준비예요.';
+  return `${opening}${length}${following}`;
+}
+
 export function buildProgressNotificationRequests(
   session: ProgressSession,
   now = Date.now(),
+  { stepCoaching = true } = {},
 ): ProgressNotificationRequest[] {
   if (session.state === 'completed' || !session.currentStepId) return [];
   const currentIndex = session.timeline.findIndex((step) => step.id === session.currentStepId);
@@ -99,6 +111,20 @@ export function buildProgressNotificationRequests(
     const startAt = index === currentIndex ? session.stepStartedAt : cursor;
     const durationSeconds = index === currentIndex ? session.stepDurationSeconds : step.duration * 60;
     const endAt = startAt + durationSeconds * 1_000;
+
+    // The running step and the departure already have their own cue, so a start alarm here would
+    // repeat one the user just heard.
+    if (stepCoaching && index > currentIndex && step.id !== 'depart' && step.duration > 0 && startAt > now) {
+      requests.push({
+        key: `step-start:${step.id}`,
+        kind: 'step-start',
+        stepId: step.id,
+        fireAt: startAt,
+        title: `${step.title} 시작할 시간이에요`,
+        body: buildStepCoachMessage(step, session.timeline[index + 1] ?? null),
+        actionCategory: null,
+      });
+    }
 
     if (step.id === 'depart' && startAt > now) {
       requests.push({

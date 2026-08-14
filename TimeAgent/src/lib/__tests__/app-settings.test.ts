@@ -52,9 +52,10 @@ describe('app settings persistence', () => {
 
     await expect(loadAppSettings(storage)).resolves.toEqual({
       ...legacy,
-      version: 3,
+      version: createDefaultAppSettings().version,
       preparationGender: 'unspecified',
       colorMode: 'light',
+      stepCoaching: true,
     });
   });
 
@@ -65,8 +66,35 @@ describe('app settings persistence', () => {
 
     await expect(loadAppSettings(storage)).resolves.toEqual({
       ...legacy,
-      version: 3,
+      version: createDefaultAppSettings().version,
       colorMode: 'light',
+      stepCoaching: true,
+    });
+  });
+
+  it('keeps the step coach on by default and turns it on for settings saved before it existed', async () => {
+    expect(createDefaultAppSettings().stepCoaching).toBe(true);
+
+    const storage = createMemoryStorage(JSON.stringify({
+      version: 3,
+      defaultLocation: '해운대구',
+      preferredTransport: '버스',
+      bufferMinutes: 10,
+      routinePreset: '빠른 준비',
+      preparationGender: 'unspecified',
+      coachTone: '간결하게',
+      voiceControl: true,
+      notifications: true,
+      colorMode: 'dark',
+    }));
+
+    const loaded = await loadAppSettings(storage);
+
+    expect(loaded).toMatchObject({
+      defaultLocation: '해운대구',
+      preferredTransport: '버스',
+      colorMode: 'dark',
+      stepCoaching: true,
     });
   });
 });
