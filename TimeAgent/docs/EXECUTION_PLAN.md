@@ -1,5 +1,13 @@
 # 실행 계획
 
+## 2026-08-16 Google Play Alpha 테스터 5명 추가 (완료)
+
+- Accept: 사용자 제공 Gmail 계정 6개를 `TimeAgent 내부 테스터` 이메일 목록에 추가한다.
+- Implement: `mpm5151@gmail.com`, `shms0609@gmail.com`, `7894minsu.jung@gmail.com`, `kimsaso0121@gmail.com`, `kindman431@gmail.com`을 저장했다.
+- Reject: `dongyong5717@gmail.com`은 Play Console이 유효하지 않은 계정으로 표시해 전체 저장을 거부했으므로 목록에서 제외했다. 주소 수정 또는 해당 Google 계정 생성 확인이 필요하다.
+- Verify: Alpha 트랙의 이메일 목록 사용자가 19명에서 24명으로 증가했고, 최신 출시 버전은 `5 (1.0.4)`, 트랙 상태는 활성이다. 이메일 목록 등록만으로 테스트 참여 인원에는 집계되지 않으며 각 계정이 참여 링크에서 직접 등록해야 한다.
+- Evidence: Google Play Console `비공개 테스트 - Alpha > 테스터`, 참여 링크 `https://play.google.com/apps/testing/com.timeagent.app`.
+
 ## 2026-08-15 음성 대화 환각 차단과 전환 속도 개선 (자동 검증 완료, 실기기 확인 대기)
 
 - Accept: 음성 일정 대화는 약속 이름, 날짜와 시각, 목적지, 이동수단 네 항목만 다룬다. 사용자가 말하지 않은 내용이 응답에 나오지 않는다. 발화가 끝난 뒤 일정 확인 화면까지의 대기가 짧아진다.
@@ -1154,3 +1162,11 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Verify: 프로덕션 배포가 `READY`로 완료됐고 안정 도메인 `https://timeflow-landing-mangotree-4133s-projects.vercel.app`에서 세 페이지 모두 HTTP 200과 정상 제목(`개인정보처리방침`·`이용약관`·`계정 및 데이터 삭제`)을 확인했다. `/delete-account`에 `서버에는 로그인 계정별 최근 장소 목록만 저장합니다`와 `서버에 저장된 최근 장소 목록도 함께 삭제됩니다`가 반영된 것을 확인했다. 루트는 기존 동작대로 `/timeflow.html`로 307 후 200이다. 배포 URL(`...-8sizuwkrx-...`)은 배포마다 바뀌므로 문서에는 안정 도메인만 기록했다.
 - 남은 사람 작업: Play Console에 등록된 개인정보처리방침·계정 삭제 URL을 새 주소로 교체해야 한다. 이전 ChatGPT Sites 주소는 갱신되지 않은 옛 문안 상태로 남아 있다.
 - Evidence: `sites/timeflow-landing/vercel.json`, `sites/timeflow-landing/tsconfig.json`, `docs/PLAY_STORE_LISTING.md`, `docs/README.md`.
+
+## 2026-08-16 준비 시간 수정 반영·준비 행동 삭제·홈 카운트다운 (완료)
+
+- Accept: 준비 시간을 조정하면 계획의 시각이 실제로 바뀐다. 준비 행동을 쓰레기통으로 빼고 되돌릴 수 있다. 홈의 다음 약속 카드에서 준비 시작까지 남은 시간을 읽고 기다리지 않고 바로 시작할 수 있다.
+- Implement: 원인은 `planning.ts`가 `personalization?.routineMinutes[id]?.minutes ?? routine.minutes`로 학습 평균을 먼저 쓰던 것이었다. 실제 기록이 쌓인 기기에서는 화면에 보이는 값과 계획이 쓰는 값이 달라, 준비 시간을 바꿔도 계획이 그대로였다. `RoutineDraft`에 옵셔널 `minutesEditedByUser`를 두고 사용자가 정한 값이 학습값을 이기게 했으며(`effectiveRoutineMinutes`), 손대지 않은 항목은 학습값을 유지한다. 실제로 적용되지 않은 항목이 `personalizationAdjustments`에 조정으로 표시되던 거짓 안내도 함께 없앴다. 늦어서 준비 시작이 현재 시각으로 고정될 때는 `targetPrepStartClock`으로 "원래 시작했어야 할 시각"을 보조 문구로 노출해 편집이 반영됐음을 확인할 수 있게 했다. `removeRoutine`(마지막 1개 보호)과 쓰레기통 버튼·인라인 실행취소, 총 준비 시간 요약, 값 출처 표시(`내가 정한 시간` / `최근 평균 N분 적용 중`)를 추가했고, 확정 계획에서도 `준비 시간 수정`을 노출해 준비 단계로 바로 들어가게 했다. 홈에는 `preparationCountdown`으로 남은 시간을 거리에 맞는 단위와 색으로 보여 주고 30초마다 갱신하며, `지금 시작`으로 예정 시각을 기다리지 않고 실행할 수 있다(진행 중이면 `준비 화면 열기`). 사용자가 직접 누른 경우에만 조기 시작을 허용하고 자동·알림 경로는 기존 시각 조건을 유지한다.
+- Review: Codex 교차 검증을 계획과 결과 두 번 받았다. 계획 단계에서 "학습값 적용을 draft 생성 시점으로 이동"하려던 초안이 비동기 로딩 순서·음성 경로 누락·저장분 마이그레이션 위험을 안는다는 지적을 받아 폐기하고 현재 설계로 좁혔다. 결과 검수에서는 세 가지를 지적받아 모두 고쳤다: 음성으로 말한 준비 시간에 플래그가 붙지 않아 같은 버그가 남아 있던 점, 계획 화면 보조 문구가 개인화를 전달하지 않아 실제 계획과 다른 값을 계산하던 점, 준비 단계 합계가 원본 분수를 더해 실제 계획 시간과 어긋나던 점.
+- Verify: `npm run verify` 35개 스위트·243/243과 시각·상호작용 225/225가 통과했다. 학습값이 있어도 사용자가 정한 값이 계획·타임라인에 그대로 쓰이는지, 조정 목록에서 제외되는지, 준비 목록이 바뀌면 목표 준비 시작이 움직이는지를 단위 테스트로 고정했고 `removeRoutine`의 마지막 1개 보호도 테스트했다. 홈 카드 테스트는 카운트다운과 시작 액션을 확인하도록 갱신했으며, 이 과정에서 카드 안에 버튼을 넣어 웹에서 `<button>` 중첩 경고가 나던 것을 발견해 액션을 탭 영역 밖으로 옮겼다. Samsung Android 12 `SM-N971N`에서 확정 일정의 샤워를 25분으로 올리자 준비 시작이 09:20에서 08:58로 앞당겨졌고 조정 목록이 4개에서 3개로 줄었다. 총 준비 시간이 6분에서 28분으로 즉시 반영됐고, 쓰레기통으로 화장을 빼자 3개·5분으로 바뀌며 인라인 실행취소가 나타났다. 홈에서는 `1시간 12분 뒤 시작`과 `09:20 준비 시작`, `지금 시작` 버튼을 확인했다. APK SHA-256은 `d65d958263371d2a`로 시작한다.
+- Evidence: `src/lib/planning.ts`, `src/lib/schedule-draft.ts`, `src/lib/ui-controls.ts`, `src/lib/home-attention.ts`, `src/lib/voice-schedule-assistant.ts`, `src/app/create.tsx`, `src/app/plan.tsx`, `src/app/index.tsx`, `src/state/schedule-context.tsx`, `src/lib/__tests__/planning.test.ts`, `src/lib/__tests__/ui-controls.test.ts`, `src/lib/__tests__/home-attention.test.ts`, `e2e/visual/app.visual.spec.mjs`, `tmp/pv-7.png`, `tmp/pv-10.png`, `tmp/hv-1.png`.

@@ -32,6 +32,7 @@ import ShowerHead from 'lucide-react-native/icons/shower-head';
 import Snowflake from 'lucide-react-native/icons/snowflake';
 import Sparkles from 'lucide-react-native/icons/sparkles';
 import SunMedium from 'lucide-react-native/icons/sun-medium';
+import Trash2 from 'lucide-react-native/icons/trash-2';
 import TrainFront from 'lucide-react-native/icons/train-front';
 import WandSparkles from 'lucide-react-native/icons/wand-sparkles';
 import Volume2 from 'lucide-react-native/icons/volume-2';
@@ -83,6 +84,7 @@ const icons = {
   routine: SunMedium,
   weatherClear: SunMedium,
   subway: TrainFront,
+  trash: Trash2,
   ai: WandSparkles,
   close: X,
   quick: Zap,

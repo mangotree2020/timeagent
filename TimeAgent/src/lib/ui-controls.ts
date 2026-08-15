@@ -22,6 +22,16 @@ export function addRoutine(
   return [...routines, { id, icon: 'ready', label, minutes: 5 }];
 }
 
+/**
+ * Drops a preparation step someone wants to skip. The last one is kept: a plan with nothing to
+ * prepare has no preparation time to count back from, so it would silently stop being a plan.
+ */
+export function removeRoutine(routines: RoutineDraft[], id: string): RoutineDraft[] {
+  if (routines.length <= 1) return routines;
+  const next = routines.filter((routine) => routine.id !== id);
+  return next.length === routines.length ? routines : next;
+}
+
 export function sortPlanAlternatives<T extends PlanAlternative>(
   alternatives: readonly T[],
   sort: PlanBSort,

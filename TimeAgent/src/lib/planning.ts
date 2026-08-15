@@ -1,5 +1,5 @@
 import { TimelineStep } from '@/data/demo';
-import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 
 const defaultTravelMinutes: Record<TransportMode, number> = {
   'AI 추천': 24,
@@ -54,10 +54,37 @@ type PlanningOptions = {
   personalization?: PlanPersonalization;
 };
 
+/**
+ * The duration a plan actually uses. Learned averages stand in for durations nobody has set, but a
+ * number the person entered wins — otherwise editing preparation time appears to do nothing.
+ */
+export function effectiveRoutineMinutes(routine: RoutineDraft, personalization?: PlanPersonalization) {
+  if (routine.minutesEditedByUser) return routine.minutes;
+  return personalization?.routineMinutes[routine.id]?.minutes ?? routine.minutes;
+}
+
+/**
+ * When someone is already too late to start on time the plan pins preparation to right now, so the
+ * displayed start stops responding to edits. This is the time they would have had to begin, which
+ * keeps moving as the preparation list changes and shows the edit took effect.
+ */
+export function targetPrepStartClock(draft: ScheduleDraft, options: PlanningOptions = {}) {
+  const preparationMinutes = draft.routines.reduce(
+    (total, routine) => total + effectiveRoutineMinutes(routine, options.personalization),
+    0,
+  );
+  const travelMinutes = options.personalization?.travelMinutes?.minutes
+    ?? options.travelMinutes
+    ?? defaultTravelMinutes[draft.transport];
+  const bufferMinutes = draft.priority === 'on-time' ? 10 : 5;
+  const appointmentMinutes = resolveAppointmentMinutes(clockToMinutes(draft.appointmentTime), options.now);
+  return minutesToClock(appointmentMinutes - bufferMinutes - travelMinutes - preparationMinutes);
+}
+
 export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOptions = {}): SchedulePlan {
   const routineMinutes = draft.routines.map((routine) => ({
     ...routine,
-    minutes: options.personalization?.routineMinutes[routine.id]?.minutes ?? routine.minutes,
+    minutes: effectiveRoutineMinutes(routine, options.personalization),
   }));
   const preparationMinutes = routineMinutes.reduce((total, routine) => total + routine.minutes, 0);
   const baseTravelMinutes = options.travelMinutes ?? defaultTravelMinutes[draft.transport];
@@ -116,7 +143,9 @@ export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOption
 
   const personalizationAdjustments: PlanPersonalizationAdjustment[] = draft.routines.flatMap((routine) => {
     const suggestion = options.personalization?.routineMinutes[routine.id];
-    if (!suggestion || suggestion.minutes === routine.minutes) return [];
+    // A duration the person set themselves is not adjusted, so listing it here would claim a
+    // change the plan never made.
+    if (!suggestion || routine.minutesEditedByUser || suggestion.minutes === routine.minutes) return [];
     return [{
       id: routine.id,
       label: routine.label,

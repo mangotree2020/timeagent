@@ -610,15 +610,24 @@ test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 �
   await expect(page.getByText('지난 일정 화면입니다.', { exact: true })).toBeVisible();
 });
 
-test('홈 다음 약속은 제목·시간·장소만 보여주고 카드 터치로 상세 일정에 진입함', async ({ page }) => {
+test('홈 다음 약속은 남은 시간과 지금 시작을 함께 보여주고 카드 터치로 상세 일정에 진입함', async ({ page }) => {
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
   const nextAppointment = page.getByRole('button', { name: '다음 약속, 서면 볼링장 친구 약속, 14:00, 서면 볼링장', exact: true });
   await expect(nextAppointment).toBeVisible();
   await expect(nextAppointment.getByText('서면 볼링장 친구 약속', { exact: true })).toBeVisible();
   await expect(nextAppointment.getByText('14:00', { exact: true })).toBeVisible();
   await expect(nextAppointment.getByText('서면 볼링장', { exact: true })).toBeVisible();
-  await expect(nextAppointment.getByText('준비 시작까지', { exact: true })).toHaveCount(0);
+  // The card answers "when do I have to move?" before the appointment time itself.
+  await expect(nextAppointment.getByText('준비 시작', { exact: false }).first()).toBeVisible();
+
+  // The action is a sibling of the card's tap target, since a button inside a button is invalid
+  // on web. This fixture already has a run in progress, so it offers to reopen it.
+  const startNow = page.getByRole('button', { name: '준비 화면 열기', exact: true });
+  await expect(startNow).toBeVisible();
+  const startNowBox = await startNow.boundingBox();
+  expect(startNowBox.height, '준비 시작 액션의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
   await expect(nextAppointment.getByRole('button')).toHaveCount(0);
+
   await nextAppointment.click();
   await expect(page).toHaveURL(/\/plan$/);
   await expect(page.getByText('확정된 준비 계획', { exact: true })).toBeVisible();

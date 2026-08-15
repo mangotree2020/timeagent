@@ -11,6 +11,12 @@ export type RoutineDraft = {
   icon: string;
   label: string;
   minutes: number;
+  /**
+   * Set when the person changed this duration themselves. Learned averages fill in the rest, but
+   * they must never overwrite a number someone typed in — that reads as the edit being ignored.
+   * Optional so drafts and confirmed plans saved before this existed still load.
+   */
+  minutesEditedByUser?: boolean;
 };
 
 export type ScheduleDraft = {

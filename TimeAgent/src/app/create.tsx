@@ -7,8 +7,10 @@ import { AppIcon, AppIconName, IconButton, iconForRoutine, iconForTransport } fr
 import { DestinationPicker } from '@/components/destination-picker';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
-import { isGeneratedScheduleTitle, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
-import { addRoutine } from '@/lib/ui-controls';
+import { isGeneratedScheduleTitle, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import { createPlanPersonalization } from '@/lib/personalization';
+import { effectiveRoutineMinutes } from '@/lib/planning';
+import { addRoutine, removeRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
 
 const steps = ['약속 정보', '이동 정보', '준비 행동'];
@@ -90,10 +92,33 @@ function TransportForm({ draft, onChange }: DraftFormProps) {
 function RoutineForm({ draft, onChange }: DraftFormProps) {
   const styles = useThemedStyles(createStyles);
   const type = useAppType();
+  const { personalizationProfile } = useSchedule();
+  const personalization = createPlanPersonalization(personalizationProfile, draft);
   const [showAddRoutine, setShowAddRoutine] = useState(false);
   const [routineLabel, setRoutineLabel] = useState('');
+  const [removed, setRemoved] = useState<{ routine: RoutineDraft; index: number } | null>(null);
+  // The summary has to match what the plan will use, learned averages included.
+  const totalMinutes = draft.routines.reduce((total, routine) => total + effectiveRoutineMinutes(routine, personalization), 0);
+  const onlyOneLeft = draft.routines.length <= 1;
   const changeMinutes = (id: string, delta: number) => {
-    onChange({ routines: draft.routines.map((routine) => routine.id === id ? { ...routine, minutes: Math.max(1, routine.minutes + delta) } : routine) });
+    // Marking the edit keeps a learned average from overwriting it when the plan is calculated.
+    onChange({ routines: draft.routines.map((routine) => routine.id === id
+      ? { ...routine, minutes: Math.max(1, routine.minutes + delta), minutesEditedByUser: true }
+      : routine) });
+  };
+  const removeStep = (id: string) => {
+    const index = draft.routines.findIndex((routine) => routine.id === id);
+    const next = removeRoutine(draft.routines, id);
+    if (next === draft.routines) return;
+    setRemoved({ routine: draft.routines[index], index });
+    onChange({ routines: next });
+  };
+  const undoRemove = () => {
+    if (!removed) return;
+    const next = [...draft.routines];
+    next.splice(Math.min(removed.index, next.length), 0, removed.routine);
+    onChange({ routines: next });
+    setRemoved(null);
   };
   const submitRoutine = () => {
     const next = addRoutine(draft.routines, routineLabel, `custom-${Date.now()}`);
@@ -103,7 +128,12 @@ function RoutineForm({ draft, onChange }: DraftFormProps) {
     setShowAddRoutine(false);
   };
 
-  return <View style={styles.form}><SectionTitle>무엇을 준비해야 하나요?</SectionTitle><Text style={type.bodyMuted}>설정한 기본 추천과 최근 기록을 시작점으로 보여드려요. 나에게 맞게 항목과 시간을 조정할 수 있어요.</Text>{draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><Text style={[type.body, { flex: 1, fontWeight: '800' }]}>{item.label}</Text><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{item.minutes}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View></Card>)}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
+  return <View style={styles.form}><SectionTitle>무엇을 준비해야 하나요?</SectionTitle><Text style={type.bodyMuted}>설정한 기본 추천과 최근 기록을 시작점으로 보여드려요. 나에게 맞게 항목과 시간을 조정할 수 있어요.</Text>
+    {/* The running total is what actually moves the plan, so it stays visible while editing. */}
+    <View accessibilityLiveRegion="polite" style={styles.routineTotal}><AppIcon name="time" size={18} /><Text style={styles.routineTotalText}>총 준비 시간 {totalMinutes}분</Text><Text style={type.caption}>{draft.routines.length}개 행동</Text></View>
+    {draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><View style={styles.routineCopy}><Text style={[type.body, { fontWeight: '800' }]}>{item.label}</Text>{item.minutesEditedByUser ? <Text style={type.caption}>내가 정한 시간</Text> : personalization?.routineMinutes[item.id] ? <Text style={type.caption}>최근 평균 {personalization.routineMinutes[item.id].minutes}분 적용 중</Text> : null}</View><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{effectiveRoutineMinutes(item, personalization)}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel={`${item.label} 준비 행동 삭제`} accessibilityState={{ disabled: onlyOneLeft }} disabled={onlyOneLeft} onPress={() => removeStep(item.id)} style={({ pressed }) => [styles.removeRoutine, onlyOneLeft && styles.removeRoutineDisabled, pressed && styles.pressedRow]}><AppIcon name="trash" size={18} iconColor={onlyOneLeft ? undefined : '#C2413A'} /></Pressable></Card>)}
+    {onlyOneLeft ? <Text style={type.caption}>준비 행동은 최소 하나가 필요해요. 다른 행동을 추가하면 이 행동도 지울 수 있어요.</Text> : null}
+    {removed ? <View accessibilityRole="alert" style={styles.undoRow}><Text style={[type.bodyMuted, { flex: 1 }]}>{removed.routine.label}을(를) 목록에서 뺐어요.</Text><Pressable accessibilityRole="button" accessibilityLabel={`${removed.routine.label} 삭제 실행취소`} onPress={undoRemove} style={({ pressed }) => [styles.undoAction, pressed && styles.pressedRow]}><Text style={styles.undoActionText}>실행취소</Text></Pressable></View> : null}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
 }
 
 type DraftFormProps = {
@@ -123,6 +153,15 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: c.text, paddingVertical: 12 },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, choice: { width: '31%', minHeight: 92, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', gap: 8 }, choiceActive: { backgroundColor: c.surfaceInverse, borderColor: c.surfaceInverse }, choiceLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700' }, choiceLabelActive: { color: c.onInverse }, segment: { marginTop: space.lg, flexDirection: 'row', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, padding: 4 }, segmentActive: { backgroundColor: c.deepBlue },
   segmentOption: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' }, segmentText: { color: c.textMuted, fontSize: 12, fontWeight: '700' }, segmentTextActive: { color: c.onInverse, fontWeight: '800' },
+  routineTotal: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.infoSoft },
+  routineTotalText: { flex: 1, color: c.deepBlue, fontSize: 15, fontWeight: '900' },
+  routineCopy: { flex: 1, gap: 2 },
+  removeRoutine: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  removeRoutineDisabled: { opacity: 0.35 },
+  pressedRow: { opacity: 0.7 },
+  undoRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted },
+  undoAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.md },
+  undoActionText: { color: c.deepBlue, fontSize: 14, fontWeight: '900' },
   routine: { flexDirection: 'row', alignItems: 'center', padding: space.lg, gap: space.sm }, routineIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, minuteControls: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderRadius: radius.pill, backgroundColor: c.surfaceMuted }, minuteButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, minuteText: { minWidth: 36, textAlign: 'center', color: c.deepBlue, fontSize: 13, fontWeight: '800' }, addRoutine: { minHeight: 48, flexDirection: 'row', gap: space.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: c.cyan, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }, addRoutineText: { color: c.deepBlue, fontWeight: '800' },
   addRoutinePanel: { gap: space.md }, addRoutineActions: { flexDirection: 'row', gap: space.sm },
   actions: { flexDirection: 'row', gap: space.sm, marginTop: space.md }, formError: { color: c.danger, fontSize: 13, lineHeight: 18, textAlign: 'center' }, saved: { textAlign: 'center', color: c.textMuted, fontSize: 12 }, savedError: { color: c.danger },

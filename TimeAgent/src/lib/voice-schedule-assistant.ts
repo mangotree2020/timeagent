@@ -413,7 +413,7 @@ export function applyVoiceSchedulePatch(draft: ScheduleDraft, patch: VoiceSchedu
     ...draft,
     ...schedulePatch,
     ...(preparationMinutes !== undefined && patch.routines === undefined ? {
-      routines: [{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: preparationMinutes }],
+      routines: [{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: preparationMinutes, minutesEditedByUser: true }],
     } : {}),
     destinationCoordinate: patch.destinationCoordinate !== undefined
       ? patch.destinationCoordinate
@@ -563,7 +563,8 @@ function normalizeRoutine(value: unknown, index: number): RoutineDraft {
     || value.minutes > 180) {
     throw invalidResponse();
   }
-  return { id: `voice-${index}`, icon: 'routine', label: value.label.trim(), minutes: value.minutes };
+  // Spoken out loud counts as set by the person, so a learned average must not replace it.
+  return { id: `voice-${index}`, icon: 'routine', label: value.label.trim(), minutes: value.minutes, minutesEditedByUser: true };
 }
 
 function isValidTime(value: string) {

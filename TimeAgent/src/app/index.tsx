@@ -15,7 +15,7 @@ import { useSchedule } from '@/state/schedule-context';
 import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
 import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
 import { createHomeGreeting } from '@/lib/home-greeting';
-import { shouldAnimateHomeLogo } from '@/lib/home-attention';
+import { preparationCountdown, shouldAnimateHomeLogo } from '@/lib/home-attention';
 import { loadCurrentDeviceWeather, WeatherPermissionNeededError } from '@/lib/device-weather-provider';
 import {
   createWeatherPreviewFixture,
@@ -27,6 +27,12 @@ import { useAuth } from '@/state/auth-context';
 import { useTaskExecution } from '@/state/task-context';
 
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
+
+const countdownIconColor: Record<'info' | 'warning' | 'success', string> = {
+  info: '#0B5FA5',
+  warning: '#9A5A00',
+  success: '#0D766E',
+};
 
 export default function HomeScreen() {
   const styles = useThemedStyles(createStyles);
@@ -41,7 +47,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { currentTask } = useTaskExecution();
-  const { confirmedPlans, confirmedPlansStatus, selectConfirmedPlan, delayMinutes } = useSchedule();
+  const { confirmedPlans, confirmedPlansStatus, progressSession, selectConfirmedPlan, startProgress, delayMinutes } = useSchedule();
   const todayPlans = plansForLocalDate(confirmedPlans, today)
     .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
   const homePlans = plansForLocalDateRange(confirmedPlans, today, 2)
@@ -51,8 +57,22 @@ export default function HomeScreen() {
     ? Math.max(0, Math.floor(fixtureStreak))
     : currentOnTimeArrivalStreak(confirmedPlans);
   const nextTodayPlan = todayPlans.find((plan) => plan.state === 'active') ?? todayPlans[0] ?? null;
+  // The countdown is only useful while it keeps counting; a minute is the smallest unit shown.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
   const nextHomePlan = homePlans.find((plan) => plan.state === 'active') ?? homePlans[0] ?? null;
   const schedule = nextHomePlan?.schedule ?? null;
+  const countdown = nextHomePlan ? preparationCountdown(nextHomePlan.prepStartAt, nowTick) : null;
+  const preparationRunning = progressSession?.state === 'active';
+  const startPreparationNow = async () => {
+    if (!nextHomePlan) return;
+    if (!preparationRunning) await startProgress('direct', nextHomePlan.id);
+    router.push('/progress');
+  };
   const openRegisteredPlan = (id: string) => {
     selectConfirmedPlan(id);
     router.push('/plan');
@@ -117,25 +137,41 @@ export default function HomeScreen() {
 
         {currentTask ? <NowTaskCard task={currentTask} onPress={() => router.push('/task-focus' as Href)} /> : null}
 
-        {schedule ? <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`다음 약속, ${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
-          accessibilityHint="상세 일정과 준비 계획을 확인합니다"
-          onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
-          style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
-        >
-          <Card style={styles.hero}>
+        {schedule ? <Card style={styles.hero}>
+          {/* The action sits beside the card's own tap target rather than inside it: nesting one
+              button in another is invalid on web and swallows the outer press. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`다음 약속, ${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
+            accessibilityHint="상세 일정과 준비 계획을 확인합니다"
+            onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
+            style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
+          >
             <View style={styles.heroTop}>
               <Text style={styles.nextLabel}>다음 약속</Text>
               <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
             </View>
             <Text numberOfLines={2} style={styles.heroTitle}>{schedule.title}</Text>
+            {/* People check the home card to answer "when do I have to move?", so the countdown to
+                preparation sits above the appointment details and carries its own colour. */}
+            {countdown ? <View accessibilityLabel={countdown.accessibilityLabel} accessibilityLiveRegion="polite" style={[styles.countdown, styles[`countdown_${countdown.tone}`]]}>
+              <AppIcon name="time" size={18} iconColor={countdownIconColor[countdown.tone]} />
+              <Text style={[styles.countdownText, { color: countdownIconColor[countdown.tone] }]}>{countdown.label}</Text>
+              <Text style={styles.countdownAt}>{nextHomePlan?.plan.prepStart} 준비 시작</Text>
+            </View> : null}
             <View style={styles.appointmentMeta}>
               <View style={styles.appointmentDetail}><AppIcon name="time" size={17} iconColor={c.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
               <View style={styles.appointmentDetail}><AppIcon name="location" size={17} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
             </View>
-          </Card>
-        </Pressable> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '말로 일정을 등록하면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="말로 새 일정 만들기" variant="secondary" onPress={() => router.push('/voice-schedule')} /> : null}</View></Card>}
+          </Pressable>
+          {/* Being ready sooner than planned is common, and waiting for the scheduled start is
+              the one thing the app should never force. This starts the same run immediately. */}
+          <Button
+            label={preparationRunning ? '준비 화면 열기' : '지금 시작'}
+            accessibilityHint={preparationRunning ? '진행 중인 준비 화면으로 이동합니다' : '준비 시작 시각을 기다리지 않고 지금 바로 준비를 시작합니다'}
+            onPress={() => void startPreparationNow()}
+          />
+        </Card> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '말로 일정을 등록하면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="말로 새 일정 만들기" variant="secondary" onPress={() => router.push('/voice-schedule')} /> : null}</View></Card>}
 
         <HomeWeather status={weatherStatus} weather={weather} fixtureMode={weatherFixtureMode} onRetry={() => void loadWeather()} />
 
@@ -290,6 +326,12 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   emptyPlan: { minHeight: 132, flexDirection: 'row', alignItems: 'center', gap: space.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   nextLabel: { color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  countdown: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md },
+  countdown_info: { backgroundColor: c.infoSoft },
+  countdown_warning: { backgroundColor: c.warningSoft },
+  countdown_success: { backgroundColor: c.successSoft },
+  countdownText: { fontSize: 17, fontWeight: '900' },
+  countdownAt: { flex: 1, textAlign: 'right', color: c.textMuted, fontSize: 13, fontWeight: '700' },
   heroTitle: { color: c.navy, fontSize: 22, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
   appointmentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg },
   appointmentDetail: { minHeight: 24, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7 },

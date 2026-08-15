@@ -95,7 +95,7 @@ describe('voice schedule assistant domain', () => {
       appointmentTime: '10:30',
       destination: '치과',
       priority: 'on-time',
-      routines: [{ id: 'voice-0', icon: 'routine', label: '양치', minutes: 5 }],
+      routines: [{ id: 'voice-0', icon: 'routine', label: '양치', minutes: 5, minutesEditedByUser: true }],
       durationMinutes: 60,
       recurrence: '반복 없음',
       preparationMinutes: 15,
@@ -241,7 +241,8 @@ describe('voice schedule assistant domain', () => {
     const draft = createVoiceFirstScheduleDraft(createDefaultScheduleDraft());
     const applied = applyVoiceSchedulePatch(draft, { preparationMinutes: 30 });
 
-    expect(applied.routines).toEqual([{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: 30 }]);
+    // Spoken durations are the person's own, so a learned average must not replace them later.
+    expect(applied.routines).toEqual([{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: 30, minutesEditedByUser: true }]);
   });
 
   it('rejects invalid times and routine durations from an untrusted response', () => {

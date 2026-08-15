@@ -435,7 +435,10 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     const stored = confirmedPlanId
       ? confirmedPlansRef.current.find((item) => item.id === confirmedPlanId && item.state === 'scheduled') ?? null
       : findDueConfirmedPlan(confirmedPlansRef.current);
-    if (!stored || stored.prepStartAt > Date.now()) return;
+    // Someone who is ready early can start ahead of the scheduled time when they ask for it
+    // themselves. Automatic and notification starts still wait for the time to arrive.
+    if (!stored) return;
+    if (source !== 'direct' && stored.prepStartAt > Date.now()) return;
     const session = createProgressSession({
       schedule: stored.schedule,
       plan: stored.plan,

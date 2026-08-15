@@ -1,5 +1,5 @@
 import { createDefaultScheduleDraft } from '../schedule-draft';
-import { createSchedulePlan } from '../planning';
+import { createSchedulePlan, targetPrepStartClock } from '../planning';
 
 describe('schedule planning engine', () => {
   test('keeps walking as a first-class transport mode', () => {
@@ -105,5 +105,46 @@ describe('schedule planning engine', () => {
     expect(plan.prepStart).toBe('13:10');
     expect(plan.departure).toBe('13:53');
     expect(plan.arrival).toBe('14:17');
+  });
+});
+
+describe('preparation durations someone set themselves', () => {
+  const draft = (routines: { id: string; minutes: number; minutesEditedByUser?: boolean }[]) => ({
+    ...createDefaultScheduleDraft(),
+    appointmentTime: '18:00',
+    transport: '지하철' as const,
+    routines: routines.map((routine) => ({ icon: 'ready', label: routine.id, ...routine })),
+  });
+  const learned = { routineMinutes: { shower: { minutes: 3, samples: 4 } } };
+
+  it('uses the learned average only until someone sets the duration', () => {
+    const untouched = createSchedulePlan(draft([{ id: 'shower', minutes: 20 }]), { personalization: learned });
+    expect(untouched.preparationMinutes).toBe(3);
+
+    // The reported bug: editing preparation time changed nothing because the average won.
+    const edited = createSchedulePlan(
+      draft([{ id: 'shower', minutes: 20, minutesEditedByUser: true }]),
+      { personalization: learned },
+    );
+    expect(edited.preparationMinutes).toBe(20);
+    expect(edited.timeline[0].duration).toBe(20);
+  });
+
+  it('does not claim an adjustment it did not make', () => {
+    const untouched = createSchedulePlan(draft([{ id: 'shower', minutes: 20 }]), { personalization: learned });
+    expect(untouched.personalizationAdjustments.map((item) => item.id)).toEqual(['shower']);
+
+    const edited = createSchedulePlan(
+      draft([{ id: 'shower', minutes: 20, minutesEditedByUser: true }]),
+      { personalization: learned },
+    );
+    expect(edited.personalizationAdjustments).toEqual([]);
+  });
+
+  it('moves the time preparation should have started as the list changes', () => {
+    const short = targetPrepStartClock(draft([{ id: 'shower', minutes: 20, minutesEditedByUser: true }]), { now: '17:50' });
+    const long = targetPrepStartClock(draft([{ id: 'shower', minutes: 40, minutesEditedByUser: true }]), { now: '17:50' });
+    expect(short).toBe('17:06');
+    expect(long).toBe('16:46');
   });
 });

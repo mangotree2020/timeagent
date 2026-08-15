@@ -11,7 +11,8 @@ import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context'
 import { ExpoLocationProvider } from '@/lib/device-location-provider';
 import { createFallbackWalkingRoute, RoutePlan } from '@/lib/journey';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
-import { createSchedulePlan, PlanStatus } from '@/lib/planning';
+import { createPlanPersonalization } from '@/lib/personalization';
+import { createSchedulePlan, currentClock, PlanStatus, targetPrepStartClock } from '@/lib/planning';
 import { useSchedule } from '@/state/schedule-context';
 
 /** Fixed starting point so the route rendering can be checked without a device GPS fix. */
@@ -23,7 +24,7 @@ export default function PlanScreen() {
   const type = useAppType();
   const params = useLocalSearchParams<{ e2eRoute?: string }>();
   const fixtureOrigin = __DEV__ && params.e2eRoute === 'ready' ? E2E_ROUTE_ORIGIN : null;
-  const { activeConfirmedPlanId, activePlan, activeSchedule, beginEditConfirmedPlan, confirmPendingPlan, confirmedPlansStatus, deleteConfirmedPlan, draft, editingConfirmedPlanId, pendingPlan, pendingSchedule, useStandardPlan } = useSchedule();
+  const { activeConfirmedPlanId, activePlan, activeSchedule, beginEditConfirmedPlan, confirmPendingPlan, confirmedPlansStatus, deleteConfirmedPlan, draft, editingConfirmedPlanId, pendingPlan, pendingSchedule, personalizationProfile, setDraftStep, useStandardPlan } = useSchedule();
   const [confirmError, setConfirmError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -31,6 +32,11 @@ export default function PlanScreen() {
   const schedule = pendingSchedule ?? activeSchedule ?? draft;
   const plan = pendingPlan ?? activePlan ?? createSchedulePlan(schedule);
   const isPending = !!pendingPlan && !!pendingSchedule;
+  // Same personalization the plan itself used, or the hint would quote a different arithmetic.
+  const targetPrepStart = targetPrepStartClock(schedule, {
+    now: currentClock(),
+    personalization: createPlanPersonalization(personalizationProfile, schedule),
+  });
   const isEditing = isPending && !!editingConfirmedPlanId;
   const destinationLatitude = schedule.destinationCoordinate?.latitude;
   const destinationLongitude = schedule.destinationCoordinate?.longitude;
@@ -74,6 +80,15 @@ export default function PlanScreen() {
     beginEditConfirmedPlan(activeConfirmedPlanId);
     router.push('/create?edit=1');
   };
+  /**
+   * Preparation time is the third step of the create flow. Jumping straight to it saves walking
+   * back through the appointment and transport steps just to change a duration.
+   */
+  const editPreparation = () => {
+    if (!isPending && activeConfirmedPlanId) beginEditConfirmedPlan(activeConfirmedPlanId);
+    setDraftStep(2);
+    router.push('/create');
+  };
   const removeAppointment = async () => {
     if (!activeConfirmedPlanId) return;
     try {
@@ -98,6 +113,9 @@ export default function PlanScreen() {
           <Metric label="출발" value={plan.departure} />
           <Metric label="도착" value={plan.arrival} status={plan.status} />
         </View>
+        {/* Once it is too late to start on time the plan pins preparation to now, so the start time
+            stops answering to edits. Showing the time it should have begun keeps that feedback. */}
+        {plan.status.kind !== 'ready' ? <Text style={type.caption}>제때 도착하려면 {targetPrepStart}에 시작했어야 해요. 준비 시간을 줄이면 이 시각이 늦춰져요.</Text> : null}
       </Card>
       {mapOpen ? <Card style={styles.mapCard}><View><Text style={type.heading}>{route ? '도착 장소와 이동 경로' : '도착 장소 지도'}</Text><Text style={type.bodyMuted}>{schedule.destinationAddress || schedule.destination}</Text></View>{schedule.destinationCoordinate ? <DestinationMap coordinate={schedule.destinationCoordinate} route={route} /> :<View style={styles.mapUnavailable}><AppIcon name="location" size={26} iconColor={c.textMuted} /><Text style={type.bodyMuted}>저장된 지도 좌표가 없습니다. 약속 수정에서 장소를 다시 선택해 주세요.</Text></View>}</Card> : null}
       {plan.personalizationAdjustments.length > 0 ? (
@@ -124,8 +142,8 @@ export default function PlanScreen() {
             </Card>
           </Pressable>
         )}
-        {isPending ? <View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={() => router.push('/create')} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View> : null}
-        {!isPending && activeConfirmedPlanId ? <View style={styles.manageActions}><View style={{ flex: 1 }}><Button label="약속 수정" variant="secondary" onPress={editAppointment} /></View><View style={{ flex: 1 }}><Button label="약속 삭제" variant="dangerGhost" onPress={() => setDeleteOpen(true)} /></View></View> : null}
+        {isPending ? <View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={editPreparation} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View> : null}
+        {!isPending && activeConfirmedPlanId ? <><View style={styles.secondary}><Button label="준비 시간 수정" variant="secondary" onPress={editPreparation} /><Button label="플랜 B 보기" variant="secondary" onPress={() => router.push('/plan-b')} /></View><View style={styles.manageActions}><View style={{ flex: 1 }}><Button label="약속 수정" variant="secondary" onPress={editAppointment} /></View><View style={{ flex: 1 }}><Button label="약속 삭제" variant="dangerGhost" onPress={() => setDeleteOpen(true)} /></View></View></> : null}
         {deleteOpen ? <Card style={styles.deleteConfirm}><Text style={styles.deleteTitle}>이 약속을 삭제할까요?</Text><Text style={type.bodyMuted}>준비 시작 알림과 저장된 준비 계획도 함께 삭제됩니다.</Text><View style={styles.manageActions}><View style={{ flex: 1 }}><Button label="삭제 취소" variant="secondary" onPress={() => setDeleteOpen(false)} /></View><View style={{ flex: 1 }}><Button label="삭제 확인" variant="danger" onPress={() => void removeAppointment()} /></View></View></Card> : null}
         {confirmError ? <Text accessibilityRole="alert" style={styles.error}>{confirmError}</Text> : null}
       </View>
