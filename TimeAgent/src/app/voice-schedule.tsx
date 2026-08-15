@@ -8,7 +8,7 @@ import { File } from 'expo-file-system';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Dimensions, Keyboard, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon, IconButton, iconForTransport } from '@/components/app-icon';
@@ -23,12 +23,16 @@ import {
   createVoiceActivityState,
   createVoiceRequiredConfirmations,
   createVoiceFirstScheduleDraft,
+  isVoiceReplyAwaitingUser,
+  isVoiceTakeFinished,
   mergeVoiceRequiredConfirmations,
+  needsVoiceMapConfirmation,
   nextVoiceClarification,
   resolveVoiceClarificationChoice,
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
   updateVoiceActivity,
+  VOICE_MAP_CONFIRMATION_GUIDE,
   voiceScheduleMissingFields,
   VoiceScheduleAssistantReply,
   VoiceScheduleClarification,
@@ -172,7 +176,12 @@ export default function VoiceScheduleScreen() {
   const finishingRef = useRef(false);
   const processingRef = useRef(false);
   const recordingStartedRef = useRef(false);
+  const recordingObservedRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  const keyboardHeightRef = useRef(0);
+  const editingRowRef = useRef<View | null>(null);
   const voiceActivityRef = useRef(createVoiceActivityState());
 
   const startRecording = useCallback(async () => {
@@ -192,24 +201,37 @@ export default function VoiceScheduleScreen() {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
         return;
       }
+      // Preparing a recorder that is still open throws, and the polled state can lag behind a take
+      // that has just ended, so the live status decides whether the previous take needs closing.
+      const openTake = recorder.getStatus();
+      if (openTake.isRecording || openTake.canRecord) {
+        try { await recorder.stop(); } catch { /* the take may already be closed */ }
+        if (!mountedRef.current || generation !== flowGenerationRef.current) return;
+      }
       await recorder.prepareToRecordAsync();
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
       voiceActivityRef.current = createVoiceActivityState();
       finishingRef.current = false;
       recordingStartedRef.current = true;
+      recordingObservedRef.current = false;
       recorder.record({ forDuration: 60 });
+      // A recorder that refuses to start does so silently, and nothing else in the flow would ever
+      // end a turn that never began, so the microphone is checked before the screen says it listens.
+      if (!recorder.getStatus().isRecording) throw new Error('recorder did not start');
       setStatus('recording');
     } catch {
+      recordingStartedRef.current = false;
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
       setStatus('error');
       setErrorMessage('음성 대화를 시작하지 못했어요. 다시 듣거나 추출 결과를 직접 수정해 주세요.');
     }
   }, [recorder]);
 
-  const speakThenListen = useCallback(async (text: string, generation = flowGenerationRef.current) => {
-    if (!mountedRef.current || generation !== flowGenerationRef.current) return;
+  /** Reads the reply aloud and reports whether the flow it belongs to is still the current one. */
+  const speak = useCallback(async (text: string, generation = flowGenerationRef.current) => {
+    if (!mountedRef.current || generation !== flowGenerationRef.current) return false;
     const canSpeak = voiceOutputEnabled && await canUseAppTts();
-    if (!mountedRef.current || generation !== flowGenerationRef.current) return;
+    if (!mountedRef.current || generation !== flowGenerationRef.current) return false;
     if (canSpeak) {
       setStatus('speaking');
       await new Promise<void>((resolve) => {
@@ -221,8 +243,21 @@ export default function VoiceScheduleScreen() {
       });
       await new Promise<void>((resolve) => setTimeout(resolve, TTS_RELEASE_DELAY_MS));
     }
-    if (mountedRef.current && generation === flowGenerationRef.current) await startRecording();
-  }, [startRecording, voiceOutputEnabled]);
+    return mountedRef.current && generation === flowGenerationRef.current;
+  }, [voiceOutputEnabled]);
+
+  const speakThenListen = useCallback(async (text: string, generation = flowGenerationRef.current) => {
+    if (await speak(text, generation)) await startRecording();
+  }, [speak, startRecording]);
+
+  /**
+   * With nothing left to ask, the microphone stays closed and the turn belongs to the user. Another
+   * take here would only let room noise reopen questions the assistant already has answers for, and
+   * every reply it produced put the screen back into processing with the register button disabled.
+   */
+  const speakThenWait = useCallback(async (text: string, generation = flowGenerationRef.current) => {
+    if (await speak(text, generation)) setStatus('review');
+  }, [speak]);
 
   const scheduleAutoRestart = useCallback((delayMs: number, generation = flowGenerationRef.current) => {
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
@@ -274,13 +309,19 @@ export default function VoiceScheduleScreen() {
         setProposal(nextProposal);
         setTaskProposal(null);
       }
+      const nextReady = isVoiceReplyAwaitingUser(reply, nextClarification);
       setRequiredConfirmations(nextConfirmations);
-      setAssistantReady(reply.readyToApply && nextVoiceClarification(nextProposal, nextConfirmations) === null);
+      setAssistantReady(nextReady);
       setClarification(nextClarification);
       setHistory((current) => [...current, { role: 'user', text: transcript }, { role: 'assistant', text: assistantText }].slice(-8) as VoiceScheduleHistoryTurn[]);
       setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', text: transcript }, { id: `a-${Date.now()}`, role: 'assistant', text: assistantText }]);
       setStatus('review');
-      void speakThenListen(nextClarification?.prompt ?? reply.question ?? assistantText);
+      const mapGuide = reply.entryType === 'schedule' && nextReady && needsVoiceMapConfirmation(nextProposal)
+        ? ` ${VOICE_MAP_CONFIRMATION_GUIDE}`
+        : '';
+      const spoken = `${nextClarification?.prompt ?? reply.question ?? assistantText}${mapGuide}`;
+      if (nextReady) void speakThenWait(spoken, generation);
+      else void speakThenListen(spoken, generation);
     } catch (error) {
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
       setStatus('error');
@@ -289,15 +330,18 @@ export default function VoiceScheduleScreen() {
     } finally {
       processingRef.current = false;
     }
-  }, [conversationId, history, proposal, provider, requiredConfirmations, scheduleAutoRestart, speakThenListen, voiceDraft]);
+  }, [conversationId, history, proposal, provider, requiredConfirmations, scheduleAutoRestart, speakThenListen, speakThenWait, voiceDraft]);
 
   const finishRecording = useCallback(async () => {
     if (finishingRef.current) return;
     const generation = flowGenerationRef.current;
     finishingRef.current = true;
     recordingStartedRef.current = false;
+    recordingObservedRef.current = false;
     try {
-      if (recorderState.isRecording) await recorder.stop();
+      // The polled state can still claim the take is running after it ended, and can still claim it
+      // is idle while the file is being written, so the live status decides whether to close it.
+      if (recorder.getStatus().isRecording) await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       const uri = recorder.uri ?? recorderState.url;
       if (!uri) throw new Error('missing recording');
@@ -321,7 +365,7 @@ export default function VoiceScheduleScreen() {
     } finally {
       finishingRef.current = false;
     }
-  }, [recorder, recorderState.durationMillis, recorderState.isRecording, recorderState.url, scheduleAutoRestart, submitTurn]);
+  }, [recorder, recorderState.durationMillis, recorderState.url, scheduleAutoRestart, submitTurn]);
 
   const stopAudioConversation = useCallback(async () => {
     flowGenerationRef.current += 1;
@@ -329,14 +373,18 @@ export default function VoiceScheduleScreen() {
       clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
     }
-    const hadActiveRecording = recordingStartedRef.current || recorderState.isRecording;
+    // A take that was prepared but never started still holds the microphone, and the polled state
+    // never reports it, so the live status decides what has to be released before leaving.
+    const openTake = recorder.getStatus();
+    const hadActiveRecording = recordingStartedRef.current || openTake.isRecording || openTake.canRecord;
     recordingStartedRef.current = false;
+    recordingObservedRef.current = false;
     try { await Speech.stop(); } catch { /* navigation must still continue */ }
     if (hadActiveRecording) {
       try { await recorder.stop(); } catch { /* recorder may already have stopped */ }
     }
     try { await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }); } catch { /* screen can still close */ }
-  }, [recorder, recorderState.isRecording]);
+  }, [recorder]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -356,13 +404,19 @@ export default function VoiceScheduleScreen() {
 
   useEffect(() => {
     if (status !== 'recording' || fixtureAutoListening) return;
+    if (recorderState.isRecording) recordingObservedRef.current = true;
     const activity = updateVoiceActivity(voiceActivityRef.current, recorderState.metering, recorderState.durationMillis);
     voiceActivityRef.current = activity.state;
     if (activity.shouldFinish) void finishRecording();
-  }, [finishRecording, fixtureAutoListening, recorderState.durationMillis, recorderState.metering, status]);
+  }, [finishRecording, fixtureAutoListening, recorderState.durationMillis, recorderState.isRecording, recorderState.metering, status]);
 
   useEffect(() => {
-    if (status !== 'recording' || !recordingStartedRef.current || recorderState.isRecording || !(recorderState.url || recorder.uri)) return;
+    const take = {
+      started: recordingStartedRef.current,
+      observedRunning: recordingObservedRef.current,
+      polledRecording: recorderState.isRecording,
+    };
+    if (status !== 'recording' || !isVoiceTakeFinished(take) || !(recorderState.url || recorder.uri)) return;
     if (!voiceActivityRef.current.heardSpeech) {
       recordingStartedRef.current = false;
       const uri = recorderState.url || recorder.uri;
@@ -378,15 +432,13 @@ export default function VoiceScheduleScreen() {
 
   const applyManualPatch = (patch: VoiceSchedulePatch, resolvedField?: VoiceScheduleClarification['field']) => {
     const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, patch);
+    const next = applyVoiceSchedulePatch(proposal ?? voiceDraft, patch);
+    const pending = clarification?.field === resolvedField ? null : clarification;
+    const nextClarification = pending ?? nextVoiceClarification(next, nextConfirmations);
     setRequiredConfirmations(nextConfirmations);
-    setProposal((current) => {
-      const next = applyVoiceSchedulePatch(current ?? voiceDraft, patch);
-      const pending = clarification?.field === resolvedField ? null : clarification;
-      const nextClarification = pending ?? nextVoiceClarification(next, nextConfirmations);
-      setClarification(nextClarification);
-      setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null);
-      return next;
-    });
+    setProposal(next);
+    setClarification(nextClarification);
+    setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null);
   };
 
   /**
@@ -460,6 +512,39 @@ export default function VoiceScheduleScreen() {
     });
   };
 
+  /**
+   * A row being edited near the bottom of the list sits exactly where the keyboard appears, and
+   * Android's resize alone does not bring it back into view. Once the row's on-screen position and
+   * the keyboard's height are both known, the list scrolls just far enough to keep them apart.
+   */
+  const ensureEditingRowVisible = useCallback(() => {
+    const row = editingRowRef.current;
+    const scroll = scrollRef.current;
+    if (!row || !scroll) return;
+    row.measureInWindow((_x, y, _width, height) => {
+      const visibleBottom = Dimensions.get('window').height - keyboardHeightRef.current - 24;
+      const overflow = y + height - visibleBottom;
+      if (overflow > 0) scroll.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
+    });
+  }, []);
+
+  const scrollEditingRowIntoView = useCallback((row: View | null) => {
+    editingRowRef.current = row;
+    ensureEditingRowVisible();
+  }, [ensureEditingRowVisible]);
+
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', (event) => {
+      keyboardHeightRef.current = event.endCoordinates.height;
+      ensureEditingRowVisible();
+    });
+    const hidden = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardHeightRef.current = 0;
+      editingRowRef.current = null;
+    });
+    return () => { shown.remove(); hidden.remove(); };
+  }, [ensureEditingRowVisible]);
+
   const conversationState = status === 'recording'
     ? '듣는 중'
     : status === 'speaking'
@@ -475,7 +560,7 @@ export default function VoiceScheduleScreen() {
           <View style={styles.header}><IconButton name="close" label="음성 입력 닫기" variant="plain" iconColor={palette.text} onPress={closeVoiceInput} /><View style={styles.headerCopy}><Text style={[styles.headerTitle, { color: palette.text }]}>말로 일정·할 일</Text><Text style={[styles.headerHint, { color: palette.textMuted }]}>일정은 확인하고, 할 일은 지금 시작할 만큼 작게 나눠요</Text></View><View style={styles.headerSpacer} /></View>
           <View accessibilityLabel="AI 실시간 대화 자동 듣기 켜짐" style={[styles.aiMode, { backgroundColor: palette.surface, borderColor: palette.border }]}><View style={[styles.aiModeDot, { backgroundColor: palette.primary }]} /><Text style={[styles.aiModeText, { color: palette.text }]}>실시간 대화 · 자동 듣기</Text><Text accessibilityLiveRegion="polite" style={[styles.aiModeState, { color: palette.primary }]}>{conversationState}</Text></View>
 
-          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets onScroll={(event) => { scrollOffsetRef.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
             <View style={styles.chat}>{messages.map((message) => <View accessibilityLabel={`${message.role === 'user' ? '사용자 발화' : 'AI 응답'}: ${message.text}`} key={message.id} style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage, { backgroundColor: message.role === 'user' ? palette.primary : palette.assistantBubble }]}><Text style={[styles.messageText, { color: message.role === 'user' || colorMode === 'dark' ? '#FFFFFF' : palette.text }]}>{message.text}</Text></View>)}</View>
 
             {clarification ? <ClarificationCard clarification={clarification} palette={palette} onChoose={chooseClarificationOption} /> : null}
@@ -492,6 +577,7 @@ export default function VoiceScheduleScreen() {
               onChange={applyManualPatch}
               onConfirm={() => void confirmSchedule()}
               onEditField={setEditField}
+              onEditingRow={scrollEditingRowIntoView}
               onToggleDetails={() => setDetailsOpen((current) => !current)}
             /> : null}
 
@@ -546,7 +632,7 @@ function ClarificationCard({ clarification, palette, onChoose }: { clarification
   return <View accessibilityRole="alert" style={[styles.clarification, { backgroundColor: palette.surface, borderColor: palette.primary }]}><View style={styles.clarificationTitle}><AppIcon name="quick" size={19} iconColor={palette.primary} /><Text style={[styles.clarificationPrompt, { color: palette.text }]}>{clarification.prompt}</Text></View><View style={[styles.optionList, compact && styles.optionListCompact]}>{clarification.options.map((option) => <Pressable key={option} accessibilityRole="button" onPress={() => onChoose(option)} style={({ pressed }) => [styles.option, compact && styles.optionCompact, { borderColor: palette.border, backgroundColor: palette.surfaceMuted }, pressed && styles.pressed]}><Text numberOfLines={1} style={[styles.optionText, compact && styles.optionTextCompact, { color: palette.primary }]}>{option}</Text></Pressable>)}</View></View>;
 }
 
-function VoiceReview({ proposal, assistantReady, clarification, requiredConfirmations, detailsOpen, editField, palette, processing, onChange, onConfirm, onEditField, onToggleDetails }: {
+function VoiceReview({ proposal, assistantReady, clarification, requiredConfirmations, detailsOpen, editField, palette, processing, onChange, onConfirm, onEditField, onEditingRow, onToggleDetails }: {
   proposal: ScheduleDraft;
   assistantReady: boolean;
   clarification: VoiceScheduleClarification | null;
@@ -558,6 +644,7 @@ function VoiceReview({ proposal, assistantReady, clarification, requiredConfirma
   onChange: (patch: VoiceSchedulePatch, resolvedField?: VoiceScheduleClarification['field']) => void;
   onConfirm: () => void;
   onEditField: (field: EditableField) => void;
+  onEditingRow: (row: View | null) => void;
   onToggleDetails: () => void;
 }) {
   const missing = voiceScheduleMissingFields(proposal);
@@ -566,16 +653,16 @@ function VoiceReview({ proposal, assistantReady, clarification, requiredConfirma
   const preparationMinutes = proposal.routines.reduce((sum, item) => sum + item.minutes, 0);
   return <View accessibilityLabel="AI가 추출한 일정 확인" style={[styles.review, { backgroundColor: palette.surface, borderColor: palette.border }]}>
     <View style={styles.reviewHeading}><View style={styles.reviewHeadingCopy}><Text style={[styles.reviewLead, { color: palette.primary }]}>이렇게 등록할까요?</Text><Text style={[styles.reviewHint, { color: palette.textMuted }]}>추출된 값만 눌러 바로 수정할 수 있어요</Text></View><View style={[styles.confidence, { backgroundColor: canConfirm ? '#E7F8F3' : '#FFF4E5' }]}><Text style={[styles.confidenceText, { color: canConfirm ? '#0D766E' : '#9A5A00' }]}>{canConfirm ? '확인 완료' : '확인 필요'}</Text></View></View>
-    <EditableRow label="일정명" value={proposal.title} field="title" editing={editField === 'title'} palette={palette} onEdit={onEditField} onSubmit={(title) => onChange({ title }, 'title')} />
-    <EditableRow label="날짜" value={proposal.date} field="date" editing={editField === 'date'} palette={palette} onEdit={onEditField} onSubmit={(date) => onChange({ date }, 'date')} />
-    <EditableRow label="시간" value={proposal.appointmentTime ? `${proposal.appointmentTime}–${endTime}` : ''} editValue={proposal.appointmentTime} field="time" editing={editField === 'time'} palette={palette} onEdit={onEditField} onSubmit={(appointmentTime) => onChange({ appointmentTime }, 'time')} />
+    <EditableRow label="일정명" value={proposal.title} field="title" editing={editField === 'title'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(title) => onChange({ title }, 'title')} />
+    <EditableRow label="날짜" value={proposal.date} field="date" editing={editField === 'date'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(date) => onChange({ date }, 'date')} />
+    <EditableRow label="시간" value={proposal.appointmentTime ? `${proposal.appointmentTime}–${endTime}` : ''} editValue={proposal.appointmentTime} field="time" editing={editField === 'time'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(appointmentTime) => onChange({ appointmentTime }, 'time')} />
     <TransportRow value={requiredConfirmations.transport ? proposal.transport : ''} editing={editField === 'transport'} palette={palette} onEdit={onEditField} onSelect={(transport) => { onChange({ transport }, 'transport'); onEditField(null); }} />
-    <EditableRow label="장소" value={proposal.destination} field="destination" editing={editField === 'destination'} palette={palette} onEdit={onEditField} onSubmit={(destination) => onChange({ destination, destinationAddress: '', destinationCoordinate: null }, 'destination')} />
+    <EditableRow label="장소" value={proposal.destination} field="destination" editing={editField === 'destination'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(destination) => onChange({ destination, destinationAddress: '', destinationCoordinate: null }, 'destination')} />
     {proposal.destination ? <DestinationPicker title="지도에서 장소 확인" value={proposal} onChange={(value) => onChange(value, 'destination')} autoSearch autoSelectExact showSelectedMap /> : null}
     {detailsOpen ? <View style={styles.details}>
-      <EditableRow label="소요 시간" value={`${proposal.durationMinutes ?? 60}분`} editValue={String(proposal.durationMinutes ?? 60)} field="duration" editing={editField === 'duration'} palette={palette} onEdit={onEditField} onSubmit={(value) => onChange({ durationMinutes: Number(value) || 60 })} keyboardType="number-pad" />
-      <EditableRow label="반복" value={proposal.recurrence ?? '반복 없음'} field="recurrence" editing={editField === 'recurrence'} palette={palette} onEdit={onEditField} onSubmit={(recurrence) => onChange({ recurrence }, 'recurrence')} />
-      <EditableRow label="준비 시간" value={`${preparationMinutes}분`} editValue={String(preparationMinutes)} field="preparation" editing={editField === 'preparation'} palette={palette} onEdit={onEditField} onSubmit={(value) => onChange({ preparationMinutes: Number(value) || preparationMinutes }, 'preparation')} keyboardType="number-pad" />
+      <EditableRow label="소요 시간" value={`${proposal.durationMinutes ?? 60}분`} editValue={String(proposal.durationMinutes ?? 60)} field="duration" editing={editField === 'duration'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(value) => onChange({ durationMinutes: Number(value) || 60 })} keyboardType="number-pad" />
+      <EditableRow label="반복" value={proposal.recurrence ?? '반복 없음'} field="recurrence" editing={editField === 'recurrence'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(recurrence) => onChange({ recurrence }, 'recurrence')} />
+      <EditableRow label="준비 시간" value={`${preparationMinutes}분`} editValue={String(preparationMinutes)} field="preparation" editing={editField === 'preparation'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(value) => onChange({ preparationMinutes: Number(value) || preparationMinutes }, 'preparation')} keyboardType="number-pad" />
     </View> : null}
     {missing.length ? <Text accessibilityLiveRegion="polite" style={styles.missing}>확인할 항목: {missing.join(' · ')}{proposal.destination && !proposal.destinationCoordinate ? ' · 지도 위치' : ''}</Text> : proposal.destination && !proposal.destinationCoordinate ? <Text accessibilityLiveRegion="polite" style={styles.missing}>지도에서 정확한 장소를 선택해 주세요.</Text> : null}
     <View style={styles.reviewActions}><Pressable accessibilityRole="button" onPress={() => onEditField(editField ? null : 'time')} style={styles.textAction}><Text style={[styles.textActionLabel, { color: palette.primary }]}>시간 수정</Text></Pressable><Pressable accessibilityRole="button" onPress={onToggleDetails} style={styles.textAction}><Text style={[styles.textActionLabel, { color: palette.primary }]}>{detailsOpen ? '세부 닫기' : '세부 설정'}</Text></Pressable></View>
@@ -603,7 +690,7 @@ function TransportRow({ value, editing, palette, onEdit, onSelect }: {
   </Pressable>;
 }
 
-function EditableRow({ label, value, editValue = value, field, editing, palette, onEdit, onSubmit, keyboardType = 'default' }: {
+function EditableRow({ label, value, editValue = value, field, editing, palette, onEdit, onEditingLayout, onSubmit, keyboardType = 'default' }: {
   label: string;
   value: string;
   editValue?: string;
@@ -611,12 +698,14 @@ function EditableRow({ label, value, editValue = value, field, editing, palette,
   editing: boolean;
   palette: ReturnType<typeof useAppTheme>['palette'];
   onEdit: (field: EditableField) => void;
+  onEditingLayout?: (row: View | null) => void;
   onSubmit: (value: string) => void;
   keyboardType?: 'default' | 'number-pad';
 }) {
   const inputRef = useRef(editValue);
+  const rowRef = useRef<View>(null);
   const submit = () => { onSubmit(inputRef.current.trim()); onEdit(null); };
-  if (editing) return <View style={styles.editRow}><Text style={[styles.summaryLabel, { color: palette.textMuted }]}>{label}</Text><TextInput accessibilityLabel={`${label} 직접 수정`} autoFocus defaultValue={editValue} keyboardType={keyboardType} onChangeText={(value) => { inputRef.current = value; }} onBlur={submit} onSubmitEditing={submit} style={[styles.editInput, { color: palette.text, borderColor: palette.primary, backgroundColor: palette.surfaceMuted }]} /></View>;
+  if (editing) return <View ref={rowRef} onLayout={() => onEditingLayout?.(rowRef.current)} style={styles.editRow}><Text style={[styles.summaryLabel, { color: palette.textMuted }]}>{label}</Text><TextInput accessibilityLabel={`${label} 직접 수정`} autoFocus defaultValue={editValue} keyboardType={keyboardType} onChangeText={(value) => { inputRef.current = value; }} onBlur={submit} onSubmitEditing={submit} style={[styles.editInput, { color: palette.text, borderColor: palette.primary, backgroundColor: palette.surfaceMuted }]} /></View>;
   return <Pressable accessibilityRole="button" accessibilityLabel={`${label} ${value || '확인 필요'} 수정`} onPress={() => { inputRef.current = editValue; onEdit(field); }} style={({ pressed }) => [styles.summaryRow, pressed && styles.pressed]}><Text style={[styles.summaryLabel, { color: palette.textMuted }]}>{label}</Text><Text style={[styles.summaryValue, { color: value ? palette.text : '#B45309' }]}>{value || '확인 필요'}</Text><AppIcon name="chevronRight" size={17} iconColor={palette.textMuted} /></Pressable>;
 }
 

@@ -158,6 +158,31 @@ export function shouldUseCompactClarificationOptions(options: string[]) {
     && options.every((option) => option.trim().length <= COMPACT_OPTION_MAX_LENGTH);
 }
 
+/**
+ * Whether the assistant has said everything it needs to and the next move is the user's. A task is
+ * judged on the actions it proposed; measuring one against the appointment fields left it forever
+ * unready and its save button did nothing. While this is true the screen keeps the microphone shut,
+ * because another take would only let room noise reopen questions that already have answers.
+ */
+export function isVoiceReplyAwaitingUser(
+  reply: Pick<VoiceScheduleAssistantReply, 'entryType' | 'readyToApply' | 'task'>,
+  pendingClarification: VoiceScheduleClarification | null,
+) {
+  if (reply.entryType === 'task') return Boolean(reply.task);
+  return reply.readyToApply && pendingClarification === null;
+}
+
+/**
+ * A destination the assistant heard is only a name until the map pins it, and the coordinate is what
+ * schedule confirmation requires. When it is missing, the spoken guidance has to send the user to the
+ * search results or the map instead of implying the schedule is ready.
+ */
+export function needsVoiceMapConfirmation(draft: Pick<ScheduleDraft, 'destination' | 'destinationCoordinate'>) {
+  return Boolean(draft.destination.trim()) && !draft.destinationCoordinate;
+}
+
+export const VOICE_MAP_CONFIRMATION_GUIDE = '장소 검색 결과나 지도에서 정확한 위치를 확인해 주세요.';
+
 export function canConfirmVoiceSchedule(
   draft: ScheduleDraft,
   assistantReady: boolean,
@@ -246,7 +271,7 @@ export function updateVoiceActivity(
     maxListeningMs?: number;
   } = {},
 ) {
-  const { maxListeningMs = 15_000 } = options;
+  const { maxListeningMs = 20_000 } = options;
   const measured = measureVoiceActivity(previous, metering, durationMillis, options);
   // Every turn has to end on its own. Without an upper bound a room whose noise never drops would
   // keep the microphone open until the recorder's own limit, which is what forced a manual button.
@@ -262,7 +287,10 @@ function measureVoiceActivity(
     speechThresholdDb = -55,
     minimumListeningMs = 350,
     speechOnsetMs = 120,
-    trailingSilenceMs = 700,
+    // One utterance usually carries the title, time, place, and transport together, and speakers
+    // pause between those clauses. A short window cut them off mid-sentence, so the turn ends only
+    // after a pause long enough to mean the speaker is done.
+    trailingSilenceMs = 1_200,
     noiseFloorRiseDb = 12,
     noiseFloorConfirmDb = 8,
     floorConfidenceSamples = 3,
@@ -344,6 +372,25 @@ function measureVoiceActivity(
     state: { ...base, silenceSinceMs },
     shouldFinish: durationMillis - silenceSinceMs >= trailingSilenceMs,
   };
+}
+
+export type VoiceRecorderTake = {
+  /** The screen started a take and has not handled its end yet. */
+  started: boolean;
+  /** The polled recorder state has reported this take as running at least once. */
+  observedRunning: boolean;
+  /** Whether the newest polled recorder state reports a recording in progress. */
+  polledRecording: boolean;
+};
+
+/**
+ * The recorder state is polled, so it still reads "not recording" for a moment after a take starts,
+ * and preparing a take already fills in the recording file path. Reading that gap as a finished take
+ * restarts the microphone while it is still open, which the recorder refuses. A take counts as ended
+ * only once the poll has actually seen it running.
+ */
+export function isVoiceTakeFinished(take: VoiceRecorderTake) {
+  return take.started && take.observedRunning && !take.polledRecording;
 }
 
 export function shouldSubmitVoiceRecording(

@@ -7,6 +7,8 @@ import {
   completeGuidedVoicePatch,
   GUIDED_VOICE_QUESTIONS,
   isGuidedVoiceFieldCaptured,
+  isVoiceReplyAwaitingUser,
+  isVoiceTakeFinished,
   normalizeVoiceScheduleReply,
   resolveSpokenDateReference,
   shouldSubmitVoiceRecording,
@@ -15,6 +17,7 @@ import {
   createVoiceActivityState,
   createVoiceRequiredConfirmations,
   mergeVoiceRequiredConfirmations,
+  needsVoiceMapConfirmation,
   nextRequiredVoiceClarification,
   nextVoiceClarification,
   resolveVoiceClarificationChoice,
@@ -294,7 +297,26 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(true);
     activity = updateVoiceActivity(activity.state, -60, 1_400);
     expect(activity.shouldFinish).toBe(false);
-    activity = updateVoiceActivity(activity.state, -60, 2_150);
+    activity = updateVoiceActivity(activity.state, -60, 2_650);
+    expect(activity.shouldFinish).toBe(true);
+  });
+
+  it('keeps listening through a clause pause so one utterance can carry every field', () => {
+    // "내일 오후 3시에 … 서면역에서 치과, … 지하철로" — the pauses between clauses must not end the turn.
+    let activity = updateVoiceActivity(createVoiceActivityState(), -60, 400);
+    activity = updateVoiceActivity(activity.state, -22, 600);
+    activity = updateVoiceActivity(activity.state, -20, 800);
+    expect(activity.state.heardSpeech).toBe(true);
+
+    activity = updateVoiceActivity(activity.state, -60, 1_000);
+    activity = updateVoiceActivity(activity.state, -60, 1_950);
+    expect(activity.shouldFinish).toBe(false);
+
+    activity = updateVoiceActivity(activity.state, -20, 2_100);
+    activity = updateVoiceActivity(activity.state, -60, 2_300);
+    activity = updateVoiceActivity(activity.state, -60, 3_450);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -60, 3_550);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -312,7 +334,7 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -52, 720);
     expect(activity.state.heardSpeech).toBe(true);
     activity = updateVoiceActivity(activity.state, -64, 900);
-    activity = updateVoiceActivity(activity.state, -64, 1_600);
+    activity = updateVoiceActivity(activity.state, -64, 2_150);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -322,6 +344,35 @@ describe('voice schedule assistant domain', () => {
     expect(shouldSubmitVoiceRecording(silentActivity, 350, true)).toBe(true);
     expect(shouldSubmitVoiceRecording(silentActivity, 2_000, false)).toBe(false);
     expect(shouldSubmitVoiceRecording({ ...silentActivity, heardSpeech: true }, 2_000, false)).toBe(true);
+  });
+
+  it('hands the turn to the user once a schedule or a task proposal has nothing left to ask', () => {
+    const task = { title: '보고서 작성', actions: [{ label: '문서 열기', estimatedMinutes: 2 }] };
+    // A task used to be measured against the appointment fields, so it never became ready and its
+    // save button did nothing.
+    expect(isVoiceReplyAwaitingUser({ entryType: 'task', readyToApply: true, task }, null)).toBe(true);
+    expect(isVoiceReplyAwaitingUser({ entryType: 'task', readyToApply: true, task: null }, null)).toBe(false);
+    expect(isVoiceReplyAwaitingUser({ entryType: 'schedule', readyToApply: true, task: null }, null)).toBe(true);
+    expect(isVoiceReplyAwaitingUser({ entryType: 'schedule', readyToApply: false, task: null }, null)).toBe(false);
+    expect(isVoiceReplyAwaitingUser(
+      { entryType: 'schedule', readyToApply: true, task: null },
+      { field: 'transport', prompt: '어떻게 이동할까요?', options: ['버스'] },
+    )).toBe(false);
+  });
+
+  it('asks for map confirmation only while a named destination has no coordinate', () => {
+    expect(needsVoiceMapConfirmation({ destination: '서면역', destinationCoordinate: null })).toBe(true);
+    expect(needsVoiceMapConfirmation({ destination: '서면역', destinationCoordinate: { latitude: 35.1578, longitude: 129.0592 } })).toBe(false);
+    expect(needsVoiceMapConfirmation({ destination: '  ', destinationCoordinate: null })).toBe(false);
+  });
+
+  it('waits for the polled recorder state to catch up before calling a take finished', () => {
+    // The moment after a take starts, the poll still reports the previous idle reading. Calling that
+    // a finished take restarted the microphone while it was still open, which the recorder refuses.
+    expect(isVoiceTakeFinished({ started: true, observedRunning: false, polledRecording: false })).toBe(false);
+    expect(isVoiceTakeFinished({ started: true, observedRunning: true, polledRecording: true })).toBe(false);
+    expect(isVoiceTakeFinished({ started: true, observedRunning: true, polledRecording: false })).toBe(true);
+    expect(isVoiceTakeFinished({ started: false, observedRunning: true, polledRecording: false })).toBe(false);
   });
 
   it('ends the turn in a noisy room where ambient sound stays above the absolute speech threshold', () => {
@@ -335,7 +386,7 @@ describe('voice schedule assistant domain', () => {
 
     activity = updateVoiceActivity(activity.state, -42, 1_400);
     expect(activity.shouldFinish).toBe(false);
-    activity = updateVoiceActivity(activity.state, -42, 2_150);
+    activity = updateVoiceActivity(activity.state, -42, 2_650);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -349,7 +400,7 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(true);
 
     activity = updateVoiceActivity(activity.state, -77, 1_200);
-    activity = updateVoiceActivity(activity.state, -77, 1_950);
+    activity = updateVoiceActivity(activity.state, -77, 2_450);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -373,22 +424,22 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -20, 800);
     expect(activity.state.heardSpeech).toBe(true);
 
-    for (let elapsed = 920; elapsed <= 14_900; elapsed += 120) {
+    for (let elapsed = 920; elapsed <= 19_900; elapsed += 120) {
       activity = updateVoiceActivity(activity.state, elapsed % 240 === 0 ? -22 : -20, elapsed);
     }
     expect(activity.shouldFinish).toBe(false);
 
-    activity = updateVoiceActivity(activity.state, -20, 15_000);
+    activity = updateVoiceActivity(activity.state, -20, 20_000);
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(true);
   });
 
   it('restarts instead of submitting when the maximum window passes without any speech', () => {
     let activity = updateVoiceActivity(createVoiceActivityState(), -80, 400);
-    activity = updateVoiceActivity(activity.state, -80, 15_000);
+    activity = updateVoiceActivity(activity.state, -80, 20_000);
 
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(false);
   });
 
   it('never submits steady room noise, even when it sits above the absolute speech threshold', () => {
@@ -401,9 +452,9 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(false);
     expect(shouldSubmitVoiceRecording(activity.state, 14_000)).toBe(false);
 
-    activity = updateVoiceActivity(activity.state, -45, 15_000);
+    activity = updateVoiceActivity(activity.state, -45, 20_000);
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 15_000)).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(false);
   });
 
   it('still hears real speech that rises above a noisy room', () => {
