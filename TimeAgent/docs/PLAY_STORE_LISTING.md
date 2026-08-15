@@ -36,9 +36,12 @@ TimeAgent의 제안은 언제든 적용하거나 거절할 수 있습니다.
 ## 연락처와 URL
 
 - 지원 이메일: Play Console 등록 전에 운영 이메일 확정 필요
-- 개인정보처리방침: 공개 배포 후 `/privacy`
-- 서비스 이용약관: 공개 배포 후 `/terms`
-- 계정 삭제 안내: 공개 배포 후 `/delete-account`
+- 개인정보처리방침: https://timeflow-landing-mangotree-4133s-projects.vercel.app/privacy
+- 서비스 이용약관: https://timeflow-landing-mangotree-4133s-projects.vercel.app/terms
+- 계정 삭제 안내: https://timeflow-landing-mangotree-4133s-projects.vercel.app/delete-account
+
+세 URL은 Vercel `timeflow-landing` 프로젝트의 프로덕션 도메인이며 배포마다 바뀌지 않는다.
+이전 ChatGPT Sites 주소(`timeflow-landing.wcshin.chatgpt.site`)는 갱신되지 않으므로 Play Console에 등록된 값을 위 주소로 교체해야 한다.
 
 ## 그래픽 자산
 

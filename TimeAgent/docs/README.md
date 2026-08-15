@@ -15,7 +15,7 @@
 | 자동 검증 | 핵심 완료 | TypeScript, ESLint, Jest 92/92, 시각·상호작용 72/72, ARM64 Release APK 빌드; Expo Doctor 19/20은 SDK 패치 버전 정리 대기 |
 | 랜딩 페이지 | 배포 완료 | 외부 공개 상태 |
 
-공개 랜딩 페이지: [TimeFlow Landing](https://timeflow-landing.wcshin.chatgpt.site)
+공개 랜딩 페이지: [TimeFlow Landing](https://timeflow-landing-mangotree-4133s-projects.vercel.app)
 
 ## 작업계획과 진척사항
 
