@@ -179,6 +179,29 @@ test('설정에서 준비 단계 음성 코치를 끄고 켤 수 있음', async 
   })).toBe(true);
 });
 
+test('계정 삭제는 목적과 삭제 범위를 항목으로 안내함', async ({ page }) => {
+  await page.goto('/settings');
+  await expect(page.getByText('내 생활에 맞게 TimeAgent를 조정하세요', { exact: true })).toBeVisible();
+
+  // The entry has to explain why it exists, since logging out looks like the same thing.
+  await expect(page.getByText('로그아웃은 이 기기의 일정과 기록을 그대로 둡니다. 앱 연결까지 끊고 데이터를 모두 지우려면 이 항목을 사용하세요.', { exact: true })).toBeVisible();
+
+  const entry = page.getByRole('button', { name: '계정 연결 및 기기 데이터 삭제', exact: true });
+  await entry.scrollIntoViewIfNeeded();
+  await entry.click();
+
+  await expect(page.getByText('삭제되는 항목', { exact: true })).toBeVisible();
+  await expect(page.getByText('· 서버에 저장된 최근 장소', { exact: true })).toBeVisible();
+  await expect(page.getByText('삭제되지 않는 항목', { exact: true })).toBeVisible();
+  await expect(page.getByText('· Google 계정 자체', { exact: true })).toBeVisible();
+  await expect(page.getByText('삭제 후에는 복구할 수 없습니다.', { exact: true })).toBeVisible();
+
+  // Cancelling must leave the account untouched.
+  await page.getByRole('button', { name: '취소', exact: true }).click();
+  await expect(page.getByText('삭제되는 항목', { exact: true })).toHaveCount(0);
+  await expect(entry).toBeVisible();
+});
+
 test('되돌릴 수 없는 삭제는 일반 확인과 다르게 보임', async ({ page }) => {
   await page.goto('/plan');
   const deleteEntry = page.getByRole('button', { name: '약속 삭제', exact: true });
@@ -429,6 +452,21 @@ test('설정의 이동 수단 선택지를 한 줄로 표시함', async ({ page 
   for (const box of boxes) {
     expect(Math.abs(box.y - top), `${box} 이동 수단이 같은 줄에 있어야 합니다`).toBeLessThanOrEqual(1);
     expect(box.height, '이동 수단의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('설정의 준비 루틴 선택지를 한 줄로 표시함', async ({ page }) => {
+  await page.goto('/settings');
+  await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /사용할 준비 루틴/ }).click();
+
+  const options = ['기본 외출 준비', '빠른 준비', '여유있는 준비'];
+  const boxes = await Promise.all(options.map((name) => page.getByRole('radio', { name, exact: true }).boundingBox()));
+  expect(boxes.every(Boolean)).toBe(true);
+  const top = boxes[0].y;
+  for (const box of boxes) {
+    expect(Math.abs(box.y - top), '준비 루틴 선택지가 같은 줄에 있어야 합니다').toBeLessThanOrEqual(1);
+    expect(box.height, '준비 루틴의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
   }
 });
 
@@ -962,7 +1000,11 @@ test('일정 등록에서 장소명 검색 결과를 선택하고 최근 장소�
   await page.getByText(searchedPlace.name, { exact: true }).click();
   await expect(page.getByText('서울특별시청 목적지를 선택했습니다.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '저장된 장소 서울특별시청 선택' })).toBeVisible();
-  const persisted = await page.evaluate(() => JSON.parse(window.localStorage.getItem('@on-time/saved-places')));
+  // Saved places are keyed per signed-in account, so the storage key carries the user id suffix.
+  const persisted = await page.evaluate(() => {
+    const key = Object.keys(window.localStorage).find((item) => item.startsWith('@on-time/saved-places'));
+    return key ? JSON.parse(window.localStorage.getItem(key)) : null;
+  });
   expect(persisted[0]).toEqual(expect.objectContaining({ name: searchedPlace.name, coordinate: searchedPlace.coordinate }));
   await destination.fill('다른 장소');
   await page.getByRole('button', { name: '저장된 장소 서울특별시청 선택' }).click();

@@ -6,6 +6,7 @@ import { AppState, Platform } from 'react-native';
 import { TimelineStep } from '@/data/demo';
 import { recordAnalyticsEvent } from '@/lib/analytics';
 import { loadAppSettings } from '@/lib/app-settings';
+import { routinesForPreset } from '@/lib/preparation-profile';
 import { cancelConfirmedPlanStart, scheduleConfirmedPlanStart } from '@/lib/confirmed-plan-notification-service';
 import {
   addConfirmedPlan,
@@ -170,7 +171,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     void loadAppSettings(AsyncStorage)
       .then((settings) => {
         if (draftRequestGeneration.current !== generation) return;
-        const recommendedRoutines = createDefaultScheduleDraft(settings.preparationGender).routines;
+        const recommendedRoutines = routinesForPreset(settings.preparationGender, settings.routinePreset);
         setDraft((current) => {
           if (JSON.stringify(current.routines) !== JSON.stringify(initialRoutines)) return current;
           return { ...current, routines: recommendedRoutines };
@@ -277,8 +278,18 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     let active = true;
 
     loadScheduleDraft(AsyncStorage)
-      .then((savedDraft) => {
-        if (active && savedDraft && !newDraftRequested.current) setDraft(savedDraft);
+      .then(async (savedDraft) => {
+        if (!active || newDraftRequested.current) return;
+        if (savedDraft) {
+          setDraft(savedDraft);
+          return;
+        }
+        // Without a saved draft the initial state keeps the common preset, which includes 화장
+        // even for a male profile. The voice flow inherits this draft without ever opening the
+        // create screen, so the profile routines have to be applied here as well.
+        const settings = await loadAppSettings(AsyncStorage);
+        if (!active || newDraftRequested.current) return;
+        setDraft((current) => ({ ...current, routines: routinesForPreset(settings.preparationGender, settings.routinePreset) }));
       })
       .catch(() => {
         if (active) setDraftStatus('error');

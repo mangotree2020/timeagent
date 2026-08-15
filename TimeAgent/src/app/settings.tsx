@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { PropsWithChildren, useCallback, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -33,8 +34,9 @@ import {
   loadPlusInterest,
   plusPlanLabel,
 } from '@/lib/monetization';
+import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
-import { PreparationGender, preparationGenderLabel } from '@/lib/preparation-profile';
+import { PreparationGender, preparationGenderLabel, routinePresetSummary } from '@/lib/preparation-profile';
 import { useAuth } from '@/state/auth-context';
 import { useSchedule } from '@/state/schedule-context';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
@@ -43,11 +45,25 @@ type DetailKey = 'appearance' | 'location' | 'transport' | 'buffer' | 'routine' 
 
 const transports: PreferredTransport[] = ['도보', '버스', '지하철', '자가용', '택시'];
 const bufferOptions: AppSettings['bufferMinutes'][] = [3, 5, 10];
-const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비'];
+const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비', '여유있는 준비'];
 const toneOptions: CoachTone[] = ['친근하게', '간결하게', '단호하게'];
 const preparationGenderOptions: PreparationGender[] = ['unspecified', 'female', 'male'];
 const appearanceOptions: AppColorMode[] = ['light', 'dark'];
 const emptyPlusEligibility: PlusOfferEligibility = { eligible: false, completedSchedules: 0, remainingSchedules: 3 };
+
+// What account deletion actually clears, kept in step with `deleteAccount()` in
+// `@/state/auth-context` and with the same wording as the web `/delete-account` page.
+const ACCOUNT_DELETION_REMOVED = [
+  'Google 계정 연결(앱 접근 권한)',
+  '이 기기의 일정과 준비 계획',
+  '이동 진행 기록과 위치 세션',
+  '실제 시간 학습과 앱 설정',
+  '서버에 저장된 최근 장소',
+];
+const ACCOUNT_DELETION_KEPT = [
+  'Google 계정 자체',
+  '기기·Google 캘린더의 원본 일정',
+];
 
 export default function SettingsScreen() {
   const styles = useThemedStyles(createStyles);
@@ -61,6 +77,8 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
   const [expanded, setExpanded] = useState<DetailKey | null>(null);
   const [locationInput, setLocationInput] = useState(settings.defaultLocation);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
   const [locationPermission, setLocationPermission] = useState<PermissionState>('loading');
   const [notificationPermission, setNotificationPermission] = useState<PermissionState>('loading');
   const [showLearningReset, setShowLearningReset] = useState(false);
@@ -122,6 +140,42 @@ export default function SettingsScreen() {
     setExpanded(null);
   };
 
+  const routineSummary = routinePresetSummary(settings.preparationGender, settings.routinePreset);
+
+  /** Fills the departure field from the device's GPS fix so nothing has to be typed. */
+  const fillCurrentLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    setLocationError('');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationError('위치 권한을 허용해야 현재 위치를 사용할 수 있어요.');
+        return;
+      }
+      const position = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 })
+        ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      if (!position) {
+        setLocationError('현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      let label = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`;
+      try {
+        const provider = createConfiguredMobilityProvider();
+        const place = await provider.reverseGeocode(coordinate);
+        const address = place.roadAddress || place.jibunAddress;
+        if (address) label = address;
+      } catch { /* the raw coordinate is still a usable departure point */ }
+      setLocationInput(label);
+      update({ defaultLocation: label });
+    } catch {
+      setLocationError('현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <Screen>
@@ -140,11 +194,18 @@ export default function SettingsScreen() {
           <View style={styles.accountAction}>
             <Button label={authStatus === 'signingOut' ? '로그아웃 중…' : 'Google 계정 로그아웃'} variant="secondary" disabled={authStatus === 'signingOut'} onPress={() => void signOut()} />
             {!showAccountDeletion ? (
-              <Button label="계정 연결 및 기기 데이터 삭제" variant="dangerGhost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
+              <>
+                <Button label="계정 연결 및 기기 데이터 삭제" variant="dangerGhost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
+                <Text style={type.caption}>로그아웃은 이 기기의 일정과 기록을 그대로 둡니다. 앱 연결까지 끊고 데이터를 모두 지우려면 이 항목을 사용하세요.</Text>
+              </>
             ) : (
               <View style={styles.resetPanel} accessibilityRole="alert">
-                <Text style={type.body}>TimeAgent와 Google 계정 연결을 해제하고 이 기기의 일정·위치·학습·설정을 모두 삭제할까요?</Text>
-                <Text style={type.caption}>삭제 후 복구할 수 없으며 Google 계정 자체와 기기 캘린더 원본은 삭제하지 않습니다.</Text>
+                <Text style={type.body}>TimeAgent와 Google 계정 연결을 해제하고 저장된 데이터를 모두 삭제할까요?</Text>
+                <Text style={styles.deletionLabel}>삭제되는 항목</Text>
+                {ACCOUNT_DELETION_REMOVED.map((item) => <Text key={item} style={styles.deletionItem}>· {item}</Text>)}
+                <Text style={styles.deletionLabel}>삭제되지 않는 항목</Text>
+                {ACCOUNT_DELETION_KEPT.map((item) => <Text key={item} style={styles.deletionItem}>· {item}</Text>)}
+                <Text style={type.caption}>삭제 후에는 복구할 수 없습니다.</Text>
                 <View style={styles.resetActions}>
                   <View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => setShowAccountDeletion(false)} /></View>
                   <View style={{ flex: 1 }}><Button label={authStatus === 'deleting' ? '삭제 중…' : '연결 및 데이터 삭제'} variant="danger" disabled={authStatus === 'deleting'} onPress={() => void deleteAccount()} /></View>
@@ -159,13 +220,26 @@ export default function SettingsScreen() {
           <Setting icon="location" title="기본 출발 위치" detail={settings.defaultLocation} expanded={expanded === 'location'} onPress={() => toggleDetail('location')} />
           {expanded === 'location' ? (
             <DetailPanel>
-              <TextInput
-                accessibilityLabel="기본 출발 위치 입력"
-                value={locationInput}
-                onChangeText={setLocationInput}
-                placeholder="동네 또는 주소를 입력하세요"
-                style={styles.input}
-              />
+              <View style={styles.locationRow}>
+                <TextInput
+                  accessibilityLabel="기본 출발 위치 입력"
+                  value={locationInput}
+                  onChangeText={(value) => { setLocationInput(value); setLocationError(''); }}
+                  placeholder="동네 또는 주소를 입력하세요"
+                  style={[styles.input, styles.locationInput]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="현재 GPS 위치를 출발 위치로 사용"
+                  disabled={locating}
+                  onPress={() => void fillCurrentLocation()}
+                  style={({ pressed }) => [styles.gpsButton, pressed && styles.pressed, locating && styles.gpsButtonBusy]}
+                >
+                  <AppIcon name="navigation" size={20} iconColor={styles.gpsIconColor.color} />
+                </Pressable>
+              </View>
+              {locating ? <Text accessibilityLiveRegion="polite" style={type.caption}>현재 위치를 확인하고 있어요…</Text> : null}
+              {locationError ? <Text accessibilityRole="alert" style={[type.caption, styles.error]}>{locationError}</Text> : null}
               <Button label="출발 위치 저장" onPress={saveLocation} disabled={!locationInput.trim()} />
             </DetailPanel>
           ) : null}
@@ -181,8 +255,8 @@ export default function SettingsScreen() {
           <Setting icon="routine" title="성별에 따른 기본 준비 항목" detail={preparationGenderLabel(settings.preparationGender)} expanded={expanded === 'gender'} onPress={() => toggleDetail('gender')} />
           {expanded === 'gender' ? <ChoicePanel description="성별 선택은 필수가 아니며 새 일정의 시작 목록에만 적용돼요. 추천 항목과 시간은 일정마다 자유롭게 바꿀 수 있어요." options={preparationGenderOptions} selected={settings.preparationGender} label={(value) => value === 'female' ? '여성' : value === 'male' ? '남성' : '선택 안 함'} onSelect={(preparationGender) => update({ preparationGender })} /> : null}
           <Setting icon="routine" title="사용할 준비 루틴" detail={settings.routinePreset} expanded={expanded === 'routine'} onPress={() => toggleDetail('routine')} />
-          {expanded === 'routine' ? <ChoicePanel options={routineOptions} selected={settings.routinePreset} onSelect={(routinePreset) => update({ routinePreset })} /> : null}
-          <Setting icon="quick" title="빠른 준비" detail="총 22분 · 샤워와 필수 준비 중심" />
+          {expanded === 'routine' ? <ChoicePanel compact options={routineOptions} selected={settings.routinePreset} onSelect={(routinePreset) => update({ routinePreset })} /> : null}
+          <Setting icon={routineSummary.icon} title={settings.routinePreset} detail={routineSummary.detail} />
         </Section>
 
         <Section label="실제 시간 학습">
@@ -306,7 +380,15 @@ function ChoicePanel<T extends string | number>({
               accessibilityState={{ checked: active }}
               onPress={() => onSelect(option)}
               style={[styles.choice, compact && styles.choiceCompact, active && styles.choiceActive]}>
-              <Text numberOfLines={1} style={[styles.choiceText, compact && styles.choiceTextCompact, active && styles.choiceTextActive]}>{label(option)}</Text>
+              {/* Compact rows share the width between every option, so a longer label shrinks to
+                  fit rather than wrapping to a second line or being cut off mid-word. */}
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit={compact}
+                minimumFontScale={0.75}
+                style={[styles.choiceText, compact && styles.choiceTextCompact, active && styles.choiceTextActive]}>
+                {label(option)}
+              </Text>
             </Pressable>
           );
         })}
@@ -387,9 +469,16 @@ const createStyles = (c: AppPalette) => {
   emptyLearning: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.lg },
   learningStatus: { ...type.caption, paddingHorizontal: space.md, paddingBottom: space.md },
   resetPanel: { gap: space.sm, paddingTop: space.sm },
+  deletionLabel: { color: c.navy, fontSize: 13, fontWeight: '900' },
+  deletionItem: { ...type.caption, marginTop: -4, paddingLeft: space.xs },
   resetActions: { flexDirection: 'row', gap: space.sm },
   saveStatus: { ...type.caption, textAlign: 'center' },
   error: { color: c.danger },
+  locationRow: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
+  locationInput: { flex: 1 },
+  gpsButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: c.deepBlue, backgroundColor: c.surface },
+  gpsButtonBusy: { opacity: 0.5 },
+  gpsIconColor: { color: c.deepBlue },
   data: { ...type.caption, textAlign: 'center', paddingHorizontal: space.xl },
   plusNote: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.md },
   accountRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm },

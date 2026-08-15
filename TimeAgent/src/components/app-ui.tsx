@@ -43,7 +43,9 @@ export function Button({ label, onPress, variant = 'primary', disabled = false, 
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.button, styles[`button_${variant}`], pressed && styles.pressed, disabled && styles.disabled]}>
-      <Text style={[styles.buttonText, styles[`buttonText_${variant}`]]}>{label}</Text>
+      {/* A label must stay on one line: half-width buttons on narrow screens otherwise wrap
+          ("기록 삭제 확인" → two lines). Shrinking the font slightly beats wrapping or an ellipsis. */}
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.buttonText, styles[`buttonText_${variant}`]]}>{label}</Text>
     </Pressable>
   );
 }

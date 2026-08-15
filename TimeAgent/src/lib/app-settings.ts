@@ -1,11 +1,11 @@
 import { TransportMode } from './schedule-draft';
-import { PreparationGender } from './preparation-profile';
+import { PreparationGender, RoutinePresetName } from './preparation-profile';
 
 export const APP_SETTINGS_STORAGE_KEY = '@on-time/app-settings';
 const APP_SETTINGS_VERSION = 4;
 
 export type CoachTone = '친근하게' | '간결하게' | '단호하게';
-export type RoutinePreset = '기본 외출 준비' | '빠른 준비';
+export type RoutinePreset = RoutinePresetName;
 export type PreferredTransport = Exclude<TransportMode, 'AI 추천'>;
 export type AppColorMode = 'light' | 'dark';
 
@@ -72,7 +72,7 @@ function isAppSettings(value: unknown): value is AppSettings {
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
-    && (settings.routinePreset === '기본 외출 준비' || settings.routinePreset === '빠른 준비')
+    && isRoutinePreset(settings.routinePreset)
     && isPreparationGender(settings.preparationGender)
     && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
     && typeof settings.voiceControl === 'boolean'
@@ -88,7 +88,7 @@ function isVersionThreeSettings(value: unknown): value is Omit<AppSettings, 'ver
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
-    && (settings.routinePreset === '기본 외출 준비' || settings.routinePreset === '빠른 준비')
+    && isRoutinePreset(settings.routinePreset)
     && isPreparationGender(settings.preparationGender)
     && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
     && typeof settings.voiceControl === 'boolean'
@@ -103,7 +103,7 @@ function isVersionTwoSettings(value: unknown): value is Omit<AppSettings, 'versi
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
-    && (settings.routinePreset === '기본 외출 준비' || settings.routinePreset === '빠른 준비')
+    && isRoutinePreset(settings.routinePreset)
     && isPreparationGender(settings.preparationGender)
     && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
     && typeof settings.voiceControl === 'boolean'
@@ -117,10 +117,14 @@ function isLegacyAppSettings(value: unknown): value is Omit<AppSettings, 'versio
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
-    && (settings.routinePreset === '기본 외출 준비' || settings.routinePreset === '빠른 준비')
+    && isRoutinePreset(settings.routinePreset)
     && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
     && typeof settings.voiceControl === 'boolean'
     && typeof settings.notifications === 'boolean';
+}
+
+function isRoutinePreset(value: unknown): value is RoutinePreset {
+  return value === '기본 외출 준비' || value === '빠른 준비' || value === '여유있는 준비';
 }
 
 function isPreparationGender(value: unknown): value is PreparationGender {

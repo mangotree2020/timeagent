@@ -186,12 +186,17 @@ function ClosedSchedules({ plans, status, onDelete }: {
   return <>
     <Text style={styles.date}>지난 일정 {plans.length}개</Text>
     {plans.map((item) => <Card key={item.id} style={styles.schedule}>
-      <View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><Text style={styles.closedDate}>{new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(item.appointmentAt)}</Text></View>
-      <View style={styles.flexContent}>
+      {/* The outcome pill lives under the time so the content column starts at the title,
+          which keeps each closed card one line shorter. */}
+      <View style={styles.closedRail}>
+        <Text style={styles.time}>{item.schedule.appointmentTime}</Text>
+        <Text style={styles.closedDate}>{new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(item.appointmentAt)}</Text>
         <StatusPill
           label={item.state === 'completed' ? item.completion?.onTime === true ? '정시 도착' : item.completion?.onTime === false ? '지각 도착' : '완료' : '미완료'}
           tone={item.state === 'completed' ? item.completion?.onTime === false ? 'warning' : 'success' : 'warning'}
         />
+      </View>
+      <View style={styles.flexContent}>
         <Text style={type.heading}>{item.schedule.title}</Text>
         <View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>
         <Text style={styles.meta}>{item.state === 'completed' ? item.completion ? `${item.completion.delayMinutes > 0 ? `${item.completion.delayMinutes}분 지연 기록` : '지연 없이 완료'} · 준비 행동 완료` : '준비 행동을 모두 완료한 일정' : '약속 시간까지 완료되지 않은 일정'}</Text>
@@ -280,7 +285,7 @@ const createStyles = (c: AppPalette) => {
   planGroup: { gap: space.sm }, date: { fontSize: 14, color: c.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
   closedConfirm: { gap: space.sm, marginTop: space.sm }, closedActions: { flexDirection: 'row', gap: space.sm, marginTop: space.sm }, closedAction: { flex: 1 },
-  timeRail: { width: 54, gap: 4 }, time: { fontSize: 17, color: c.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: c.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: c.cyan, marginTop: 8, marginLeft: 18 },
+  timeRail: { width: 54, gap: 4 }, closedRail: { width: 88, gap: 4, alignItems: 'flex-start' }, time: { fontSize: 17, color: c.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: c.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: c.cyan, marginTop: 8, marginLeft: 18 },
   flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: c.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
   stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.ice, alignItems: 'center', justifyContent: 'center' },
   calendarHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textButtonLabel: { color: c.deepBlue, fontSize: 13, fontWeight: '800' },

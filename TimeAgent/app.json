@@ -2,7 +2,7 @@
   "expo": {
     "name": "TimeAgent",
     "slug": "on-time",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ontime",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.timeagent.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "android.permission.READ_CALENDAR"
       ],
