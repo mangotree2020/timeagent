@@ -195,7 +195,7 @@ export default function SettingsScreen() {
             <Button label={authStatus === 'signingOut' ? '로그아웃 중…' : 'Google 계정 로그아웃'} variant="secondary" disabled={authStatus === 'signingOut'} onPress={() => void signOut()} />
             {!showAccountDeletion ? (
               <>
-                <Button label="계정 연결 및 기기 데이터 삭제" variant="dangerGhost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
+                <Button label="계정 삭제" variant="dangerGhost" disabled={authStatus === 'deleting'} onPress={() => setShowAccountDeletion(true)} />
                 <Text style={type.caption}>로그아웃은 이 기기의 일정과 기록을 그대로 둡니다. 앱 연결까지 끊고 데이터를 모두 지우려면 이 항목을 사용하세요.</Text>
               </>
             ) : (

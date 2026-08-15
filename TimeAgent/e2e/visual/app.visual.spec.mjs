@@ -186,7 +186,7 @@ test('계정 삭제는 목적과 삭제 범위를 항목으로 안내함', async
   // The entry has to explain why it exists, since logging out looks like the same thing.
   await expect(page.getByText('로그아웃은 이 기기의 일정과 기록을 그대로 둡니다. 앱 연결까지 끊고 데이터를 모두 지우려면 이 항목을 사용하세요.', { exact: true })).toBeVisible();
 
-  const entry = page.getByRole('button', { name: '계정 연결 및 기기 데이터 삭제', exact: true });
+  const entry = page.getByRole('button', { name: '계정 삭제', exact: true });
   await entry.scrollIntoViewIfNeeded();
   await entry.click();
 
