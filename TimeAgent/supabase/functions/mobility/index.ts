@@ -19,6 +19,20 @@ type TmapFeature = {
   };
 };
 
+import { createRemoteJWKSet, jwtVerify } from "npm:jose@5";
+
+// The web client id is a public identifier that already ships inside the app binary,
+// so a source fallback is safe; the secret allows rotating it without a redeploy.
+const DEFAULT_GOOGLE_WEB_CLIENT_ID = "18828044372-ta832lgj7vetva7u93lqilebvrhgv73j.apps.googleusercontent.com";
+const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+// The Android sign-in SDK hands back the ID token minted at sign-in time and never refreshes
+// it, so most calls arrive after the one-hour expiry. Signature, issuer, and audience checks
+// stay strict — only the expiry gets this grace, which callers should treat as the trade-off
+// for keeping a low-sensitivity list (place names) reachable without a fresh sign-in.
+const ID_TOKEN_EXPIRY_GRACE_SECONDS = 60 * 60 * 24 * 90;
+const SAVED_PLACES_SERVER_CAP = 24;
+const SAVED_PLACES_LIST_LIMIT = 8;
+
 const NAVER_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const NAVER_REVERSE_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const TMAP_POI_URL = "https://apis.openapi.sk.com/tmap/pois";
@@ -56,6 +70,186 @@ function lineCoordinates(geometry: TmapFeature["geometry"]): Coordinate[] {
   }
 
   return [];
+}
+
+// Saved places are keyed by the Google account, so every request must prove which
+// account is calling. The ID token minted on the device is verified against Google
+// before the subject claim is trusted as the row key.
+const verifiedTokens = new Map<string, { sub: string; expiresAtMs: number }>();
+
+async function verifyGoogleIdToken(request: Request): Promise<string | null> {
+  const authorization = request.headers.get("Authorization") ?? "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+  if (!token) return null;
+
+  const cached = verifiedTokens.get(token);
+  if (cached) {
+    if (cached.expiresAtMs > Date.now()) return cached.sub;
+    verifiedTokens.delete(token);
+  }
+
+  let sub = "";
+  try {
+    const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
+      issuer: ["https://accounts.google.com", "accounts.google.com"],
+      audience: Deno.env.get("GOOGLE_WEB_CLIENT_ID") || DEFAULT_GOOGLE_WEB_CLIENT_ID,
+      clockTolerance: ID_TOKEN_EXPIRY_GRACE_SECONDS,
+    });
+    sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+  } catch {
+    return null;
+  }
+  if (!sub) return null;
+
+  // The cache holds each verified token briefly so bursts of saves skip re-verification.
+  verifiedTokens.set(token, { sub, expiresAtMs: Date.now() + 10 * 60 * 1000 });
+  if (verifiedTokens.size > 512) {
+    for (const key of verifiedTokens.keys()) {
+      if (verifiedTokens.size <= 256) break;
+      verifiedTokens.delete(key);
+    }
+  }
+  return sub;
+}
+
+function savedPlacesHeaders(): Record<string, string> {
+  const serviceKey = requiredSecret("SUPABASE_SERVICE_ROLE_KEY");
+  return {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function savedPlacesUrl(query: string): string {
+  return `${requiredSecret("SUPABASE_URL")}/rest/v1/saved_places${query}`;
+}
+
+function unauthorized(): Response {
+  return jsonResponse({ error: { code: "UNAUTHORIZED", message: "로그인 정보를 확인하지 못했습니다. 다시 로그인해 주세요." } }, 401);
+}
+
+function savedPlacesUnavailable(): Response {
+  return jsonResponse(
+    { error: { code: "UPSTREAM_UNAVAILABLE", message: "저장된 장소를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", retryable: true } },
+    503,
+  );
+}
+
+type SavedPlaceRow = {
+  place_id: string;
+  name: string;
+  road_address: string;
+  jibun_address: string;
+  latitude: number;
+  longitude: number;
+  last_used_at: number;
+};
+
+async function listSavedPlaces(request: Request): Promise<Response> {
+  const sub = await verifyGoogleIdToken(request);
+  if (!sub) return unauthorized();
+
+  const upstream = await fetch(
+    savedPlacesUrl(`?user_id=eq.${encodeURIComponent(sub)}&select=place_id,name,road_address,jibun_address,latitude,longitude,last_used_at&order=last_used_at.desc&limit=${SAVED_PLACES_LIST_LIMIT}`),
+    { headers: savedPlacesHeaders(), signal: AbortSignal.timeout(8_000) },
+  );
+  if (!upstream.ok) {
+    console.error("saved-places list rejected", upstream.status, await upstream.text().catch(() => ""));
+    return savedPlacesUnavailable();
+  }
+  const rows = await upstream.json() as SavedPlaceRow[];
+  return jsonResponse({
+    places: rows.map((row) => ({
+      id: row.place_id,
+      name: row.name,
+      roadAddress: row.road_address,
+      jibunAddress: row.jibun_address,
+      coordinate: { latitude: row.latitude, longitude: row.longitude },
+      lastUsedAt: Number(row.last_used_at),
+    })),
+  });
+}
+
+async function rememberSavedPlace(request: Request): Promise<Response> {
+  const sub = await verifyGoogleIdToken(request);
+  if (!sub) return unauthorized();
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: { code: "INVALID_BODY", message: "저장할 장소 형식이 올바르지 않습니다." } }, 400);
+  }
+
+  const place = body.place as Record<string, unknown> | undefined;
+  const coordinateValue = place?.coordinate as Record<string, unknown> | undefined;
+  const latitude = Number(coordinateValue?.latitude);
+  const longitude = Number(coordinateValue?.longitude);
+  const name = typeof place?.name === "string" ? place.name.trim() : "";
+  const lastUsedAt = Number(place?.lastUsedAt);
+  if (
+    !name || name.length > 200
+    || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+    || !Number.isFinite(lastUsedAt) || lastUsedAt <= 0
+  ) {
+    return jsonResponse({ error: { code: "INVALID_BODY", message: "저장할 장소 형식이 올바르지 않습니다." } }, 400);
+  }
+
+  // The row key repeats the client's coordinate-based place id so the same spot
+  // never duplicates, regardless of which device saved it first.
+  const placeId = `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+  const row = {
+    user_id: sub,
+    place_id: placeId,
+    name,
+    road_address: typeof place?.roadAddress === "string" ? place.roadAddress.trim().slice(0, 300) : "",
+    jibun_address: typeof place?.jibunAddress === "string" ? place.jibunAddress.trim().slice(0, 300) : "",
+    latitude,
+    longitude,
+    last_used_at: Math.round(lastUsedAt),
+    updated_at: new Date().toISOString(),
+  };
+
+  // A single database function keeps the upsert and the per-account cap pruning in one
+  // transaction: concurrent saves cannot roll recency backwards or delete a fresh place.
+  const upserted = await fetch(`${requiredSecret("SUPABASE_URL")}/rest/v1/rpc/remember_saved_place`, {
+    method: "POST",
+    headers: savedPlacesHeaders(),
+    body: JSON.stringify({
+      p_user_id: row.user_id,
+      p_place_id: row.place_id,
+      p_name: row.name,
+      p_road_address: row.road_address,
+      p_jibun_address: row.jibun_address,
+      p_latitude: row.latitude,
+      p_longitude: row.longitude,
+      p_last_used_at: row.last_used_at,
+      p_cap: SAVED_PLACES_SERVER_CAP,
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!upserted.ok) {
+    console.error("saved-places upsert rejected", upserted.status, await upserted.text().catch(() => ""));
+    return savedPlacesUnavailable();
+  }
+
+  return jsonResponse({ ok: true, id: placeId });
+}
+
+/** Deleting the account must also erase the account's places from the server. */
+async function deleteSavedPlaces(request: Request): Promise<Response> {
+  const sub = await verifyGoogleIdToken(request);
+  if (!sub) return unauthorized();
+
+  const deleted = await fetch(savedPlacesUrl(`?user_id=eq.${encodeURIComponent(sub)}`), {
+    method: "DELETE",
+    headers: savedPlacesHeaders(),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!deleted.ok) return savedPlacesUnavailable();
+  return jsonResponse({ ok: true });
 }
 
 async function geocode(requestUrl: URL): Promise<Response> {
@@ -273,6 +467,9 @@ Deno.serve(async (request) => {
     const path = url.pathname.replace(/\/$/, "");
 
     if (request.method === "GET" && path.endsWith("/v1/geocode")) return await geocode(url);
+    if (request.method === "GET" && path.endsWith("/v1/saved-places")) return await listSavedPlaces(request);
+    if (request.method === "POST" && path.endsWith("/v1/saved-places")) return await rememberSavedPlace(request);
+    if (request.method === "DELETE" && path.endsWith("/v1/saved-places")) return await deleteSavedPlaces(request);
     if (request.method === "GET" && path.endsWith("/v1/places")) return await searchPlaces(url);
     if (request.method === "GET" && path.endsWith("/v1/reverse-geocode")) return await reverseGeocode(url);
     if (request.method === "POST" && path.endsWith("/v1/routes/walk")) return await walkingRoute(request);

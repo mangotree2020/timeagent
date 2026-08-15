@@ -7,13 +7,13 @@ import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context'
 import { DestinationMapProps } from '@/components/destination-map';
 import { describeRoutePlan, mapRegionForPath } from '@/lib/journey';
 
-export function DestinationMap({ coordinate, onSelect, route }: DestinationMapProps) {
+export function DestinationMap({ coordinate, onSelect, route, fill = false }: DestinationMapProps) {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
   const summary = route ? describeRoutePlan(route) : null;
   const region = route ? mapRegionForPath(route.path) : null;
-  return <View accessibilityLabel={route ? '출발지에서 목적지까지 이동 경로 지도' : '목적지를 직접 지정하는 지도'} style={styles.container}>
+  return <View accessibilityLabel={route ? '출발지에서 목적지까지 이동 경로 지도' : '목적지를 직접 지정하는 지도'} style={[styles.container, fill && styles.fill]}>
     <NaverMapView
       style={styles.map}
       mapType="Basic"
@@ -51,6 +51,7 @@ export function DestinationMap({ coordinate, onSelect, route }: DestinationMapPr
 
 const createStyles = (c: AppPalette) => StyleSheet.create({
   container: { height: 280, overflow: 'hidden', borderRadius: radius.md, borderWidth: 1, borderColor: c.border },
+  fill: { flex: 1, height: 'auto' },
   map: { flex: 1 },
   summary: { minHeight: 36, paddingHorizontal: space.md, paddingVertical: space.sm, backgroundColor: c.surface },
 });

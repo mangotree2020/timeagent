@@ -18,6 +18,7 @@ import CloudSun from 'lucide-react-native/icons/cloud-sun';
 import Footprints from 'lucide-react-native/icons/footprints';
 import Home from 'lucide-react-native/icons/house';
 import MapPin from 'lucide-react-native/icons/map-pin';
+import Maximize2 from 'lucide-react-native/icons/maximize-2';
 import Mic2 from 'lucide-react-native/icons/mic';
 import Minus from 'lucide-react-native/icons/minus';
 import Navigation from 'lucide-react-native/icons/navigation';
@@ -64,6 +65,7 @@ const icons = {
   weatherStorm: CloudLightning,
   walk: Footprints,
   home: Home,
+  expand: Maximize2,
   location: MapPin,
   voice: Mic2,
   speaker: Volume2,

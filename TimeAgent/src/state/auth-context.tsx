@@ -4,6 +4,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 import { stopBackgroundJourney } from '@/lib/background-journey-service';
 import { googleAuthErrorMessage, GoogleAuthUser } from '@/lib/google-auth';
 import { googleAuthProvider } from '@/lib/google-auth-provider';
+import { createConfiguredSavedPlacesRemote } from '@/lib/saved-places-remote';
 
 type AuthStatus = 'checking' | 'signedOut' | 'signingIn' | 'signedIn' | 'signingOut' | 'deleting';
 
@@ -89,6 +90,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setError(null);
       try {
         await stopBackgroundJourney().catch(() => undefined);
+        // The account's server-side place history goes first, while a usable ID token still
+        // exists. A device without a native Google session has no token to send ('unavailable')
+        // and may proceed, but an actual server failure stops the deletion: continuing would
+        // leave the account's places on the server with the account itself gone.
+        const placesCleared = await createConfiguredSavedPlacesRemote(googleAuthProvider.getIdToken).clear();
+        if (placesCleared === 'failed') throw new Error('saved places were not deleted');
         await googleAuthProvider.revokeAccess(user.email || user.id);
         await AsyncStorage.clear();
         setUser(null);

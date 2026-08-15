@@ -41,6 +41,8 @@ export type GoogleAuthProvider = {
   signIn: () => Promise<GoogleAuthResult>;
   signOut: () => Promise<void>;
   revokeAccess: (emailOrUniqueId: string) => Promise<void>;
+  /** A fresh Google ID token for server calls, or null when signed out or unavailable. */
+  getIdToken: () => Promise<string | null>;
 };
 
 export function isGoogleWebClientId(value: string | undefined): value is string {

@@ -83,4 +83,17 @@ export const googleAuthProvider: GoogleAuthProvider = {
     if (webClientId) await GoogleOneTapSignIn.revokeAccess(emailOrUniqueId);
     await removeGoogleMember(AsyncStorage, emailOrUniqueId);
   },
+  async getIdToken() {
+    if (!webClientId) return null;
+    try {
+      // getTokens refreshes when needed; the cached getCurrentUser token may already be expired.
+      const tokens = await GoogleOneTapSignIn.getTokens();
+      if (tokens.idToken) return tokens.idToken;
+    } catch { /* fall through to the cached token */ }
+    try {
+      return GoogleOneTapSignIn.getCurrentUser()?.idToken ?? null;
+    } catch {
+      return null;
+    }
+  },
 };

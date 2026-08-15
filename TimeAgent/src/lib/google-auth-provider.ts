@@ -23,6 +23,9 @@ export const googleAuthProvider: GoogleAuthProvider = {
   async revokeAccess() {
     await AsyncStorage.removeItem(GOOGLE_AUTH_SESSION_KEY);
   },
+  async getIdToken() {
+    return null;
+  },
 };
 
 export function serializeGoogleAuthSession(session: GoogleAuthSession) {
