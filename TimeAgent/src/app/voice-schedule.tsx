@@ -1,5 +1,4 @@
 import {
-  RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
@@ -40,6 +39,7 @@ import {
 import {
   createConfiguredVoiceScheduleProvider,
   inferVoiceScheduleAudioMimeType,
+  VOICE_RECORDING_OPTIONS,
   VoiceScheduleHistoryTurn,
   VoiceScheduleInput,
 } from '@/lib/voice-schedule-api';
@@ -135,7 +135,7 @@ export default function VoiceScheduleScreen() {
   const { beginDraft, beginDraftWith, confirmDraftWith, draft, selectConfirmedPlan } = useSchedule();
   const { addTask, startTask } = useTaskExecution();
   const { mode: colorMode, palette } = useAppTheme();
-  const recordingOptions = useMemo(() => ({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true }), []);
+  const recordingOptions = useMemo(() => VOICE_RECORDING_OPTIONS, []);
   const recorder = useAudioRecorder(recordingOptions);
   const recorderState = useAudioRecorderState(recorder, 120);
   const provider = useMemo(() => { try { return createConfiguredVoiceScheduleProvider(); } catch { return null; } }, []);

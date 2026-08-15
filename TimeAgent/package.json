@@ -1,7 +1,7 @@
 {
   "name": "on-time",
   "main": "expo-router/entry",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "dependencies": {
     "@expo/ui": "~57.0.10",
     "@mj-studio/react-native-naver-map": "^2.9.0",

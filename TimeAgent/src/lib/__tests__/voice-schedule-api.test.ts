@@ -1,6 +1,7 @@
 import {
   inferVoiceScheduleAudioMimeType,
   SupabaseVoiceScheduleProvider,
+  VOICE_RECORDING_OPTIONS,
   VoiceScheduleApiError,
 } from '@/lib/voice-schedule-api';
 import { createDefaultScheduleDraft } from '@/lib/schedule-draft';
@@ -141,5 +142,15 @@ describe('SupabaseVoiceScheduleProvider', () => {
       history: [],
       input: { kind: 'text', text: '안녕' },
     })).rejects.toMatchObject({ code: 'SERVICE_NOT_CONFIGURED', retryable: false, status: 503 });
+  });
+
+  it('records speech at a size that keeps the turnaround short', () => {
+    // 44.1kHz stereo is the library default and makes every turn upload and transcribe more audio
+    // than speech needs.
+    expect(VOICE_RECORDING_OPTIONS.numberOfChannels).toBe(1);
+    expect(VOICE_RECORDING_OPTIONS.sampleRate).toBeLessThanOrEqual(16_000);
+    expect(VOICE_RECORDING_OPTIONS.bitRate).toBeLessThanOrEqual(48_000);
+    expect(VOICE_RECORDING_OPTIONS.isMeteringEnabled).toBe(true);
+    expect(inferVoiceScheduleAudioMimeType(`file${VOICE_RECORDING_OPTIONS.extension}`, 'audio/mp4')).not.toBeNull();
   });
 });

@@ -204,7 +204,7 @@ function normalizePlaceName(value: string) {
 const createStyles = (c: AppPalette) => {
   const type = appType(c);
   return StyleSheet.create({
-  card: { gap: space.lg, backgroundColor: '#E8F7FB', padding: space.lg },
+  card: { gap: space.lg, backgroundColor: c.infoSoft, padding: space.lg },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface },
   titleCopy: { flex: 1, gap: 2 }, title: { color: c.deepBlue, fontSize: 16, lineHeight: 22, fontWeight: '900' },

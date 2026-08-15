@@ -1,6 +1,27 @@
 import { ScheduleDraft } from '@/lib/schedule-draft';
 import { GuidedVoiceField, normalizeVoiceScheduleReply, VoiceScheduleAssistantReply } from '@/lib/voice-schedule-assistant';
 
+/**
+ * Speech-sized recording settings. The library default records 44.1kHz stereo, which uploads and
+ * transcribes far more audio than a spoken sentence needs and makes each turn feel slow.
+ */
+export const VOICE_RECORDING_OPTIONS = {
+  extension: '.m4a',
+  sampleRate: 16_000,
+  numberOfChannels: 1,
+  bitRate: 32_000,
+  isMeteringEnabled: true,
+  android: { outputFormat: 'mpeg4' as const, audioEncoder: 'aac' as const },
+  ios: {
+    outputFormat: 'aac ' as const,
+    audioQuality: 32,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: { mimeType: 'audio/webm', bitsPerSecond: 32_000 },
+};
+
 export type VoiceScheduleHistoryTurn = { role: 'user' | 'assistant'; text: string };
 export type VoiceScheduleInput =
   | { kind: 'text'; text: string }

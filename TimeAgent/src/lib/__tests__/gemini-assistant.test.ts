@@ -27,7 +27,6 @@ describe('Gemini assistant adapter', () => {
     expect(body.system_instruction).toContain('친구 같은 AI 비서');
     expect(body.system_instruction).toContain('가벼운 잡담');
     expect(body.system_instruction).toContain('모호한 값');
-    expect(body.system_instruction).toContain('금요일 오후 몇 시');
     expect(body.system_instruction).toContain('일정인지');
     expect(body.system_instruction).toContain('할 일인지');
     expect(body.system_instruction).toContain('2~5분');
@@ -100,5 +99,24 @@ describe('Gemini assistant adapter', () => {
       totalThoughtTokens: 0,
       totalTokens: 0,
     });
+  });
+
+  it('keeps borrowable example content out of the instruction so it cannot leak into a reply', () => {
+    const instruction = buildGeminiInteractionBody('gemini-3.1-flash-lite', turn).system_instruction;
+
+    // Concrete nouns in the prompt came back in real conversations that never mentioned them.
+    for (const leak of ['치과', '강남역', '홍대', '보고서 작성', '운동']) {
+      expect(instruction).not.toContain(leak);
+    }
+  });
+
+  it('limits the schedule conversation to the four fields it has to fill', () => {
+    const instruction = buildGeminiInteractionBody('gemini-3.1-flash-lite', turn).system_instruction;
+
+    expect(instruction).toContain('약속 이름');
+    expect(instruction).toContain('이동수단');
+    expect(instruction).toContain('네 가지');
+    expect(instruction).toContain('사용자가 말하지 않은');
+    expect(instruction).toContain('빠른 선택지');
   });
 });
