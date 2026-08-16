@@ -98,12 +98,22 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
   const byName = (name: AnalyticsEventName) => store.events.filter((event) => event.name === name);
   const starts = byName('draft_started');
   const completions = byName('draft_completed');
+  // Each start is answered by at most one completion. Confirming from the voice flow, or
+  // re-confirming an edited plan, records a completion with no start of its own; counting those
+  // pushed the completion count above the start count and made the panel read "57/5회 완료".
   const creationDurations: number[] = [];
-  let startCursor = 0;
-  for (const completion of completions) {
-    while (startCursor + 1 < starts.length && starts[startCursor + 1].at <= completion.at) startCursor += 1;
-    const start = starts[startCursor];
-    if (start && start.at <= completion.at) creationDurations.push((completion.at - start.at) / 1000);
+  let pairedCompletions = 0;
+  let completionCursor = 0;
+  for (const start of starts) {
+    while (completionCursor < completions.length && completions[completionCursor].at < start.at) {
+      completionCursor += 1;
+    }
+    if (completionCursor >= completions.length) break;
+    const seconds = (completions[completionCursor].at - start.at) / 1000;
+    completionCursor += 1;
+    pairedCompletions += 1;
+    // A draft left open overnight and confirmed the next morning is not a creation time.
+    if (seconds <= MAX_CREATION_SECONDS) creationDurations.push(seconds);
   }
   const notificationOpens = byName('notification_opened').length;
   const notificationStarts = byName('progress_started').filter((event) => event.properties.source === 'notification').length;
@@ -124,8 +134,8 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
   return {
     eventCount: store.events.length,
     scheduleStarts: starts.length,
-    scheduleCompletions: completions.length,
-    scheduleCompletionRate: rate(completions.length, starts.length),
+    scheduleCompletions: pairedCompletions,
+    scheduleCompletionRate: rate(pairedCompletions, starts.length),
     averageScheduleCreationSeconds: average(creationDurations),
     notificationOpens,
     notificationStartRate: rate(notificationStarts, notificationOpens),
@@ -140,6 +150,22 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
     plusInterestRate: rate(plusInterestSelections, plusOfferViews),
     pilotSummaryShares,
   };
+}
+
+/** Half an hour is already a long time to spend on one schedule; beyond that it is an abandoned draft. */
+const MAX_CREATION_SECONDS = 1_800;
+
+/**
+ * Seconds are what the measurement produces, but "16996.4초" is not a number anyone can read.
+ */
+export function formatDurationSeconds(seconds: number) {
+  if (seconds < 60) return `${Math.round(seconds * 10) / 10}초`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  if (minutes < 60) return rest ? `${minutes}분 ${rest}초` : `${minutes}분`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes ? `${hours}시간 ${restMinutes}분` : `${hours}시간`;
 }
 
 function average(values: number[]) {

@@ -12,6 +12,7 @@ import {
   AnalyticsSummary,
   clearAnalyticsStore,
   createEmptyAnalyticsStore,
+  formatDurationSeconds,
   loadAnalyticsStore,
   summarizeAnalytics,
 } from '@/lib/analytics';
@@ -288,7 +289,7 @@ export default function SettingsScreen() {
         <Section label="MVP 지표 · 이 기기">
           <View style={styles.metricIntro}><AppIcon name="chart" size={20} /><View style={{ flex: 1 }}><Text style={type.body}>제품 경험 측정</Text><Text style={type.caption}>일정 내용이나 위치는 보내지 않고 이 기기에 이벤트 수치만 저장합니다.</Text></View></View>
           <MetricRow label="첫 일정 생성 완료율" value={formatRate(analyticsSummary.scheduleCompletionRate)} detail={`${analyticsSummary.scheduleCompletions}/${analyticsSummary.scheduleStarts}회 완료`} />
-          <MetricRow label="평균 일정 생성 시간" value={analyticsSummary.averageScheduleCreationSeconds === null ? '측정 대기' : `${analyticsSummary.averageScheduleCreationSeconds}초`} detail="등록 시작부터 AI 계획 생성까지" />
+          <MetricRow label="평균 일정 생성 시간" value={analyticsSummary.averageScheduleCreationSeconds === null ? '측정 대기' : formatDurationSeconds(analyticsSummary.averageScheduleCreationSeconds)} detail="등록 시작부터 AI 계획 생성까지" />
           <MetricRow label="알림에서 준비 진입" value={formatRate(analyticsSummary.notificationStartRate)} detail={`알림 응답 ${analyticsSummary.notificationOpens}회`} />
           <MetricRow label="지연안 적용 / 거절" value={`${formatRate(analyticsSummary.delayApplyRate)} / ${formatRate(analyticsSummary.delayRejectRate)}`} detail={`지연 제안 ${analyticsSummary.delayProposals}회`} />
           <MetricRow label="평균 단계 시간 오차" value={analyticsSummary.averageStepErrorMinutes === null ? '측정 대기' : `${analyticsSummary.averageStepErrorMinutes}분`} detail="계획과 실제 소요 시간의 절대 차이" />

@@ -1,8 +1,11 @@
 import {
+  AnalyticsEvent,
+  AnalyticsEventName,
   clearAnalyticsStore,
   createEmptyAnalyticsStore,
   loadAnalyticsStore,
   recordAnalyticsEvent,
+  formatDurationSeconds,
   summarizeAnalytics,
 } from '../analytics';
 
@@ -70,5 +73,68 @@ describe('analytics', () => {
     const storage = memoryStorage();
     await storage.setItem('@on-time/analytics', '{bad');
     expect(await loadAnalyticsStore(storage)).toEqual(createEmptyAnalyticsStore());
+  });
+});
+
+describe('schedule creation metrics', () => {
+  const event = (name: AnalyticsEventName, at: number): AnalyticsEvent =>
+    ({ id: `${name}-${at}`, name, at, properties: {} });
+
+  it('never counts more completions than starts', () => {
+    // Voice confirmations and re-confirmed edits record a completion with no start of their own.
+    const store = {
+      ...createEmptyAnalyticsStore(),
+      events: [
+        event('draft_started', 1_000),
+        event('draft_completed', 61_000),
+        event('draft_completed', 62_000),
+        event('draft_completed', 63_000),
+      ],
+    };
+    const summary = summarizeAnalytics(store);
+    expect(summary.scheduleStarts).toBe(1);
+    expect(summary.scheduleCompletions).toBe(1);
+    expect(summary.scheduleCompletionRate).toBe(100);
+  });
+
+  it('pairs each start with the completion that followed it', () => {
+    const store = {
+      ...createEmptyAnalyticsStore(),
+      events: [
+        event('draft_started', 0),
+        event('draft_completed', 120_000),
+        event('draft_started', 200_000),
+      ],
+    };
+    const summary = summarizeAnalytics(store);
+    expect(summary.scheduleStarts).toBe(2);
+    expect(summary.scheduleCompletions).toBe(1);
+    expect(summary.scheduleCompletionRate).toBe(50);
+    expect(summary.averageScheduleCreationSeconds).toBe(120);
+  });
+
+  it('leaves an abandoned draft out of the average creation time', () => {
+    const store = {
+      ...createEmptyAnalyticsStore(),
+      events: [
+        event('draft_started', 0),
+        event('draft_completed', 60_000),
+        event('draft_started', 100_000),
+        event('draft_completed', 100_000 + 20 * 3_600_000),
+      ],
+    };
+    const summary = summarizeAnalytics(store);
+    expect(summary.scheduleCompletions).toBe(2);
+    expect(summary.averageScheduleCreationSeconds).toBe(60);
+  });
+});
+
+describe('formatDurationSeconds', () => {
+  it('reads as a duration rather than a raw second count', () => {
+    expect(formatDurationSeconds(42.35)).toBe('42.4초');
+    expect(formatDurationSeconds(90)).toBe('1분 30초');
+    expect(formatDurationSeconds(180)).toBe('3분');
+    expect(formatDurationSeconds(16_996.4)).toBe('4시간 43분');
+    expect(formatDurationSeconds(7_200)).toBe('2시간');
   });
 });
