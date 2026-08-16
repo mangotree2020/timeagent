@@ -27,9 +27,12 @@ export default function CompleteScreen() {
       <Header title="일정 완료" eyebrow="오늘도 수고했어요" />
       <Card dark style={styles.hero}>
         <View style={styles.successIcon}><AppIcon name="success" size={28} iconColor={c.cyan} /></View>
-        <StatusPill label="실제 시간 기록 완료" tone="success" />
+        {/* Claiming a recording that did not happen sits badly next to the empty list below. */}
+        <StatusPill label={actualRows.length ? '실제 시간 기록 완료' : '기록 없이 종료'} tone={actualRows.length ? 'success' : 'info'} />
         <Text style={styles.big}>도착 확인</Text>
-        <Text style={styles.heroBody}>이번 일정의 실제 소요 시간을 저장했어요.</Text>
+        <Text style={styles.heroBody}>{actualRows.length
+          ? `이번 일정의 실제 소요 시간 ${actualRows.length}개를 저장했어요.`
+          : '완료로 표시한 준비 행동이 없어 이번에는 기록을 남기지 않았어요.'}</Text>
       </Card>
 
       <Card style={styles.coach}>
