@@ -25,6 +25,7 @@ import {
   clearScheduleDraft,
   createDefaultScheduleDraft,
   loadScheduleDraft,
+  resolveTransportMode,
   saveScheduleDraft,
   ScheduleDraft,
   ScheduleDraftStep,
@@ -90,7 +91,8 @@ type ScheduleContextValue = {
   applyDelayProposal: () => Promise<void>;
   rejectDelayProposal: () => void;
   completeCurrent: () => Promise<void>;
-  applyRoute: (route: string) => Promise<void>;
+  /** Resolves false when the route could not be applied, so the screen can say so instead of implying success. */
+  applyRoute: (route: string) => Promise<boolean>;
   updateDraft: (values: Partial<ScheduleDraft>) => void;
   setDraftStep: (step: ScheduleDraftStep) => void;
   beginDraft: (reset?: boolean) => void;
@@ -112,7 +114,9 @@ const ScheduleContext = createContext<ScheduleContextValue | null>(null);
 
 export function ScheduleProvider({ children }: PropsWithChildren) {
   const [timeline, setTimeline] = useState<TimelineStep[]>([]);
-  const [delayMinutes, setDelayMinutes] = useState(6);
+  // No delay until a running session reports one — a seeded value lights up the home alert badge
+  // and shows "지연" on a schedule that has not even started.
+  const [delayMinutes, setDelayMinutes] = useState(0);
   const [route, setRoute] = useState('지하철');
   const [draft, setDraft] = useState(createDefaultScheduleDraft);
   const [activeSchedule, setActiveSchedule] = useState<ScheduleDraft | null>(null);
@@ -432,8 +436,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       if (source === 'notification') void recordAnalyticsEvent(AsyncStorage, 'progress_started', { source });
       return;
     }
+    // Reaching here means no session is running. A plan already marked `active` therefore lost its
+    // session — an app kill between the two writes — and would otherwise stay unstartable forever.
     const stored = confirmedPlanId
-      ? confirmedPlansRef.current.find((item) => item.id === confirmedPlanId && item.state === 'scheduled') ?? null
+      ? confirmedPlansRef.current.find((item) => item.id === confirmedPlanId
+        && (item.state === 'scheduled' || item.state === 'active')) ?? null
       : findDueConfirmedPlan(confirmedPlansRef.current);
     // Someone who is ready early can start ahead of the scheduled time when they ask for it
     // themselves. Automatic and notification starts still wait for the time to arrive.
@@ -567,21 +574,22 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     setPendingDelayProposal(null);
     const current = progressSessionRef.current;
     if (!current && pendingSchedule) {
-      const nextSchedule = { ...pendingSchedule, transport: nextRoute as ScheduleDraft['transport'] };
+      const nextSchedule = { ...pendingSchedule, transport: resolveTransportMode(nextRoute) };
       const nextPlan = createCurrentPlan(nextSchedule);
       setPendingSchedule(nextSchedule);
       setPendingPlan(nextPlan);
       setTimeline(nextPlan.timeline);
       setRoute(nextRoute);
-      return;
+      return true;
     }
     if (!current) {
       // A confirmed plan must never become active through a route change.
       // It will be started only by the scheduled-time checker.
-      return;
+      return false;
     }
     const next = updateProgressRoute(current, nextRoute);
     await commitProgress(next);
+    return true;
   }, [commitProgress, createCurrentPlan, pendingSchedule]);
 
   const finalizeSchedule = useCallback(async (schedule: ScheduleDraft) => {
@@ -772,7 +780,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       notificationGeneration.current += 1;
       await cancelProgressNotifications(currentProgress);
       setTimeline([]);
-      setDelayMinutes(6);
+      setDelayMinutes(0);
       setRoute('지하철');
       setActivePlan(null);
       setActiveSchedule(null);

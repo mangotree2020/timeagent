@@ -2,6 +2,7 @@ import {
   clearScheduleDraft,
   createDefaultScheduleDraft,
   isGeneratedScheduleTitle,
+  resolveTransportMode,
   loadScheduleDraft,
   saveScheduleDraft,
   SCHEDULE_DRAFT_STORAGE_KEY,
@@ -97,5 +98,24 @@ describe('schedule draft persistence', () => {
       destinationAddress: '부산진구 중앙대로 672',
       destinationCoordinate: { latitude: 35.1531, longitude: 129.0597 },
     }));
+  });
+});
+
+describe('resolveTransportMode', () => {
+  it('keeps a value that is already a transport mode', () => {
+    expect(resolveTransportMode('지하철')).toBe('지하철');
+    expect(resolveTransportMode('AI 추천')).toBe('AI 추천');
+  });
+
+  it('maps the richer route labels shown on the plan B screen back to a mode', () => {
+    expect(resolveTransportMode('다음 버스')).toBe('버스');
+    expect(resolveTransportMode('TMAP 도보 경로')).toBe('도보');
+    expect(resolveTransportMode('택시 호출')).toBe('택시');
+    expect(resolveTransportMode('걸어서 이동')).toBe('도보');
+  });
+
+  it('falls back to the recommendation rather than an unusable mode', () => {
+    expect(resolveTransportMode('킥보드')).toBe('AI 추천');
+    expect(resolveTransportMode('')).toBe('AI 추천');
   });
 });

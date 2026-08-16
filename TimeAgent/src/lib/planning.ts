@@ -10,6 +10,25 @@ const defaultTravelMinutes: Record<TransportMode, number> = {
   '택시': 18,
 };
 
+/**
+ * A draft restored from an older build — or one whose transport was set from a route label — can
+ * hold a mode this table never had. Falling back keeps the arithmetic finite instead of printing
+ * NaN:NaN across every step of the plan.
+ */
+/**
+ * A draft can reach the plan screen before it has a usable time — imported from a calendar, or
+ * restored half-finished. Planning such a draft throws, and a throw during render takes the whole
+ * screen down, so callers check first and show a way forward instead.
+ */
+export function isPlannableSchedule(draft: ScheduleDraft) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(draft.appointmentTime.trim());
+  return Boolean(match) && Number(match![1]) <= 23 && Number(match![2]) <= 59;
+}
+
+function travelMinutesFor(transport: TransportMode) {
+  return defaultTravelMinutes[transport] ?? defaultTravelMinutes['AI 추천'];
+}
+
 export type PlanStatus = {
   kind: 'ready' | 'start-now' | 'impossible';
   label: string;
@@ -75,7 +94,7 @@ export function targetPrepStartClock(draft: ScheduleDraft, options: PlanningOpti
   );
   const travelMinutes = options.personalization?.travelMinutes?.minutes
     ?? options.travelMinutes
-    ?? defaultTravelMinutes[draft.transport];
+    ?? travelMinutesFor(draft.transport);
   const bufferMinutes = draft.priority === 'on-time' ? 10 : 5;
   const appointmentMinutes = resolveAppointmentMinutes(clockToMinutes(draft.appointmentTime), options.now);
   return minutesToClock(appointmentMinutes - bufferMinutes - travelMinutes - preparationMinutes);
@@ -87,7 +106,7 @@ export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOption
     minutes: effectiveRoutineMinutes(routine, options.personalization),
   }));
   const preparationMinutes = routineMinutes.reduce((total, routine) => total + routine.minutes, 0);
-  const baseTravelMinutes = options.travelMinutes ?? defaultTravelMinutes[draft.transport];
+  const baseTravelMinutes = options.travelMinutes ?? travelMinutesFor(draft.transport);
   const travelMinutes = options.personalization?.travelMinutes?.minutes ?? baseTravelMinutes;
   const bufferMinutes = draft.priority === 'on-time' ? 10 : 5;
   const appointmentClockMinutes = clockToMinutes(draft.appointmentTime);

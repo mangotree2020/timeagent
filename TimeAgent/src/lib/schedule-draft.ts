@@ -6,6 +6,21 @@ const SCHEDULE_DRAFT_VERSION = 1;
 export type ScheduleDraftStep = 0 | 1 | 2;
 export type TransportMode = 'AI 추천' | '도보' | '버스' | '지하철' | '자가용' | '택시';
 
+/**
+ * Route labels shown to the user are richer than the stored mode — "다음 버스", "TMAP 도보 경로".
+ * Such a label has to be mapped back before it reaches the planner: an unknown mode has no default
+ * travel time, and every clock computed from it turns into NaN.
+ */
+export function resolveTransportMode(label: string): TransportMode {
+  if (isTransportMode(label)) return label;
+  if (label.includes('지하철')) return '지하철';
+  if (label.includes('버스')) return '버스';
+  if (label.includes('택시')) return '택시';
+  if (label.includes('도보') || label.includes('걸어')) return '도보';
+  if (label.includes('자가용') || label.includes('자차')) return '자가용';
+  return 'AI 추천';
+}
+
 export type RoutineDraft = {
   id: string;
   icon: string;

@@ -1,5 +1,5 @@
 import { createDefaultScheduleDraft } from '../schedule-draft';
-import { createSchedulePlan, targetPrepStartClock } from '../planning';
+import { createSchedulePlan, isPlannableSchedule, targetPrepStartClock } from '../planning';
 
 describe('schedule planning engine', () => {
   test('keeps walking as a first-class transport mode', () => {
@@ -146,5 +146,23 @@ describe('preparation durations someone set themselves', () => {
     const long = targetPrepStartClock(draft([{ id: 'shower', minutes: 40, minutesEditedByUser: true }]), { now: '17:50' });
     expect(short).toBe('17:06');
     expect(long).toBe('16:46');
+  });
+  it('plans a route label that is not a stored transport mode without producing NaN', () => {
+    // Plan B offers labels like "다음 버스"; before they were mapped back to a mode, every clock
+    // computed from the schedule came out as NaN:NaN.
+    const unknown = { ...createDefaultScheduleDraft(), transport: '다음 버스' as never };
+    const plan = createSchedulePlan(unknown);
+    expect(Number.isFinite(plan.travelMinutes)).toBe(true);
+    expect(plan.prepStart).toMatch(/^\d{2}:\d{2}$/);
+    expect(plan.timeline.every((step) => /^\d{2}:\d{2}$/.test(step.time))).toBe(true);
+    expect(targetPrepStartClock(unknown)).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it('reports a schedule without a usable appointment time as unplannable', () => {
+    expect(isPlannableSchedule(createDefaultScheduleDraft())).toBe(true);
+    expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '' })).toBe(false);
+    expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '오후 3시' })).toBe(false);
+    expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '25:00' })).toBe(false);
+    expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '9:05' })).toBe(true);
   });
 });
