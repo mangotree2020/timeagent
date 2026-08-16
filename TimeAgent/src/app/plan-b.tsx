@@ -24,7 +24,7 @@ export default function PlanBScreen() {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
-  const { activeSchedule, applyRoute, draft, pendingSchedule, progressSession, route } = useSchedule();
+  const { activeSchedule, applyRoute, delayMinutes, draft, pendingSchedule, progressSession, route } = useSchedule();
   const [selected, setSelected] = useState<string>(
     () => alternatives.find((item) => item.title !== route)?.id ?? alternatives[0].id,
   );
@@ -33,6 +33,7 @@ export default function PlanBScreen() {
   const [walkingStatus, setWalkingStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
   const schedule = pendingSchedule ?? activeSchedule ?? draft;
   const choices = useMemo<TransportAlternative[]>(
     () => [...alternatives, ...(walkingChoice ? [walkingChoice] : [])].filter((item) => item.title !== route),
@@ -85,8 +86,14 @@ export default function PlanBScreen() {
 
   const confirmRoute = async () => {
     setApplying(true);
+    setApplyError('');
     try {
-      await applyRoute(choice.title);
+      if (!(await applyRoute(choice.title))) {
+        // Confirmed plans are only started by the scheduled-time checker, so a route swap here
+        // would be discarded. Saying so beats sending the person back to an unchanged plan.
+        setApplyError('이미 확정한 계획이라 여기서는 경로를 바꿀 수 없어요. 계획 화면의 「준비 시간 수정」으로 경로를 다시 선택해 주세요.');
+        return;
+      }
       router.replace(progressSession?.state === 'active' ? '/progress' : '/plan');
     } finally {
       setApplying(false);
@@ -95,7 +102,7 @@ export default function PlanBScreen() {
 
   return (
     <Screen>
-      <Header title="플랜 B" eyebrow="현재 계획으로는 8분 늦게 도착해요" right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
+      <Header title="플랜 B" eyebrow={delayMinutes > 0 ? `현재 계획으로는 ${delayMinutes}분 늦게 도착해요` : '더 빠르거나 저렴한 경로를 비교해 보세요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
       <Card dark><Text style={styles.bannerTitle}>정시 도착 가능한 대안을 찾았어요</Text><Text style={styles.bannerBody}>현재 경로 · {route}</Text><Text style={styles.bannerBody}>시간, 비용, 걷기를 함께 비교해 가장 현실적인 안을 추천합니다.</Text></Card>
       <View accessibilityRole="tablist" style={styles.filters}>{sortOptions.map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: sort === item }} onPress={() => setSort(item)} style={[styles.filter, sort === item && styles.filterActive]}><Text style={[styles.filterText, sort === item && styles.filterTextActive]}>{item}</Text></Pressable>)}</View>
       <Text accessibilityLiveRegion="polite" style={styles.sortDescription}>{sort} 기준으로 대안을 정렬했습니다.</Text>
@@ -109,6 +116,7 @@ export default function PlanBScreen() {
           <View style={styles.changeRow}><Text style={styles.changeLabel}>예상 도착</Text><Text style={styles.changeAfter}>{choice.arrival} · {choice.status}</Text></View>
           <View style={styles.changeRow}><Text style={styles.changeLabel}>시간 · 거리</Text><Text style={styles.changeAfter}>약 {choice.durationMinutes}분 · {choice.distanceLabel}</Text></View>
           <Text style={styles.confirmationNote}>{transportEvidenceDescription(choice.evidence)}. 예상값은 실제 교통 상황에 따라 달라질 수 있습니다.</Text>
+          {applyError ? <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.applyError}>{applyError}</Text> : null}
           <View style={styles.confirmationActions}><View style={{ flex: 1 }}><Button label="다시 비교" variant="secondary" onPress={() => setShowConfirmation(false)} /></View><View style={{ flex: 1 }}><Button label={applying ? '적용 중…' : '이 경로 적용'} disabled={applying} onPress={() => void confirmRoute()} /></View></View>
         </Card>
       )}
@@ -120,6 +128,6 @@ export default function PlanBScreen() {
 const createStyles = (c: AppPalette) => {
   const type = appType(c);
   return StyleSheet.create({
-  bannerTitle: { fontSize: 18, lineHeight: 25, fontWeight: '900', color: c.onInverse }, bannerBody: { ...type.bodyMuted, color: c.onInverseMuted, marginTop: 5 }, filters: { flexDirection: 'row', gap: space.sm }, filter: { flex: 1, minHeight: 44, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' }, filterActive: { backgroundColor: c.deepBlue, borderColor: c.deepBlue }, filterText: { fontSize: 12, color: c.textMuted, fontWeight: '700', textAlign: 'center' }, filterTextActive: { color: c.onInverse }, sortDescription: { ...type.caption, marginTop: -space.md }, option: { gap: space.md }, optionSelected: { borderWidth: 2, borderColor: c.cyan }, pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, optionTop: { flexDirection: 'row', alignItems: 'center', gap: space.md }, optionIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, optionArrival: { fontSize: 22, color: c.navy, fontWeight: '900' }, optionStatus: { fontSize: 12, color: c.success, fontWeight: '800', marginTop: 2 }, routeMetrics: { flexDirection: 'row', gap: space.sm }, routeMetric: { color: c.deepBlue, fontSize: 14, fontWeight: '900' }, tags: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' }, tag: { paddingVertical: 5, paddingHorizontal: 9, borderRadius: radius.pill, backgroundColor: c.surfaceMuted, color: c.textMuted, fontSize: 11, fontWeight: '700' }, evidence: { ...type.caption }, liveRouteStatus: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingHorizontal: space.md }, liveRouteText: { ...type.caption, flexShrink: 1, textAlign: 'center' }, confirmation: { gap: space.md, borderWidth: 2, borderColor: c.cyan }, confirmationHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, changeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: c.border }, changeLabel: { width: 84, color: c.textMuted, fontSize: 13, fontWeight: '700' }, changeBefore: { flex: 1, textAlign: 'right', color: c.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, changeAfter: { flex: 1, textAlign: 'right', color: c.deepBlue, fontSize: 14, fontWeight: '900' }, confirmationNote: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted }, confirmationActions: { flexDirection: 'row', gap: space.sm },
+  bannerTitle: { fontSize: 18, lineHeight: 25, fontWeight: '900', color: c.onInverse }, bannerBody: { ...type.bodyMuted, color: c.onInverseMuted, marginTop: 5 }, filters: { flexDirection: 'row', gap: space.sm }, filter: { flex: 1, minHeight: 44, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' }, filterActive: { backgroundColor: c.deepBlue, borderColor: c.deepBlue }, filterText: { fontSize: 12, color: c.textMuted, fontWeight: '700', textAlign: 'center' }, filterTextActive: { color: c.onInverse }, sortDescription: { ...type.caption, marginTop: -space.md }, option: { gap: space.md }, optionSelected: { borderWidth: 2, borderColor: c.cyan }, pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, optionTop: { flexDirection: 'row', alignItems: 'center', gap: space.md }, optionIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, optionArrival: { fontSize: 22, color: c.navy, fontWeight: '900' }, optionStatus: { fontSize: 12, color: c.success, fontWeight: '800', marginTop: 2 }, routeMetrics: { flexDirection: 'row', gap: space.sm }, routeMetric: { color: c.deepBlue, fontSize: 14, fontWeight: '900' }, tags: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' }, tag: { paddingVertical: 5, paddingHorizontal: 9, borderRadius: radius.pill, backgroundColor: c.surfaceMuted, color: c.textMuted, fontSize: 11, fontWeight: '700' }, evidence: { ...type.caption }, liveRouteStatus: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingHorizontal: space.md }, liveRouteText: { ...type.caption, flexShrink: 1, textAlign: 'center' }, confirmation: { gap: space.md, borderWidth: 2, borderColor: c.cyan }, confirmationHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }, changeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: c.border }, changeLabel: { width: 84, color: c.textMuted, fontSize: 13, fontWeight: '700' }, changeBefore: { flex: 1, textAlign: 'right', color: c.textMuted, fontSize: 14, textDecorationLine: 'line-through' }, changeAfter: { flex: 1, textAlign: 'right', color: c.deepBlue, fontSize: 14, fontWeight: '900' }, confirmationNote: { ...type.caption, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted }, confirmationActions: { flexDirection: 'row', gap: space.sm }, applyError: { ...type.caption, color: c.warning, fontWeight: '700' },
   });
 };
