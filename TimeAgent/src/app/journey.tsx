@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
@@ -62,6 +62,7 @@ export default function JourneyScreen() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [screenReaderState, setScreenReaderState] = useState<ScreenReaderState>('checking');
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundJourneyStatus>({ state: 'inactive', updatedAt: null, voiceDelivery: null });
+  const [screenFocused, setScreenFocused] = useState(true);
   const [backgroundLoading, setBackgroundLoading] = useState(false);
   const requestGeneration = useRef(0);
   const backgroundRequesting = useRef(false);
@@ -164,16 +165,26 @@ export default function JourneyScreen() {
     void getBackgroundJourneyStatus().then(setBackgroundStatus);
   }, []);
 
+  // Once this screen is left behind in the stack it must stop draining GPS and, worse, stop
+  // announcing turns over whatever the person is now looking at. Background guidance is the
+  // background service's job, not this screen's.
+  useFocusEffect(useCallback(() => {
+    setScreenFocused(true);
+    return () => setScreenFocused(false);
+  }, []));
+
   useEffect(() => {
+    if (!screenFocused) return;
     const poll = setInterval(() => {
       void new ExpoLocationProvider().getCurrentLocation()
         .then((location) => setJourney((current) => refreshJourneyLocation(current, location)))
         .catch(() => undefined);
     }, 15_000);
     return () => clearInterval(poll);
-  }, []);
+  }, [screenFocused]);
 
   useEffect(() => {
+    if (!screenFocused) return;
     const maneuver = journey.nextManeuver;
     if (!shouldAutoSpeakJourney({
       voiceEnabled,
@@ -184,7 +195,7 @@ export default function JourneyScreen() {
     if (spokenManeuverId.current === maneuver.id) return;
     spokenManeuverId.current = maneuver.id;
     void voiceGuide.speak(maneuver, journey);
-  }, [effectiveScreenReaderState, journey, voiceEnabled, voiceGuide]);
+  }, [effectiveScreenReaderState, journey, screenFocused, voiceEnabled, voiceGuide]);
 
   useEffect(() => () => {
     void voiceGuide.stop();

@@ -185,7 +185,8 @@ export default function HomeScreen() {
           onPress={() => router.push({ pathname: '/schedules', params: { tab: 'past' } })}
         /> : null}
 
-        <SectionTitle action={schedule ? <Pressable onPress={() => router.push('/plan')}><Text style={styles.link}>전체 보기</Text></Pressable> : undefined}>오늘의 준비 계획</SectionTitle>
+        {/* The link has to follow the card's own source, or it offers "전체 보기" over an empty state. */}
+        <SectionTitle action={nextTodayPlan ? <Pressable accessibilityRole="button" onPress={() => router.push('/plan')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable> : undefined}>오늘의 준비 계획</SectionTitle>
         {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
 
       </Screen>
