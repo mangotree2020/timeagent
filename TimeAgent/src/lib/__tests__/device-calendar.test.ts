@@ -1,4 +1,5 @@
 import {
+  ALL_DAY_DEFAULT_TIME,
   calendarEventToDraftPatch,
   calendarEventsForLocalDay,
   calendarEventsForLocalDateRange,
@@ -61,7 +62,9 @@ describe('device calendar domain', () => {
       destinationAddress: '서울시청 회의실',
       destinationCoordinate: null,
     });
-    expect(calendarEventToDraftPatch(fixture.events[1]).appointmentTime).toBe('');
+    // An all-day event has no clock of its own, but an empty time is not something the planner can
+    // work from — it gets a morning default the person edits in the first step.
+    expect(calendarEventToDraftPatch(fixture.events[1]).appointmentTime).toBe(ALL_DAY_DEFAULT_TIME);
   });
 
   it('keeps every event overlapping today and orders all-day, ongoing, then timed events', () => {

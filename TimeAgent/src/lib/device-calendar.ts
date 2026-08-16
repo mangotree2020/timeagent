@@ -1,5 +1,7 @@
 import { ScheduleDraft } from '@/lib/schedule-draft';
 
+export const ALL_DAY_DEFAULT_TIME = '09:00';
+
 export type CalendarProviderKind = 'google' | 'apple' | 'device' | 'other';
 export type CalendarPermissionState = 'undetermined' | 'granted' | 'denied' | 'blocked' | 'unavailable';
 
@@ -231,7 +233,9 @@ export function calendarEventToDraftPatch(event: DeviceCalendarEvent): Partial<S
     step: 0,
     title: event.title,
     date: localDateKey(new Date(event.startDate)),
-    appointmentTime: event.allDay ? '' : localTime(new Date(event.startDate)),
+    // An all-day event carries no clock, but an empty time is not a schedule the planner can work
+    // from. Seed a morning default the person adjusts in the first step.
+    appointmentTime: event.allDay ? ALL_DAY_DEFAULT_TIME : localTime(new Date(event.startDate)),
     destination: event.location,
     destinationAddress: event.location,
     destinationCoordinate: null,

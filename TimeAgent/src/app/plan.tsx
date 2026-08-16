@@ -12,7 +12,7 @@ import { ExpoLocationProvider } from '@/lib/device-location-provider';
 import { createFallbackWalkingRoute, RoutePlan } from '@/lib/journey';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { createPlanPersonalization } from '@/lib/personalization';
-import { createSchedulePlan, currentClock, PlanStatus, targetPrepStartClock } from '@/lib/planning';
+import { createSchedulePlan, currentClock, isPlannableSchedule, PlanStatus, targetPrepStartClock } from '@/lib/planning';
 import { useSchedule } from '@/state/schedule-context';
 
 /** Fixed starting point so the route rendering can be checked without a device GPS fix. */
@@ -30,13 +30,16 @@ export default function PlanScreen() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [route, setRoute] = useState<RoutePlan | null>(null);
   const schedule = pendingSchedule ?? activeSchedule ?? draft;
-  const plan = pendingPlan ?? activePlan ?? createSchedulePlan(schedule);
+  // A half-finished draft — say, an all-day event pulled from the calendar — has no time to plan
+  // from, and planning it would throw during render and blank the screen.
+  const plannable = isPlannableSchedule(schedule);
+  const plan = pendingPlan ?? activePlan ?? (plannable ? createSchedulePlan(schedule) : null);
   const isPending = !!pendingPlan && !!pendingSchedule;
   // Same personalization the plan itself used, or the hint would quote a different arithmetic.
-  const targetPrepStart = targetPrepStartClock(schedule, {
+  const targetPrepStart = plannable ? targetPrepStartClock(schedule, {
     now: currentClock(),
     personalization: createPlanPersonalization(personalizationProfile, schedule),
-  });
+  }) : '';
   const isEditing = isPending && !!editingConfirmedPlanId;
   const destinationLatitude = schedule.destinationCoordinate?.latitude;
   const destinationLongitude = schedule.destinationCoordinate?.longitude;
@@ -99,6 +102,18 @@ export default function PlanScreen() {
       setConfirmError('약속을 삭제하지 못했습니다. 다시 시도해 주세요.');
     }
   };
+  if (!plan) {
+    return (
+      <Screen>
+        <Header title="준비 계획" eyebrow="아직 계획을 세울 수 없어요" right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
+        <Card>
+          <Text style={type.body}>약속 시간이 정해지지 않아 준비 계획을 만들 수 없어요. 약속 시간을 입력하면 준비 시작 시각을 계산해 드릴게요.</Text>
+        </Card>
+        <Button label="약속 정보 입력하기" onPress={() => { setDraftStep(0); router.push('/create'); }} />
+        <Button label="홈으로" variant="ghost" onPress={() => router.replace('/')} />
+      </Screen>
+    );
+  }
   return (
     <Screen>
       <Header title={isPending ? isEditing ? '수정한 준비 계획을 확인해 주세요' : '준비 계획을 확인해 주세요' : '확정된 준비 계획'} eyebrow={isPending ? '저장 전에는 기존 약속이 변경되지 않아요' : '준비 시작 시각에 자동으로 실행돼요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
