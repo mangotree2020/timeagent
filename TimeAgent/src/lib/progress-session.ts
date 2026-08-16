@@ -67,8 +67,10 @@ export function createProgressSession({
   now?: number;
 }): ProgressSession {
   const currentIndex = Math.max(0, plan.timeline.findIndex((step) => step.status === 'current'));
+  const shiftMinutes = earlyStartShiftMinutes(plan, plan.timeline[currentIndex]?.time, now);
   const timeline = plan.timeline.map((step, index) => ({
     ...step,
+    time: shiftClock(step.time, shiftMinutes),
     status: index === currentIndex ? 'current' as const : step.status === 'done' ? 'done' as const : 'upcoming' as const,
   }));
   const current = timeline[currentIndex] ?? null;
@@ -79,7 +81,13 @@ export function createProgressSession({
     confirmedPlanId,
     state: current ? 'active' : 'completed',
     schedule,
-    plan: { ...plan, timeline },
+    plan: {
+      ...plan,
+      prepStart: shiftClock(plan.prepStart, shiftMinutes),
+      departure: shiftClock(plan.departure, shiftMinutes),
+      arrival: shiftClock(plan.arrival, shiftMinutes),
+      timeline,
+    },
     timeline,
     currentStepId: current?.id ?? null,
     stepStartedAt: now,
@@ -90,6 +98,24 @@ export function createProgressSession({
     scheduledNotifications: [],
     updatedAt: now,
   };
+}
+
+/**
+ * Someone who starts an hour before the plan told them to is really working to a schedule that
+ * begins now, and leaving the planned clocks in place put a twelve-minute countdown next to a
+ * finish time an hour and a half away. Starting late is different: the plan's times are the
+ * targets being missed, and delay tracking depends on them, so only an early start shifts.
+ */
+function earlyStartShiftMinutes(plan: SchedulePlan, firstStepClock: string | undefined, now: number) {
+  const planned = firstStepClock ?? plan.prepStart;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(planned ?? '');
+  if (!match) return 0;
+  const started = new Date(now);
+  const startedMinutes = started.getHours() * 60 + started.getMinutes();
+  const plannedMinutes = Number(match[1]) * 60 + Number(match[2]);
+  const shift = startedMinutes - plannedMinutes;
+  // A shift past half a day means the two clocks sit on different days; leave the plan alone.
+  return shift < 0 && shift > -720 ? shift : 0;
 }
 
 export function getProgressRemainingSeconds(session: ProgressSession, now = Date.now()) {

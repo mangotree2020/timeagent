@@ -131,3 +131,52 @@ describe('progress session', () => {
     await expect(loadProgressSession(storage)).resolves.toBeNull();
   });
 });
+
+describe('starting before the planned time', () => {
+  const plan = {
+    preparationMinutes: 22,
+    travelMinutes: 20,
+    bufferMinutes: 10,
+    prepStart: '09:08',
+    departure: '09:30',
+    arrival: '09:50',
+    status: { kind: 'ready' as const, label: '10분 여유', tone: 'success' as const, minutes: 10 },
+    timeline: [
+      { id: 'shower', time: '09:08', title: '샤워', duration: 12, status: 'current' as const },
+      { id: 'dress', time: '09:20', title: '옷 입기', duration: 10, status: 'upcoming' as const },
+      { id: 'depart', time: '09:30', title: '자가용으로 출발', duration: 20, status: 'upcoming' as const },
+    ],
+    personalizationAdjustments: [],
+  };
+  const schedule = { ...createDefaultScheduleDraft(), title: '미팅', appointmentTime: '10:00' };
+
+  it('rebases the timeline onto the moment preparation actually began', () => {
+    const startedAt = new Date(2026, 7, 17, 7, 29).getTime();
+    const session = createProgressSession({ schedule, plan, now: startedAt });
+    expect(session.timeline.map((step) => step.time)).toEqual(['07:29', '07:41', '07:51']);
+    expect(session.plan.prepStart).toBe('07:29');
+    expect(session.plan.departure).toBe('07:51');
+    expect(session.plan.arrival).toBe('08:11');
+  });
+
+  it('keeps the countdown and the finish time describing the same step', () => {
+    const startedAt = new Date(2026, 7, 17, 7, 29).getTime();
+    const session = createProgressSession({ schedule, plan, now: startedAt });
+    expect(getProgressRemainingSeconds(session, startedAt)).toBe(12 * 60);
+    expect(session.timeline[0].time).toBe('07:29');
+    expect(session.timeline[1].time).toBe('07:41');
+  });
+
+  it('leaves the plan alone when preparation starts late, so the delay is still visible', () => {
+    const startedAt = new Date(2026, 7, 17, 9, 25).getTime();
+    const session = createProgressSession({ schedule, plan, now: startedAt });
+    expect(session.timeline.map((step) => step.time)).toEqual(['09:08', '09:20', '09:30']);
+    expect(session.plan.arrival).toBe('09:50');
+  });
+
+  it('leaves the plan alone when the clocks sit on different days', () => {
+    const startedAt = new Date(2026, 7, 17, 22, 40).getTime();
+    const session = createProgressSession({ schedule, plan, now: startedAt });
+    expect(session.timeline[0].time).toBe('09:08');
+  });
+});
