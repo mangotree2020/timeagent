@@ -1,30 +1,48 @@
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Card, Header, Screen, StatusPill, useAppType } from '@/components/app-ui';
-import { AppIcon, AppIconName } from '@/components/app-icon';
+import { AppIcon } from '@/components/app-icon';
 import { space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
-import { AlertAction, getAlertActionTarget } from '@/lib/alert-navigation';
-
-const alerts = [
-  { icon: 'time', title: '준비 시작 알림', body: '12:55에 준비를 시작하세요.', time: '28분 후', tone: 'info' as const, action: 'start-progress', actionLabel: '지금 준비 시작' },
-  { icon: 'coach', title: '시간을 다시 계산했어요', body: '화장 시간을 3분 늘려 계획에 반영했습니다.', time: '방금', tone: 'success' as const, action: 'review-plan', actionLabel: '변경된 계획 확인' },
-  { icon: 'location', title: '위치 권한 확인', body: '출발 위치를 자동으로 계산하려면 위치 권한이 필요해요.', time: '어제', tone: 'warning' as const, action: 'fix-location-permission', actionLabel: '위치 권한 설정' },
-] satisfies { icon: AppIconName; title: string; body: string; time: string; tone: 'info' | 'success' | 'warning'; action: AlertAction; actionLabel: string }[];
+import { buildAlertFeed } from '@/lib/alert-feed';
+import { getAlertActionTarget } from '@/lib/alert-navigation';
+import { useSchedule } from '@/state/schedule-context';
 
 export default function AlertsScreen() {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
+  const { confirmedPlans, confirmedPlansStatus, notificationStatus, progressSession } = useSchedule();
+  // Recomputed each minute so "12분 뒤 시작" does not sit there going stale.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const alerts = buildAlertFeed({
+    plans: confirmedPlans,
+    sessionActive: progressSession?.state === 'active',
+    notificationStatus,
+    now: nowTick,
+  });
   return (
     <View style={{ flex: 1 }}>
       <Screen>
         <Header title="알림" eyebrow="필요한 순간만 알려드려요" />
+        {confirmedPlansStatus === 'loading' ? <Card><Text style={type.bodyMuted}>알림을 불러오는 중이에요.</Text></Card> : null}
+        {confirmedPlansStatus !== 'loading' && !alerts.length ? (
+          <Card style={styles.empty}>
+            <AppIcon name="success" size={26} iconColor={c.success} />
+            <Text style={type.heading}>지금 확인할 알림이 없어요</Text>
+            <Text style={type.bodyMuted}>약속을 등록하면 준비를 시작할 시각을 여기에서 알려드릴게요.</Text>
+          </Card>
+        ) : null}
         {alerts.map((alert) => (
           <Pressable
-            key={alert.title}
+            key={alert.id}
             accessibilityRole="button"
             accessibilityLabel={`${alert.title}. ${alert.body}`}
             accessibilityHint={`${alert.actionLabel} 화면으로 이동합니다`}
@@ -34,7 +52,7 @@ export default function AlertsScreen() {
             <Card style={styles.alert}>
               <View style={styles.icon}><AppIcon name={alert.icon} size={20} /></View>
               <View style={styles.content}>
-                <View style={styles.top}><Text style={type.heading}>{alert.title}</Text><StatusPill label={alert.time} tone={alert.tone} /></View>
+                <View style={styles.top}><Text style={[type.heading, styles.title]}>{alert.title}</Text><View style={styles.pill}><StatusPill label={alert.time} tone={alert.tone} /></View></View>
                 <Text style={[type.bodyMuted, styles.body]}>{alert.body}</Text>
                 <Text style={styles.actionLabel}>{alert.actionLabel}</Text>
               </View>
@@ -50,11 +68,15 @@ export default function AlertsScreen() {
 
 const createStyles = (c: AppPalette) => StyleSheet.create({
   action: { minHeight: 44 },
+  empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.lg },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
   alert: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1 },
+  // Without a flex basis the title gives way to the pill and orphans its last syllable.
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: space.sm },
+  title: { flex: 1 },
+  pill: { flexShrink: 0 },
   body: { marginTop: 5 },
   actionLabel: { marginTop: space.sm, color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '800' },
 });
