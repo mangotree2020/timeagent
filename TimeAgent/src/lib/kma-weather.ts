@@ -90,7 +90,21 @@ export function parseWeatherCache(raw: string | null): WeatherCacheRecord | null
 
 export function parseWeatherServiceResponse(payload: unknown): WeatherSnapshot {
   if (!isWeatherSnapshot(payload)) throw new Error('날씨 서버 응답 형식이 올바르지 않습니다.');
-  return payload;
+  return withCoherentTemperatureRange(payload);
+}
+
+/**
+ * The current temperature can come from the KMA observation while the day's range comes from
+ * Open-Meteo, and two providers on two grids disagree — which is how the screen came to show 22°
+ * now against a low of 25°. Whichever numbers arrive, the range has to contain the reading.
+ */
+export function withCoherentTemperatureRange(weather: WeatherSnapshot): WeatherSnapshot {
+  const minimumTemperatureC = Math.min(weather.minimumTemperatureC, weather.temperatureC);
+  const maximumTemperatureC = Math.max(weather.maximumTemperatureC, weather.temperatureC);
+  if (minimumTemperatureC === weather.minimumTemperatureC && maximumTemperatureC === weather.maximumTemperatureC) {
+    return weather;
+  }
+  return { ...weather, minimumTemperatureC, maximumTemperatureC };
 }
 
 export function conditionFromKma(sky: number, precipitationType: number): { condition: string; icon: WeatherIcon } {

@@ -69,9 +69,16 @@ async function fetchKmaWeather(grid: { nx: number; ny: number }, serviceKey: str
   const condition = conditionFromKma(sky, precipitationType);
   const nextRain = forecastGroups.find((group) => (finiteNumber(group.values.PTY) ?? 0) > 0);
 
+  // The daily range still comes from Open-Meteo while this reading comes from the KMA grid, and
+  // the two disagree often enough that the current temperature can fall outside the range.
+  const fallbackMinimum = finiteNumber(fallback.minimumTemperatureC) ?? temperature;
+  const fallbackMaximum = finiteNumber(fallback.maximumTemperatureC) ?? temperature;
+
   return {
     ...fallback,
     temperatureC: temperature,
+    minimumTemperatureC: Math.min(fallbackMinimum, temperature),
+    maximumTemperatureC: Math.max(fallbackMaximum, temperature),
     apparentTemperatureC: apparentTemperature(temperature, humidity, windSpeed),
     weatherCode: weatherCode(sky, precipitationType),
     condition: condition.condition,

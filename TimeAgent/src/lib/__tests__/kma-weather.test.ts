@@ -6,6 +6,7 @@ import {
   latestKmaForecastBase,
   latestKmaObservationBase,
   parseWeatherCache,
+  parseWeatherServiceResponse,
   toKmaGrid,
 } from '../kma-weather';
 import { createWeatherPreviewFixture } from '../weather';
@@ -60,5 +61,31 @@ describe('kma weather optimization', () => {
     expect(parseWeatherCache(JSON.stringify(cache))).toEqual(cache);
     expect(parseWeatherCache('{broken')).toBeNull();
     expect(parseWeatherCache(JSON.stringify({ ...cache, latitude: '35' }))).toBeNull();
+  });
+});
+
+describe('parseWeatherServiceResponse', () => {
+  it('keeps a coherent range when the reading and the range come from different providers', () => {
+    // The KMA observation replaces the current temperature; the daily range stays Open-Meteo's.
+    const mixed = { ...createWeatherPreviewFixture(), temperatureC: 22, minimumTemperatureC: 25, maximumTemperatureC: 27 };
+    const parsed = parseWeatherServiceResponse(mixed);
+    expect(parsed.minimumTemperatureC).toBe(22);
+    expect(parsed.maximumTemperatureC).toBe(27);
+  });
+
+  it('widens the top of the range for a reading above it', () => {
+    const hot = { ...createWeatherPreviewFixture(), temperatureC: 33, minimumTemperatureC: 23, maximumTemperatureC: 29 };
+    const parsed = parseWeatherServiceResponse(hot);
+    expect(parsed.minimumTemperatureC).toBe(23);
+    expect(parsed.maximumTemperatureC).toBe(33);
+  });
+
+  it('leaves a range that already contains the reading untouched', () => {
+    const fixture = createWeatherPreviewFixture();
+    expect(parseWeatherServiceResponse(fixture)).toBe(fixture);
+  });
+
+  it('still rejects a payload that is not a weather snapshot', () => {
+    expect(() => parseWeatherServiceResponse({ temperatureC: 20 })).toThrow();
   });
 });
