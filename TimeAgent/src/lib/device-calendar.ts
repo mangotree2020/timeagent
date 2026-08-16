@@ -124,7 +124,22 @@ export function normalizeDeviceCalendarEvents(values: RawDeviceCalendarEvent[], 
       allDay,
       location: event.location?.trim() || '',
     }];
-  }).sort(compareCalendarEvents);
+  }).sort(compareCalendarEvents).filter(withoutDuplicateOccurrences());
+}
+
+/**
+ * The same holiday is often subscribed in several calendars at once, and each copy arrives with
+ * its own event id — which is how "쉬는 날 광복절" came to be listed three times under one day.
+ * Two entries describing the same thing at the same time are one entry to the person reading it.
+ */
+function withoutDuplicateOccurrences() {
+  const seen = new Set<string>();
+  return (event: DeviceCalendarEvent) => {
+    const key = `${event.title}|${event.startDate}|${event.endDate}|${event.allDay}|${event.location}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
 }
 
 export function upcomingCalendarRange(now = new Date(), days = 30) {

@@ -51,7 +51,7 @@ describe('device calendar domain', () => {
     expect(formatCalendarEventTime(groups[1].events[0])).toBe('종일');
   });
 
-  it('maps a selected timed event to a new draft and leaves all-day time blank', () => {
+  it('maps a selected timed event to a new draft and gives an all-day event a time to plan from', () => {
     const fixture = createCalendarPreviewFixture();
     expect(calendarEventToDraftPatch(fixture.events[0])).toMatchObject({
       step: 0,
@@ -100,5 +100,35 @@ describe('device calendar domain', () => {
     expect(result.map((event) => event.id)).toEqual(['today', 'tomorrow']);
     expect(result.map((event) => formatTodayTomorrowCalendarEventTime(event, today)))
       .toEqual(['오늘\n18:00', '내일\n10:00']);
+  });
+});
+
+describe('duplicate calendar subscriptions', () => {
+  it('lists one entry when the same holiday arrives from several calendars', () => {
+    const calendars = normalizeDeviceCalendars([
+      { id: 'a', title: '대한민국의 휴일', sourceName: 'Google', sourceType: 'com.google', ownerAccount: 'one@example.com' },
+      { id: 'b', title: '대한민국의 휴일', sourceName: 'Google', sourceType: 'com.google', ownerAccount: 'two@example.com' },
+      { id: 'c', title: '공휴일', sourceName: 'Local', sourceType: 'LOCAL', isLocalAccount: true },
+    ]);
+    const holiday = { title: '쉬는 날 광복절', startDate: '2026-08-17T00:00:00.000Z', endDate: '2026-08-18T00:00:00.000Z', allDay: true };
+    const events = normalizeDeviceCalendarEvents([
+      { id: 'e1', calendarId: 'a', ...holiday },
+      { id: 'e2', calendarId: 'b', ...holiday },
+      { id: 'e3', calendarId: 'c', ...holiday },
+    ], calendars);
+    expect(events).toHaveLength(1);
+    expect(events[0].title).toBe('쉬는 날 광복절');
+  });
+
+  it('keeps events that only look alike', () => {
+    const calendars = normalizeDeviceCalendars([
+      { id: 'a', title: '내 캘린더', sourceName: 'Google', sourceType: 'com.google' },
+    ]);
+    const events = normalizeDeviceCalendarEvents([
+      { id: 'e1', calendarId: 'a', title: '회의', startDate: '2026-08-17T01:00:00.000Z', endDate: '2026-08-17T02:00:00.000Z' },
+      { id: 'e2', calendarId: 'a', title: '회의', startDate: '2026-08-17T05:00:00.000Z', endDate: '2026-08-17T06:00:00.000Z' },
+      { id: 'e3', calendarId: 'a', title: '회의', startDate: '2026-08-17T01:00:00.000Z', endDate: '2026-08-17T02:00:00.000Z', location: '3층' },
+    ], calendars);
+    expect(events).toHaveLength(3);
   });
 });
