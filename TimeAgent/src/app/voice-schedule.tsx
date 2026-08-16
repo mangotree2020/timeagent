@@ -129,12 +129,15 @@ const TASK_FIXTURE: VoiceScheduleAssistantReply = {
 
 export default function VoiceScheduleScreen() {
   const params = useLocalSearchParams<{ e2eState?: string }>();
-  const fixtureResult = params.e2eState === 'proposal' || params.e2eState === 'result';
-  const fixtureClarification = params.e2eState === 'clarification';
-  const fixtureTransportMissing = params.e2eState === 'transport-missing';
-  const fixtureMissingFields = params.e2eState === 'missing-fields';
-  const fixtureAutoListening = params.e2eState === 'auto-listening';
-  const fixtureTask = params.e2eState === 'task';
+  // Only the test build may be driven by a deep link — otherwise `ontime://voice-schedule?e2eState=result`
+  // would put a fabricated appointment in front of a real user, ready to save.
+  const e2eState = __DEV__ ? params.e2eState : undefined;
+  const fixtureResult = e2eState === 'proposal' || e2eState === 'result';
+  const fixtureClarification = e2eState === 'clarification';
+  const fixtureTransportMissing = e2eState === 'transport-missing';
+  const fixtureMissingFields = e2eState === 'missing-fields';
+  const fixtureAutoListening = e2eState === 'auto-listening';
+  const fixtureTask = e2eState === 'task';
   const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureMissingFields ? MISSING_FIELDS_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
   const { beginDraft, beginDraftWith, confirmDraftWith, draft, selectConfirmedPlan } = useSchedule();
   const { addTask, startTask } = useTaskExecution();
@@ -733,8 +736,10 @@ function fieldToEditable(field: VoiceScheduleClarification['field']): EditableFi
 }
 
 function addMinutes(clock: string, minutes: number) {
-  const match = /^(\d{2}):(\d{2})$/.exec(clock);
-  if (!match) return '확인 필요';
+  // The model answers with `9:00` as readily as `09:00`, and the rest of the app accepts both —
+  // demanding two digits here made a perfectly good time read as "확인 필요".
+  const match = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return '확인 필요';
   const total = (Number(match[1]) * 60 + Number(match[2]) + minutes) % 1_440;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }

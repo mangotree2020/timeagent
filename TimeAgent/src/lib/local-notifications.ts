@@ -36,6 +36,18 @@ export function withDirectionParticle(word: string) {
   return `${trimmed}${jongseong === 0 || jongseong === RIEUL_JONGSEONG ? '로' : '으로'}`;
 }
 
+/**
+ * Korean writes `를` after a vowel and `을` otherwise. `을(를)` is the placeholder for when the word
+ * is unknown at writing time — the app knows the word, so it should read like a sentence.
+ */
+export function withObjectParticle(word: string) {
+  const trimmed = word.trim();
+  if (!trimmed) return '';
+  const code = trimmed.charCodeAt(trimmed.length - 1);
+  if (code < HANGUL_START || code > HANGUL_END) return `${trimmed}를`;
+  return `${trimmed}${(code - HANGUL_START) % JONGSEONG_COUNT === 0 ? '를' : '을'}`;
+}
+
 export const PROGRESS_STEP_ACTION_CATEGORY = 'on-time-progress-step';
 export const PROGRESS_ADVANCE_ACTION = 'progress-advance';
 export const PROGRESS_EXTEND_ACTION = 'progress-extend';

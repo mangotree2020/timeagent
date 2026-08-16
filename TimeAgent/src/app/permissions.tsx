@@ -13,6 +13,7 @@ import {
   requestLocationPermission,
   requestNotificationPermission,
 } from '@/lib/device-permissions';
+import { withObjectParticle } from '@/lib/local-notifications';
 import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
 
 type PermissionKind = 'location' | 'notifications';
@@ -88,7 +89,7 @@ export default function PermissionsScreen() {
     const value = manualLocation.trim();
     if (!value) return;
     updateSettings({ defaultLocation: value });
-    setMessage(`${value}을(를) 수동 출발지로 저장했습니다.`);
+    setMessage(`${withObjectParticle(value)} 수동 출발지로 저장했습니다.`);
   };
 
   return (
@@ -160,7 +161,7 @@ export default function PermissionsScreen() {
       </PermissionCard>
 
       {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : null}
-      <Button label="설정으로 돌아가기" variant="ghost" onPress={() => router.replace('/settings')} />
+      <Button label="돌아가기" variant="ghost" onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))} />
     </Screen>
   );
 }

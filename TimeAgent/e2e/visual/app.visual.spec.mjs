@@ -774,21 +774,37 @@ test('홈 날씨는 위치 권한과 네트워크 실패의 복구 행동을 제
   await expect(page.getByRole('button', { name: '날씨 다시 불러오기', exact: true })).toBeVisible();
 });
 
-test('알림 아이콘 카드는 해결 가능한 다음 화면으로 이동함', async ({ page }) => {
+test('알림은 아직 시작하지 않은 약속을 설명하고 해당 계획으로 이동함', async ({ page }) => {
+  await page.addInitScript((plan) => {
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [plan] }));
+  }, { ...confirmedPlanFixture, prepStartAt: fixedNow.getTime() + 30 * 60_000, appointmentAt: fixedNow.getTime() + 90 * 60_000 });
   await page.goto('/alerts');
-  await page.getByRole('button', { name: /준비 시작 알림/ }).click();
-  await expect(page).toHaveURL(/\/progress$/);
-  await expect(page.getByText('실시간 준비', { exact: true })).toBeVisible();
-
-  await page.goto('/alerts');
-  await page.getByRole('button', { name: /시간을 다시 계산했어요/ }).click();
+  const alert = page.getByRole('button', { name: /준비 시작 알림/ });
+  // The body quotes the confirmed plan rather than a fixed sample sentence.
+  await expect(alert).toContainText('서면 볼링장 친구 약속');
+  await expect(alert).toContainText('12:55에 준비를 시작해요');
+  // Floored minutes, so the boundary lands on 29 or 30 depending on load time.
+  await expect(alert).toContainText(/(29|30)분 뒤 시작/);
+  await alert.click();
   await expect(page).toHaveURL(/\/plan$/);
   await expect(page.getByText('확정된 준비 계획', { exact: true })).toBeVisible();
+});
 
+test('준비가 진행 중이면 진행 화면으로 보냄', async ({ page }) => {
   await page.goto('/alerts');
-  await page.getByRole('button', { name: /위치 권한 확인/ }).click();
-  await expect(page).toHaveURL(/\/permissions\?focus=location$/);
-  await expect(page.getByText('현재 위치', { exact: true })).toBeVisible();
+  const running = page.getByRole('button', { name: /준비 진행 중/ });
+  await expect(running).toBeVisible();
+  await running.click();
+  await expect(page).toHaveURL(/\/progress$/);
+});
+
+test('등록된 약속이 없으면 알림을 지어내지 않음', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [] }));
+  });
+  await page.goto('/alerts');
+  await expect(page.getByText('지금 확인할 알림이 없어요', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /준비 시작 알림/ })).toHaveCount(0);
 });
 
 test('progress-normal 화면', async ({ page }) => {

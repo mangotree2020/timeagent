@@ -8,6 +8,7 @@ import {
   PROGRESS_STEP_ACTIONS,
   buildStepCoachMessage,
   withDirectionParticle,
+  withObjectParticle,
 } from '../local-notifications';
 import { advanceProgressSession, createProgressSession } from '../progress-session';
 import { createSchedulePlan } from '../planning';
@@ -194,5 +195,20 @@ describe('local notification plan', () => {
     expect(last).toContain(first.title);
     expect(last).not.toContain('undefined');
     expect(last.trim().length).toBeGreaterThan(0);
+  });
+});
+
+describe('withObjectParticle', () => {
+  it('picks 을 after a final consonant and 를 after a vowel', () => {
+    expect(withObjectParticle('샤워')).toBe('샤워를');
+    expect(withObjectParticle('화장')).toBe('화장을');
+    expect(withObjectParticle('옷 입기')).toBe('옷 입기를');
+    expect(withObjectParticle('짐 챙김')).toBe('짐 챙김을');
+  });
+
+  it('does not leave the 을(를) placeholder in user-facing text', () => {
+    expect(withObjectParticle('부산역')).not.toContain('(');
+    expect(withObjectParticle('Gangnam')).toBe('Gangnam를');
+    expect(withObjectParticle('  ')).toBe('');
   });
 });

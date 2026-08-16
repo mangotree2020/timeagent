@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Header, Screen, SectionTitle, useAppType } from '@/components/app-ui';
@@ -10,6 +10,7 @@ import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context'
 import { isGeneratedScheduleTitle, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import { createPlanPersonalization } from '@/lib/personalization';
 import { effectiveRoutineMinutes } from '@/lib/planning';
+import { withObjectParticle } from '@/lib/local-notifications';
 import { addRoutine, removeRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
 
@@ -133,7 +134,7 @@ function RoutineForm({ draft, onChange }: DraftFormProps) {
     <View accessibilityLiveRegion="polite" style={styles.routineTotal}><AppIcon name="time" size={18} /><Text style={styles.routineTotalText}>총 준비 시간 {totalMinutes}분</Text><Text style={type.caption}>{draft.routines.length}개 행동</Text></View>
     {draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><View style={styles.routineCopy}><Text style={[type.body, { fontWeight: '800' }]}>{item.label}</Text>{item.minutesEditedByUser ? <Text style={type.caption}>내가 정한 시간</Text> : personalization?.routineMinutes[item.id] ? <Text style={type.caption}>최근 평균 {personalization.routineMinutes[item.id].minutes}분 적용 중</Text> : null}</View><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{effectiveRoutineMinutes(item, personalization)}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel={`${item.label} 준비 행동 삭제`} accessibilityState={{ disabled: onlyOneLeft }} disabled={onlyOneLeft} onPress={() => removeStep(item.id)} style={({ pressed }) => [styles.removeRoutine, onlyOneLeft && styles.removeRoutineDisabled, pressed && styles.pressedRow]}><AppIcon name="trash" size={18} iconColor={onlyOneLeft ? undefined : '#C2413A'} /></Pressable></Card>)}
     {onlyOneLeft ? <Text style={type.caption}>준비 행동은 최소 하나가 필요해요. 다른 행동을 추가하면 이 행동도 지울 수 있어요.</Text> : null}
-    {removed ? <View accessibilityRole="alert" style={styles.undoRow}><Text style={[type.bodyMuted, { flex: 1 }]}>{removed.routine.label}을(를) 목록에서 뺐어요.</Text><Pressable accessibilityRole="button" accessibilityLabel={`${removed.routine.label} 삭제 실행취소`} onPress={undoRemove} style={({ pressed }) => [styles.undoAction, pressed && styles.pressedRow]}><Text style={styles.undoActionText}>실행취소</Text></Pressable></View> : null}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
+    {removed ? <View accessibilityRole="alert" style={styles.undoRow}><Text style={[type.bodyMuted, { flex: 1 }]}>{withObjectParticle(removed.routine.label)} 목록에서 뺐어요.</Text><Pressable accessibilityRole="button" accessibilityLabel={`${removed.routine.label} 삭제 실행취소`} onPress={undoRemove} style={({ pressed }) => [styles.undoAction, pressed && styles.pressedRow]}><Text style={styles.undoActionText}>실행취소</Text></Pressable></View> : null}{showAddRoutine ? <Card style={styles.addRoutinePanel}><Field label="추가할 준비 행동" value={routineLabel} onChangeText={setRoutineLabel} /><View style={styles.addRoutineActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => { setRoutineLabel(''); setShowAddRoutine(false); }} /></View><View style={{ flex: 1 }}><Button label="행동 추가" onPress={submitRoutine} disabled={!routineLabel.trim()} /></View></View></Card> : <Pressable accessibilityRole="button" accessibilityLabel="준비 행동 추가" onPress={() => setShowAddRoutine(true)} style={styles.addRoutine}><AppIcon name="plus" size={18} /><Text style={styles.addRoutineText}>준비 행동 추가</Text></Pressable>}</View>;
 }
 
 type DraftFormProps = {
@@ -143,7 +144,18 @@ type DraftFormProps = {
 
 function Field({ label, value, icon, replaceOnInput = false, onChangeText }: { label: string; value: string; icon?: AppIconName; replaceOnInput?: boolean; onChangeText: (value: string) => void }) {
   const styles = useThemedStyles(createStyles);
-  return <View><Text style={styles.fieldLabel}>{label}</Text><View style={styles.field}>{icon ? <AppIcon name={icon} size={18} /> : null}<TextInput accessibilityLabel={label} accessibilityHint={replaceOnInput ? '입력을 시작하면 기본 이름이 지워집니다' : undefined} value={value} onFocus={() => { if (replaceOnInput) onChangeText(''); }} onChangeText={onChangeText} style={styles.input} /></View></View>;
+  // The generated name clears on focus so it can simply be typed over. Someone who taps it just to
+  // read it would otherwise be left with an empty required field and an error on the next step, so
+  // leaving it untouched puts the suggestion back.
+  const suggestion = useRef('');
+  return <View><Text style={styles.fieldLabel}>{label}</Text><View style={styles.field}>{icon ? <AppIcon name={icon} size={18} /> : null}<TextInput
+    accessibilityLabel={label}
+    accessibilityHint={replaceOnInput ? '탭하면 기본 이름이 지워지고 새 이름을 입력할 수 있습니다' : undefined}
+    value={value}
+    onFocus={() => { if (replaceOnInput) { suggestion.current = value; onChangeText(''); } }}
+    onBlur={() => { if (replaceOnInput && !value.trim()) onChangeText(suggestion.current); }}
+    onChangeText={onChangeText}
+    style={styles.input} /></View></View>;
 }
 
 const createStyles = (c: AppPalette) => StyleSheet.create({

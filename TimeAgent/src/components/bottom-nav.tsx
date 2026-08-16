@@ -29,7 +29,7 @@ export function BottomNav() {
       {items.map((item) => {
         const active = pathname === item.href;
         return (
-          <Pressable key={item.label} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => router.replace(item.href)} style={styles.item}>
+          <Pressable key={item.label} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => router.navigate(item.href)} style={styles.item}>
             <View style={[styles.iconPill, active && styles.iconPillActive]}>
               <AppIcon name={item.icon} size={21} strokeWidth={active ? 2.5 : 2} iconColor={active ? c.deepBlue : '#8B95A1'} />
             </View>
