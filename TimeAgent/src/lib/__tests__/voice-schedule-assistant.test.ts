@@ -9,6 +9,7 @@ import {
   isGuidedVoiceFieldCaptured,
   isVoiceReplyAwaitingUser,
   isVoiceTakeFinished,
+  normalizeSpokenDateText,
   normalizeVoiceScheduleReply,
   resolveSpokenDateReference,
   shouldSubmitVoiceRecording,
@@ -477,5 +478,23 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -70, 5_000);
     expect(activity.shouldFinish).toBe(false);
     expect(shouldSubmitVoiceRecording(activity.state, 5_000)).toBe(false);
+  });
+});
+
+describe('date wording from the assistant', () => {
+  const friday = new Date(2026, 7, 14, 9).getTime();
+
+  it('rewrites a calendar date the way every other screen writes dates', () => {
+    // Seen in production: the review card showed 2026-08-16 while the rest of the app writes 8월 16일.
+    expect(normalizeSpokenDateText('2026-08-14', friday)).toBe('8월 14일 (오늘)');
+    expect(normalizeSpokenDateText('2026-08-15', friday)).toBe('8월 15일 (내일)');
+    expect(normalizeSpokenDateText('2026-08-16', friday)).toBe('8월 16일 (일요일)');
+  });
+
+  it('leaves wording it did not produce untouched', () => {
+    expect(normalizeSpokenDateText('8월 16일 (일요일)', friday)).toBe('8월 16일 (일요일)');
+    expect(normalizeSpokenDateText('내일', friday)).toBe('내일');
+    // An impossible date is left as-is rather than rolled into a real one.
+    expect(normalizeSpokenDateText('2026-13-45', friday)).toBe('2026-13-45');
   });
 });

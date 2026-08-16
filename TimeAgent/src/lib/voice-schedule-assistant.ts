@@ -196,6 +196,33 @@ export function canConfirmVoiceSchedule(
     && Boolean(draft.destinationCoordinate);
 }
 
+/**
+ * The assistant sometimes answers with a calendar date like `2026-08-16` instead of the wording the
+ * rest of the app uses. Left alone it reaches the review card and the saved schedule in a shape no
+ * other screen produces, so an ISO-looking date is rewritten the way the app writes dates.
+ */
+export function normalizeSpokenDateText(value: string, now = Date.now()) {
+  const text = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!iso) return text;
+  const year = Number(iso[1]);
+  const month = Number(iso[2]);
+  const day = Number(iso[3]);
+  const target = new Date(year, month - 1, day);
+  // `new Date` rolls impossible dates forward (13월 45일 becomes next February), so a date that
+  // does not survive the round trip is left exactly as it arrived.
+  if (target.getFullYear() !== year || target.getMonth() !== month - 1 || target.getDate() !== day) return text;
+  const reference = new Date(now);
+  const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  const dayDiff = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  const suffix = dayDiff === 0
+    ? '오늘'
+    : dayDiff === 1
+      ? '내일'
+      : `${['일', '월', '화', '수', '목', '금', '토'][target.getDay()]}요일`;
+  return `${target.getMonth() + 1}월 ${target.getDate()}일 (${suffix})`;
+}
+
 export function resolveSpokenDateReference(text: string, now = Date.now()) {
   const reference = new Date(now);
   const explicit = /(\d{1,2})월\s*(\d{1,2})일/.exec(text);
@@ -510,7 +537,7 @@ function normalizePatch(value: Record<string, unknown>): VoiceSchedulePatch {
     const item = value[key];
     if (item === null || item === undefined) continue;
     if (!isTrimmedText(item, key === 'destinationAddress' ? 300 : 120)) throw invalidResponse();
-    patch[key] = item.trim();
+    patch[key] = key === 'date' ? normalizeSpokenDateText(item) : item.trim();
   }
 
   const appointmentTime = value.appointmentTime;
