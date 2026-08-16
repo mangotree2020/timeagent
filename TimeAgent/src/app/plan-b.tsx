@@ -6,11 +6,12 @@ import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@
 import { AppIcon, IconButton, iconForTransport } from '@/components/app-icon';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
-import { alternatives } from '@/data/demo';
+import { currentClock } from '@/lib/planning';
 import { ExpoLocationProvider } from '@/lib/device-location-provider';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import {
   createActualWalkingAlternative,
+  createEstimatedAlternatives,
   TransportAlternative,
   transportEvidenceDescription,
   transportEvidenceLabel,
@@ -24,10 +25,8 @@ export default function PlanBScreen() {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
-  const { activeSchedule, applyRoute, delayMinutes, draft, pendingSchedule, progressSession, route } = useSchedule();
-  const [selected, setSelected] = useState<string>(
-    () => alternatives.find((item) => item.title !== route)?.id ?? alternatives[0].id,
-  );
+  const { activePlan, activeSchedule, applyRoute, delayMinutes, draft, pendingPlan, pendingSchedule, progressSession, route } = useSchedule();
+  const [selected, setSelected] = useState<string>('');
   const [sort, setSort] = useState<PlanBSort>('정시 도착');
   const [walkingChoice, setWalkingChoice] = useState<TransportAlternative | null>(null);
   const [walkingStatus, setWalkingStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
@@ -35,11 +34,23 @@ export default function PlanBScreen() {
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
   const schedule = pendingSchedule ?? activeSchedule ?? draft;
+  const plan = pendingPlan ?? activePlan;
+  const alternatives = useMemo(
+    () => createEstimatedAlternatives({
+      departure: plan?.departure ?? currentClock(),
+      appointmentTime: schedule.appointmentTime,
+      exclude: schedule.transport,
+    }),
+    [plan?.departure, schedule.appointmentTime, schedule.transport],
+  );
   const choices = useMemo<TransportAlternative[]>(
     () => [...alternatives, ...(walkingChoice ? [walkingChoice] : [])].filter((item) => item.title !== route),
-    [route, walkingChoice],
+    [alternatives, route, walkingChoice],
   );
-  const choice = choices.find((item) => item.id === selected) ?? choices[0];
+  // Nothing picked yet means the AI recommendation, which is what the highlighted card shows.
+  const choice = choices.find((item) => item.id === selected)
+    ?? choices.find((item) => item.recommended)
+    ?? choices[0];
   const sortedAlternatives = sortPlanAlternatives(choices, sort);
 
   useEffect(() => {
@@ -103,7 +114,7 @@ export default function PlanBScreen() {
   return (
     <Screen>
       <Header title="플랜 B" eyebrow={delayMinutes > 0 ? `현재 계획으로는 ${delayMinutes}분 늦게 도착해요` : '더 빠르거나 저렴한 경로를 비교해 보세요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
-      <Card dark><Text style={styles.bannerTitle}>정시 도착 가능한 대안을 찾았어요</Text><Text style={styles.bannerBody}>현재 경로 · {route}</Text><Text style={styles.bannerBody}>시간, 비용, 걷기를 함께 비교해 가장 현실적인 안을 추천합니다.</Text></Card>
+      <Card dark><Text style={styles.bannerTitle}>{choices.some((item) => !item.status.includes('지각')) ? '정시 도착 가능한 대안을 찾았어요' : '어떤 경로도 정시 도착은 어려워요'}</Text><Text style={styles.bannerBody}>현재 경로 · {route}</Text><Text style={styles.bannerBody}>시간, 비용, 걷기를 함께 비교해 가장 현실적인 안을 추천합니다.</Text></Card>
       <View accessibilityRole="tablist" style={styles.filters}>{sortOptions.map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: sort === item }} onPress={() => setSort(item)} style={[styles.filter, sort === item && styles.filterActive]}><Text style={[styles.filterText, sort === item && styles.filterTextActive]}>{item}</Text></Pressable>)}</View>
       <Text accessibilityLiveRegion="polite" style={styles.sortDescription}>{sort} 기준으로 대안을 정렬했습니다.</Text>
       {sortedAlternatives.map((item) => <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ checked: selected === item.id }} onPress={() => selectChoice(item.id)}><Card style={[styles.option, selected === item.id && styles.optionSelected]}><View style={styles.pills}>{item.recommended ? <StatusPill label="AI 추천" /> : null}<StatusPill label={transportEvidenceLabel(item.evidence)} tone={item.evidence.kind === 'actual-route' ? 'success' : 'info'} /></View><View style={styles.optionTop}><View style={styles.optionIcon}><AppIcon name={iconForTransport(item.title)} size={28} /></View><View style={{ flex: 1 }}><Text style={type.heading}>{item.title}</Text><Text style={type.caption}>{item.note}</Text></View><View style={{ alignItems: 'flex-end' }}><Text style={styles.optionArrival}>{item.arrival}</Text><Text style={[styles.optionStatus, item.status.includes('지각') && { color: c.warning }]}>{item.status}</Text></View></View><View style={styles.routeMetrics}><Text style={styles.routeMetric}>약 {item.durationMinutes}분</Text><Text style={styles.routeMetric}>{item.distanceLabel}</Text></View><View style={styles.tags}>{[item.cost, item.walk, item.transfer].map((tag) => <Text key={tag} style={styles.tag}>{tag}</Text>)}</View><Text style={styles.evidence}>{transportEvidenceDescription(item.evidence)}</Text></Card></Pressable>)}

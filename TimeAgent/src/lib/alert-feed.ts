@@ -77,8 +77,8 @@ export function buildAlertFeed({
       body: '준비 시간을 다시 살펴보면 다음 약속을 더 정확하게 계획할 수 있어요.',
       time: '지난 24시간',
       tone: 'warning',
-      action: 'review-plan',
-      actionLabel: '지난 계획 확인',
+      action: 'review-past-schedules',
+      actionLabel: '지난 일정 확인',
     });
   }
 

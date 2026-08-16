@@ -62,6 +62,63 @@ export function createActualWalkingAlternative({
   };
 }
 
+/**
+ * What each mode is assumed to cost in time and ground speed before a live traffic lookup. The
+ * minutes match the planner's own defaults so plan B and the plan itself never disagree, and the
+ * speeds are ordinary urban averages used only to describe the distance that implies.
+ */
+const TRANSPORT_ESTIMATES = {
+  '지하철': { minutes: 24, kmPerHour: 32, note: '가장 확실한 경로예요', cost: '교통카드 요금', walk: '역까지 도보 포함', transfer: '환승 정보 미확인' },
+  '버스': { minutes: 32, kmPerHour: 18, note: '비용은 낮지만 늦을 수 있어요', cost: '교통카드 요금', walk: '정류장까지 도보 포함', transfer: '환승 정보 미확인' },
+  '택시': { minutes: 18, kmPerHour: 26, note: '가장 빠르게 도착해요', cost: '미터 요금', walk: '도보 없음', transfer: '환승 없음' },
+  '자가용': { minutes: 20, kmPerHour: 28, note: '주차 시간을 함께 고려하세요', cost: '유류비·주차비', walk: '주차장까지 도보', transfer: '환승 없음' },
+  '도보': { minutes: 35, kmPerHour: 4.5, note: '날씨가 좋으면 걸을 만해요', cost: '0원', walk: '전 구간 도보', transfer: '환승 없음' },
+} as const;
+
+export type EstimatedTransportMode = keyof typeof TRANSPORT_ESTIMATES;
+
+/**
+ * The alternatives someone can actually switch to, timed against their own appointment. These used
+ * to be fixed sample data, so a 10:00 appointment was offered a 13:58 arrival labelled "정시 도착
+ * 가능" — every number on the screen belonged to a different schedule.
+ */
+export function createEstimatedAlternatives({
+  departure,
+  appointmentTime,
+  exclude,
+}: {
+  /** When the plan says to leave. Each mode answers "and then when do I arrive?" */
+  departure: string;
+  appointmentTime: string;
+  exclude?: string;
+}): TransportAlternative[] {
+  const modes = (Object.keys(TRANSPORT_ESTIMATES) as EstimatedTransportMode[])
+    .filter((mode) => mode !== exclude);
+  const alternatives = modes.map((mode) => {
+    const estimate = TRANSPORT_ESTIMATES[mode];
+    const arrival = shiftClock(departure, estimate.minutes);
+    return {
+      id: mode,
+      title: mode,
+      arrival,
+      status: arrivalStatus(arrival, appointmentTime).label,
+      note: estimate.note,
+      cost: estimate.cost,
+      walk: estimate.walk,
+      transfer: estimate.transfer,
+      durationMinutes: estimate.minutes,
+      distanceLabel: `약 ${formatTransportDistance(estimate.minutes / 60 * estimate.kmPerHour * 1_000)}`,
+      recommended: false,
+      evidence: { kind: 'estimate', provider: 'ON_TIME_MODEL' } as const,
+    };
+  });
+  // Recommend the quickest option that still gets there in time, rather than simply the quickest.
+  const onTime = alternatives.filter((item) => arrivalStatus(item.arrival, appointmentTime).minutes >= 0);
+  const best = (onTime.length ? onTime : alternatives)
+    .reduce((quickest, item) => (item.durationMinutes < quickest.durationMinutes ? item : quickest));
+  return alternatives.map((item) => (item.id === best.id ? { ...item, recommended: true } : item));
+}
+
 export function formatTransportDistance(distanceMeters: number) {
   if (distanceMeters < 1_000) return `${Math.round(distanceMeters)}m`;
   const kilometers = distanceMeters / 1_000;
