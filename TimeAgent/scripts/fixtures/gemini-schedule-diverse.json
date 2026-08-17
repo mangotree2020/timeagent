@@ -1,0 +1,315 @@
+{
+  "clientContext": {
+    "nowIso": "2026-08-16T18:30:00.000Z",
+    "timezone": "Asia/Seoul",
+    "localDate": "2026-08-17"
+  },
+  "note": "Claude Code가 제안하고 Codex가 모호성을 제거한 별도 한국어 다양성 평가셋. 2026-08-17은 월요일이다.",
+  "baseDraft": {
+    "version": 1,
+    "step": 0,
+    "title": "",
+    "date": "",
+    "appointmentTime": "",
+    "destination": "",
+    "destinationAddress": "",
+    "destinationCoordinate": null,
+    "transport": "AI 추천",
+    "priority": "on-time",
+    "routines": [
+      { "id": "shower", "icon": "shower", "label": "샤워", "minutes": 18 },
+      { "id": "makeup", "icon": "makeup", "label": "화장", "minutes": 12 },
+      { "id": "dress", "icon": "dress", "label": "옷 입기", "minutes": 8 },
+      { "id": "bag", "icon": "bag", "label": "짐 챙기기", "minutes": 5 }
+    ],
+    "durationMinutes": 60,
+    "recurrence": "반복 없음"
+  },
+  "cases": [
+    {
+      "id": "diverse-complete-airport-drive",
+      "group": "diverse-complete",
+      "input": "내일 아침 7시에 김해공항 국내선 청사로 자가용 타고 갈 거야",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "07:00", "destination": "김해공항 국내선 청사", "transport": "자가용" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-complete-cinema-halfhour",
+      "group": "diverse-complete",
+      "input": "모레 저녁 8시 반에 센텀시티 CGV에서 영화 보기로 했고 지하철로 가",
+      "expectedPatch": { "date": "2026-08-19", "appointmentTime": "20:30", "destination": "센텀시티 CGV", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-complete-explicit-lunch-taxi",
+      "group": "diverse-complete",
+      "input": "8월 24일 오후 12시 40분에 남포동 국제시장에서 점심 약속이고 택시로 이동할게",
+      "expectedPatch": { "date": "2026-08-24", "appointmentTime": "12:40", "destination": "남포동 국제시장", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-complete-today-walk",
+      "group": "diverse-complete",
+      "input": "오늘 밤 9시에 온천장 헬스장 걸어서 갈게",
+      "expectedPatch": { "date": "2026-08-17", "appointmentTime": "21:00", "destination": "온천장 헬스장", "transport": "도보" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-complete-stadium-bus",
+      "group": "diverse-complete",
+      "input": "내일 오후 5시에 사직야구장에서 야구 보기로 했어, 버스 타고 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "17:00", "destination": "사직야구장", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-complete-museum-quarter",
+      "group": "diverse-complete",
+      "input": "8월 20일 오전 8시 15분에 부산시립미술관에서 자원봉사 있고 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-20", "appointmentTime": "08:15", "destination": "부산시립미술관", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-missing-time-ampm-only",
+      "group": "diverse-missing-field",
+      "input": "내일 오전에 동래역 스터디카페에서 스터디 있어, 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "destination": "동래역 스터디카페", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["appointmentTime"],
+      "expectedClarificationField": "time",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-missing-date-evening-tutor",
+      "group": "diverse-missing-field",
+      "input": "저녁 6시에 경성대 앞 카페에서 과외 있고 걸어갈게",
+      "expectedPatch": { "appointmentTime": "18:00", "destination": "경성대 앞 카페", "transport": "도보" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["date"],
+      "expectedClarificationField": "date",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-missing-destination-appointment",
+      "group": "diverse-missing-field",
+      "input": "8월 22일 오후 1시에 진료 예약 있는데 택시 타고 가",
+      "expectedPatch": { "date": "2026-08-22", "appointmentTime": "13:00", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-missing-transport-dinner",
+      "group": "diverse-missing-field",
+      "input": "8월 26일 오후 7시에 기장 아난티에서 저녁 먹기로 했어",
+      "expectedPatch": { "date": "2026-08-26", "appointmentTime": "19:00", "destination": "기장 아난티" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["transport"],
+      "expectedClarificationField": "transport",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-missing-time-blurred",
+      "group": "diverse-missing-field",
+      "input": "내일 점심때쯤 광복동 서점에서 사인회 있어, 버스로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "destination": "광복동 서점", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["appointmentTime"],
+      "expectedClarificationField": "time",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-missing-destination-person-only",
+      "group": "diverse-missing-field",
+      "input": "내일 오후 4시 반에 사촌 형 만나기로 했고 지하철 타고 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "16:30", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-colloquial-native-number-time",
+      "group": "diverse-colloquial",
+      "input": "내일 낮 두 시에 남천동 미용실 예약했어, 마을버스 타고 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "14:00", "destination": "남천동 미용실", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-colloquial-drive-myself",
+      "group": "diverse-colloquial",
+      "input": "내일 오전 열 시에 양산 물금 이케아 차 끌고 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "10:00", "destination": "양산 물금 이케아", "transport": "자가용" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-colloquial-line-number",
+      "group": "diverse-colloquial",
+      "input": "내일 오후 6시에 서면 지오플레이스에서 모임 있어, 1호선 타고 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "18:00", "destination": "서면 지오플레이스", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-colloquial-noon-walk",
+      "group": "diverse-colloquial",
+      "input": "내일 정오에 초읍 어린이대공원에서 소풍, 뚜벅이로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "12:00", "destination": "초읍 어린이대공원", "transport": "도보" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-colloquial-taxi-hail-late",
+      "group": "diverse-colloquial",
+      "input": "내일 밤 11시에 김해공항 도착이라 택시 잡아서 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "23:00", "destination": "김해공항", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-colloquial-half-past-morning",
+      "group": "diverse-colloquial",
+      "input": "내일 아침 여덟 시 반에 화명동 수영장 가는데 시내버스 탈래",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "08:30", "destination": "화명동 수영장", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-self-correction-time",
+      "group": "diverse-correction",
+      "input": "내일 오후 3시, 아 아니다 오후 4시에 덕천역 카페에서 만나기로 했어, 지하철로 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "16:00", "destination": "덕천역 카페", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-self-correction-destination",
+      "group": "diverse-correction",
+      "input": "내일 오후 2시에 서면에서 친구 만나기로 했는데, 아니 광안리 해변으로 바꿔서 버스 타고 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "14:00", "destination": "광안리 해변", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-self-correction-date",
+      "group": "diverse-correction",
+      "input": "모레, 아니 내일 오전 9시에 동의대에서 시험 있어, 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "09:00", "destination": "동의대", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-self-correction-transport",
+      "group": "diverse-correction",
+      "input": "내일 오후 5시 해운대 영화의전당에서 영화 보기로 했어, 버스 타려다가 그냥 택시로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "17:00", "destination": "해운대 영화의전당", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-relative-this-sunday",
+      "group": "diverse-date",
+      "input": "이번 주 일요일 오전 11시에 태종대에서 산책, 자가용으로 갈게",
+      "expectedPatch": { "date": "2026-08-23", "appointmentTime": "11:00", "destination": "태종대", "transport": "자가용" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-relative-next-monday",
+      "group": "diverse-date",
+      "input": "다음 주 월요일 오후 2시에 연제구청에서 민원 처리, 버스로 갈게",
+      "expectedPatch": { "date": "2026-08-24", "appointmentTime": "14:00", "destination": "연제구청", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-explicit-slash-date",
+      "group": "diverse-date",
+      "input": "9월 2일 오후 3시 30분에 울산 롯데호텔에서 결혼식, 택시로 갈게",
+      "expectedPatch": { "date": "2026-09-02", "appointmentTime": "15:30", "destination": "울산 롯데호텔", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-relative-in-three-days",
+      "group": "diverse-date",
+      "input": "사흘 뒤 오후 8시에 광복동 포차에서 모임 있고 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-20", "appointmentTime": "20:00", "destination": "광복동 포차", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "diverse-hallucination-no-place-invention",
+      "group": "diverse-hallucination",
+      "input": "내일 오후 3시에 약속 있어, 알아서 가까운 카페로 잡아줘. 버스로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "15:00", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-hallucination-vague-place",
+      "group": "diverse-hallucination",
+      "input": "내일 오후 1시에 그 카페에서 만나, 지하철로 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "13:00", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-routine-only",
+      "group": "diverse-routine",
+      "input": "준비물 챙기기 7분을 준비 루틴에 추가해줘",
+      "expectedNullPatch": ["title", "date", "appointmentTime", "destination", "transport"],
+      "expectedRoutine": { "label": "준비물 챙기기", "minutes": 7 },
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "diverse-preparation-minutes",
+      "group": "diverse-routine",
+      "input": "내일 오후 5시에 부산역에서 회의 있고 지하철로 갈게, 자료 준비는 20분 잡아줘",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "17:00", "destination": "부산역", "transport": "지하철", "preparationMinutes": 20 },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    }
+  ]
+}

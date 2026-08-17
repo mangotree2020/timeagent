@@ -1,0 +1,130 @@
+{
+  "note": "합성 파일은 tmp/gemini-audio-mixed/에 생성한다. 실제 사용자 녹음이나 개인정보를 포함하지 않는다.",
+  "cases": [
+    {
+      "id": "audio-airport-drive-clean-normal",
+      "path": "tmp/gemini-audio-mixed/01-airport-drive.wav",
+      "utterance": "내일 아침 일곱 시에 김해공항 국내선 청사로 자가용 타고 갈 거야",
+      "rate": 180,
+      "effect": "clean",
+      "condition": "Yuna 180wpm, clean",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "07:00", "destination": "김해공항 국내선 청사", "transport": "자가용" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-cinema-clean-fast",
+      "path": "tmp/gemini-audio-mixed/02-cinema-fast.wav",
+      "utterance": "모레 저녁 여덟 시 반에 센텀시티 씨지브이에서 영화 보기로 했고 지하철로 가",
+      "rate": 230,
+      "effect": "clean",
+      "condition": "Yuna 230wpm, clean",
+      "expectedPatch": { "date": "2026-08-19", "appointmentTime": "20:30", "destination": "센텀시티 CGV", "transport": "지하철" },
+      "acceptedPatchValues": { "destination": ["센텀시티 씨지브이"] },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-missing-time-clean-slow",
+      "path": "tmp/gemini-audio-mixed/03-missing-time-slow.wav",
+      "utterance": "내일 오전에 동래역 스터디카페에서 스터디 있어, 지하철로 갈게",
+      "rate": 135,
+      "effect": "clean",
+      "condition": "Yuna 135wpm, clean",
+      "expectedPatch": { "date": "2026-08-18", "destination": "동래역 스터디카페", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["appointmentTime"],
+      "expectedClarificationField": "time",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "audio-missing-destination-pink-noise",
+      "path": "tmp/gemini-audio-mixed/04-missing-destination-noise.wav",
+      "utterance": "내일 오후 네 시 반에 사촌 형 만나기로 했고 지하철 타고 갈게",
+      "rate": 180,
+      "effect": "pink-low",
+      "condition": "Yuna 180wpm, pink noise low",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "16:30", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "audio-native-number-pink-noise",
+      "path": "tmp/gemini-audio-mixed/05-native-number-noise.wav",
+      "utterance": "내일 낮 두 시에 남천동 미용실 예약했어, 마을버스 타고 가",
+      "rate": 180,
+      "effect": "pink-medium",
+      "condition": "Yuna 180wpm, pink noise medium",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "14:00", "destination": "남천동 미용실", "transport": "버스" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-colloquial-walk-fast-noise",
+      "path": "tmp/gemini-audio-mixed/06-walk-fast-noise.wav",
+      "utterance": "내일 정오에 초읍 어린이대공원에서 소풍, 뚜벅이로 갈게",
+      "rate": 225,
+      "effect": "pink-low",
+      "condition": "Yuna 225wpm, pink noise low",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "12:00", "destination": "초읍 어린이대공원", "transport": "도보" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-taxi-slow-noise",
+      "path": "tmp/gemini-audio-mixed/07-taxi-slow-noise.wav",
+      "utterance": "내일 밤 열한 시에 김해공항 도착이라 택시 잡아서 갈게",
+      "rate": 140,
+      "effect": "pink-medium",
+      "condition": "Yuna 140wpm, pink noise medium",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "23:00", "destination": "김해공항", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-correction-time-echo",
+      "path": "tmp/gemini-audio-mixed/08-correction-time-echo.wav",
+      "utterance": "내일 오후 세 시, 아 아니다 오후 네 시에 덕천역 카페에서 친구 만나기로 했어, 지하철로 가",
+      "rate": 180,
+      "effect": "echo",
+      "condition": "Yuna 180wpm, short echo",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "16:00", "destination": "덕천역 카페", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-correction-transport-fast-echo",
+      "path": "tmp/gemini-audio-mixed/09-correction-transport-fast-echo.wav",
+      "utterance": "내일 오후 다섯 시 해운대 영화의전당에서 영화 보기로 했어, 버스 타려다가 그냥 택시로 갈게",
+      "rate": 220,
+      "effect": "echo",
+      "condition": "Yuna 220wpm, short echo",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "17:00", "destination": "해운대 영화의전당", "transport": "택시" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "audio-relative-three-days-bandlimited",
+      "path": "tmp/gemini-audio-mixed/10-relative-bandlimited.wav",
+      "utterance": "사흘 뒤 오후 여덟 시에 광복동 포차에서 모임 있고 지하철로 갈게",
+      "rate": 180,
+      "effect": "bandlimited",
+      "condition": "Yuna 180wpm, 300-3400Hz band-limited",
+      "expectedPatch": { "date": "2026-08-20", "appointmentTime": "20:00", "destination": "광복동 포차", "transport": "지하철" },
+      "expectedFilledPatch": ["title"],
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    }
+  ]
+}

@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.weather]
 verify_jwt = false
+
+# Deployed only while a model comparison is running, then deleted again. Unlike the three functions
+# above it is never called by the app, so it stays behind a JWT: an open endpoint here would let
+# anyone spend the project's Gemini quota on any model in its allowlist.
+[functions.assistant-benchmark]
+verify_jwt = true

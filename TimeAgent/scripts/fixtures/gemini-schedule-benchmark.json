@@ -1,72 +1,207 @@
-[
-  {
-    "id": "relative-full",
-    "input": "내일 오전 10시 30분 연산동 치과에 지하철로 가고 양치 5분 준비할래",
-    "expectedPatch": { "date": "2026-07-29", "appointmentTime": "10:30", "destination": "연산동 치과", "transport": "지하철" },
-    "expectedRoutine": { "label": "양치", "minutes": 5 }
+{
+  "clientContext": {
+    "nowIso": "2026-08-16T18:30:00.000Z",
+    "timezone": "Asia/Seoul",
+    "localDate": "2026-08-17"
   },
-  {
-    "id": "midnight-boundary",
-    "input": "내일 새벽 1시에 부산역에서 만나",
-    "expectedPatch": { "date": "2026-07-29", "appointmentTime": "01:00", "destination": "부산역" }
-  },
-  {
-    "id": "today-evening",
-    "input": "오늘 저녁 7시 광안리에서 저녁 약속",
-    "expectedPatch": { "date": "2026-07-28", "appointmentTime": "19:00", "destination": "광안리" }
-  },
-  {
-    "id": "explicit-date",
-    "input": "8월 3일 오후 2시 20분 서울시청에서 회의",
-    "expectedPatch": { "date": "2026-08-03", "appointmentTime": "14:20", "destination": "서울시청" }
-  },
-  {
-    "id": "destination-correction",
-    "input": "장소만 부산시민공원으로 바꿔줘",
-    "draft": { "destination": "서면 볼링장", "destinationAddress": "부산진구 중앙대로 672" },
-    "expectedPatch": { "destination": "부산시민공원" }
-  },
-  {
-    "id": "transport-priority",
-    "input": "택시로 가고 비용을 우선할래",
-    "expectedPatch": { "transport": "택시", "priority": "cost" }
-  },
-  {
-    "id": "routine-merge",
-    "input": "선물 포장 10분도 준비에 추가해줘",
-    "expectedRoutine": { "label": "선물 포장", "minutes": 10 }
-  },
-  {
-    "id": "routine-delete",
-    "input": "화장은 준비에서 빼줘",
-    "forbiddenRoutine": "화장"
-  },
-  {
-    "id": "missing-date",
-    "input": "오후 3시에 해운대에서 만나",
-    "expectedPatch": { "appointmentTime": "15:00", "destination": "해운대" },
-    "expectedQuestion": true
-  },
-  {
-    "id": "missing-time",
-    "input": "내일 부산대학교에서 상담이 있어",
-    "expectedPatch": { "date": "2026-07-29", "destination": "부산대학교" },
-    "expectedQuestion": true
-  },
-  {
-    "id": "multi-turn-time",
-    "input": "오후 네 시야",
-    "draft": { "date": "2026-07-29", "destination": "부산역" },
-    "history": [
-      { "role": "user", "text": "내일 부산역에서 친구 만나" },
-      { "role": "assistant", "text": "몇 시에 만나는 약속인가요?" }
+  "note": "localDate 2026-08-17은 월요일이고 nowIso의 UTC 날짜는 2026-08-16이다. 상대 날짜를 UTC로 푸는 모델은 하루 어긋난다.",
+  "baseDraft": {
+    "version": 1,
+    "step": 0,
+    "title": "",
+    "date": "",
+    "appointmentTime": "",
+    "destination": "",
+    "destinationAddress": "",
+    "destinationCoordinate": null,
+    "transport": "AI 추천",
+    "priority": "on-time",
+    "routines": [
+      { "id": "shower", "icon": "shower", "label": "샤워", "minutes": 18 },
+      { "id": "makeup", "icon": "makeup", "label": "화장", "minutes": 12 },
+      { "id": "dress", "icon": "dress", "label": "옷 입기", "minutes": 8 },
+      { "id": "bag", "icon": "bag", "label": "짐 챙기기", "minutes": 5 }
     ],
-    "expectedPatch": { "appointmentTime": "16:00" }
+    "durationMinutes": 60,
+    "recurrence": "반복 없음"
   },
-  {
-    "id": "recurrence-unsupported",
-    "input": "매주 월요일 오전 9시에 팀 회의로 등록해줘",
-    "expectedPatch": { "appointmentTime": "09:00" },
-    "expectedQuestion": true
-  }
-]
+  "cases": [
+    {
+      "id": "complete-all-fields",
+      "group": "complete",
+      "input": "내일 오후 3시에 강남역 스타벅스에서 친구 만나기로 했어, 지하철 타고 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "15:00", "destination": "강남역 스타벅스", "transport": "지하철" },
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true,
+      "expectedEntryType": "schedule"
+    },
+    {
+      "id": "complete-explicit-date",
+      "group": "complete",
+      "input": "8월 21일 오전 9시 30분에 부산역에서 회의 있고 택시로 갈 거야",
+      "expectedPatch": { "date": "2026-08-21", "appointmentTime": "09:30", "destination": "부산역", "transport": "택시" },
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "missing-date",
+      "group": "missing-field",
+      "input": "오후 3시에 해운대에서 가족 저녁 약속인데 버스 타고 갈게",
+      "expectedPatch": { "appointmentTime": "15:00", "destination": "해운대", "transport": "버스" },
+      "expectedNullPatch": ["date"],
+      "expectedClarificationField": "date",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "missing-time",
+      "group": "missing-field",
+      "input": "내일 부산대학교에서 상담 있어, 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "destination": "부산대학교", "transport": "지하철" },
+      "expectedNullPatch": ["appointmentTime"],
+      "expectedClarificationField": "time",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "missing-destination",
+      "group": "missing-field",
+      "input": "내일 오후 2시에 친구랑 만나기로 했는데 버스 타고 갈래",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "14:00", "transport": "버스" },
+      "expectedNullPatch": ["destination"],
+      "expectedClarificationField": "destination",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "missing-transport",
+      "group": "missing-field",
+      "input": "내일 오후 3시 서울시청에서 회의 있어",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "15:00", "destination": "서울시청" },
+      "expectedNullPatch": ["transport"],
+      "expectedClarificationField": "transport",
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "transport-synonym-walk",
+      "group": "transport-synonym",
+      "input": "내일 오후 1시에 연산동 치과 걸어서 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "13:00", "destination": "연산동 치과", "transport": "도보" }
+    },
+    {
+      "id": "transport-synonym-car",
+      "group": "transport-synonym",
+      "input": "내일 오전 11시에 서면 롯데백화점에서 쇼핑하기로 했어, 자차로 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "11:00", "destination": "서면 롯데백화점", "transport": "자가용" }
+    },
+    {
+      "id": "transport-synonym-subway",
+      "group": "transport-synonym",
+      "input": "내일 저녁 7시 광안리에서 저녁 약속, 전철 타고 가",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "19:00", "destination": "광안리", "transport": "지하철" }
+    },
+    {
+      "id": "destination-correction",
+      "group": "correction",
+      "draft": { "title": "친구와 볼링", "date": "2026-08-18", "appointmentTime": "14:00", "destination": "서면 볼링장", "destinationAddress": "부산진구 중앙대로 672", "transport": "지하철" },
+      "history": [
+        { "role": "user", "text": "내일 오후 2시에 서면 볼링장에서 친구와 볼링" },
+        { "role": "assistant", "text": "내일 오후 2시 서면 볼링장으로 잡아둘게요." }
+      ],
+      "input": "장소만 부산시민공원으로 바꿔줘",
+      "expectedPatch": { "destination": "부산시민공원" },
+      "expectedClarificationField": null
+    },
+    {
+      "id": "relative-day-after-tomorrow",
+      "group": "relative-date",
+      "input": "모레 오후 6시에 광안리에서 저녁 약속, 택시로 갈게",
+      "expectedPatch": { "date": "2026-08-19", "appointmentTime": "18:00", "destination": "광안리", "transport": "택시" }
+    },
+    {
+      "id": "relative-this-friday",
+      "group": "relative-date",
+      "input": "이번 주 금요일 오전 10시에 서면 병원 지하철로 갈게",
+      "expectedPatch": { "date": "2026-08-21", "appointmentTime": "10:00", "destination": "서면 병원", "transport": "지하철" }
+    },
+    {
+      "id": "relative-next-tuesday",
+      "group": "relative-date",
+      "input": "다음 주 화요일 오후 4시 부산역에서 미팅 있어, 버스로 갈게",
+      "expectedPatch": { "date": "2026-08-25", "appointmentTime": "16:00", "destination": "부산역", "transport": "버스" }
+    },
+    {
+      "id": "relative-midnight-boundary",
+      "group": "relative-date",
+      "input": "내일 새벽 1시에 부산역에서 만나, 택시 타고 갈게",
+      "expectedPatch": { "date": "2026-08-18", "appointmentTime": "01:00", "destination": "부산역", "transport": "택시" }
+    },
+    {
+      "id": "multi-turn-time-answer",
+      "group": "multi-turn",
+      "draft": { "title": "친구 만나기", "date": "2026-08-18", "destination": "부산역" },
+      "history": [
+        { "role": "user", "text": "내일 부산역에서 친구 만나" },
+        { "role": "assistant", "text": "몇 시에 만나는 약속인가요?" }
+      ],
+      "input": "오후 네 시야",
+      "expectedPatch": { "appointmentTime": "16:00" },
+      "expectedClarificationField": "transport",
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "multi-turn-transport-answer",
+      "group": "multi-turn",
+      "draft": { "title": "친구 만나기", "date": "2026-08-18", "appointmentTime": "16:00", "destination": "부산역" },
+      "history": [
+        { "role": "user", "text": "내일 오후 네 시에 부산역에서 친구 만나" },
+        { "role": "assistant", "text": "어떻게 이동할까요?" }
+      ],
+      "input": "지하철로 갈게",
+      "expectedPatch": { "transport": "지하철" },
+      "expectedClarificationField": null,
+      "expectedReadyToApply": true
+    },
+    {
+      "id": "hallucination-vague-request",
+      "group": "hallucination",
+      "input": "내일 약속 하나 잡아줘",
+      "expectedPatch": { "date": "2026-08-18" },
+      "expectedNullPatch": ["appointmentTime", "destination", "transport"],
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    },
+    {
+      "id": "hallucination-smalltalk",
+      "group": "hallucination",
+      "input": "오늘 좀 피곤하네",
+      "expectedNullPatch": ["title", "date", "appointmentTime", "destination", "transport"],
+      "expectedQuestion": true,
+      "expectedReadyToApply": false,
+      "expectedEntryType": "schedule"
+    },
+    {
+      "id": "routine-merge",
+      "group": "routine",
+      "draft": { "title": "친구와 볼링", "date": "2026-08-18", "appointmentTime": "14:00", "destination": "서면 볼링장", "transport": "지하철" },
+      "input": "선물 포장 10분도 준비에 추가해줘",
+      "expectedRoutine": { "label": "선물 포장", "minutes": 10 }
+    },
+    {
+      "id": "routine-delete",
+      "group": "routine",
+      "draft": { "title": "친구와 볼링", "date": "2026-08-18", "appointmentTime": "14:00", "destination": "서면 볼링장", "transport": "지하철" },
+      "input": "화장은 준비에서 빼줘",
+      "forbiddenRoutine": "화장"
+    },
+    {
+      "id": "recurrence-unsupported",
+      "group": "recurrence",
+      "input": "매주 월요일 오전 9시에 팀 회의로 등록해줘",
+      "expectedPatch": { "appointmentTime": "09:00" },
+      "expectedQuestion": true,
+      "expectedReadyToApply": false
+    }
+  ]
+}
