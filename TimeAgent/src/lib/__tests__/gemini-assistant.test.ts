@@ -162,3 +162,30 @@ describe('withoutRedundantClarification', () => {
     expect(withoutRedundantClarification(blank).clarification).toEqual(blank.clarification);
   });
 });
+
+describe('what the instruction must keep saying', () => {
+  const instruction = () => buildGeminiInteractionBody('gemini-3.1-flash-lite', turn).system_instruction;
+
+  it('keeps a spoken purpose out of the destination', () => {
+    // "동창 모임 있어" with no place named put 동창 모임 in the destination, which no map can find.
+    expect(instruction()).toContain('지도에서 찾을 수 있는 장소만');
+    expect(instruction()).toContain('destination은 null');
+  });
+
+  it('refuses to substitute a mode nobody offered', () => {
+    // 따릉이 was being answered as 도보, which quietly changes the travel time.
+    expect(instruction()).toContain('목록에 없는 수단');
+    expect(instruction()).toContain('자전거');
+  });
+
+  it('still names the appointment from what was actually said', () => {
+    expect(instruction()).toContain('약속 이름은 지어내는 값이 아니라');
+    expect(instruction()).toContain('말하지 않은 용건이나 상대는 절대 넣지 않으며');
+  });
+
+  it('keeps the spoken transport wordings it has to recognise', () => {
+    for (const wording of ['차 끌고', '자차', '전철', '마을버스', '택시 잡아서', '걸어서']) {
+      expect(instruction()).toContain(wording);
+    }
+  });
+});

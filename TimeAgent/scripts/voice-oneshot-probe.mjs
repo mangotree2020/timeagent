@@ -25,7 +25,8 @@ const draft = {
 };
 
 const results = [];
-for (let index = 1; index <= cases; index += 1) {
+const from = Number(process.env.FROM ?? 1);
+for (let index = from; index <= cases; index += 1) {
   const spoken = (await readFile(`tmp/voice/case${index}.txt`, 'utf8')).trim();
   const audio = await readFile(`tmp/voice/case${index}.m4a`);
   const now = new Date();
