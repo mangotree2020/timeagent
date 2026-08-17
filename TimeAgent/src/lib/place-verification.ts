@@ -1,5 +1,6 @@
 import { Coordinate, GeocodedPlace } from './journey';
 import { haversineDistanceMeters } from './kma-weather';
+import { withNamingParticle } from './local-notifications';
 import { SavedPlace } from './saved-places';
 
 /**
@@ -112,7 +113,7 @@ export function formatPlaceDistance(distanceMeters: number | null) {
  */
 export function describePlaceVerification(verification: Extract<PlaceVerification, { kind: 'choose' }>, spokenName: string) {
   if (verification.reason === 'ambiguous') {
-    return `${spokenName.trim()}(이)라는 이름의 장소가 여러 곳이에요. 어디인지 골라 주세요.`;
+    return `${withNamingParticle(spokenName)} 이름의 장소가 여러 곳이에요. 어디인지 골라 주세요.`;
   }
   const distance = formatPlaceDistance(verification.candidates[0]?.distanceMeters ?? null);
   return distance

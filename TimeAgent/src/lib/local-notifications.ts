@@ -48,6 +48,19 @@ export function withObjectParticle(word: string) {
   return `${trimmed}${(code - HANGUL_START) % JONGSEONG_COUNT === 0 ? '를' : '을'}`;
 }
 
+/**
+ * Korean writes `라는` after a vowel and `이라는` otherwise, when quoting a name back to someone.
+ * `(이)라는` is the placeholder for a word that is unknown at writing time; a place the person just
+ * said is not unknown.
+ */
+export function withNamingParticle(word: string) {
+  const trimmed = word.trim();
+  if (!trimmed) return '';
+  const code = trimmed.charCodeAt(trimmed.length - 1);
+  if (code < HANGUL_START || code > HANGUL_END) return `${trimmed}라는`;
+  return `${trimmed}${(code - HANGUL_START) % JONGSEONG_COUNT === 0 ? '라는' : '이라는'}`;
+}
+
 export const PROGRESS_STEP_ACTION_CATEGORY = 'on-time-progress-step';
 export const PROGRESS_ADVANCE_ACTION = 'progress-advance';
 export const PROGRESS_EXTEND_ACTION = 'progress-extend';

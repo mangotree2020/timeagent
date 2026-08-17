@@ -122,5 +122,8 @@ describe('what the person is told', () => {
     });
     if (ambiguous.kind !== 'choose') throw new Error('expected a question');
     expect(describePlaceVerification(ambiguous, '서면역')).toContain('여러 곳');
+    // The name is quoted back with a real particle, not the (이)라는 placeholder.
+    expect(describePlaceVerification(ambiguous, '서면역')).toContain('서면역이라는');
+    expect(describePlaceVerification(ambiguous, '서면역')).not.toContain('(이)');
   });
 });

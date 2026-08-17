@@ -8,6 +8,7 @@ import {
   PROGRESS_STEP_ACTIONS,
   buildStepCoachMessage,
   withDirectionParticle,
+  withNamingParticle,
   withObjectParticle,
 } from '../local-notifications';
 import { advanceProgressSession, createProgressSession } from '../progress-session';
@@ -210,5 +211,18 @@ describe('withObjectParticle', () => {
     expect(withObjectParticle('부산역')).not.toContain('(');
     expect(withObjectParticle('Gangnam')).toBe('Gangnam를');
     expect(withObjectParticle('  ')).toBe('');
+  });
+});
+
+describe('withNamingParticle', () => {
+  it('quotes a name back with the particle that fits it', () => {
+    expect(withNamingParticle('남산타워')).toBe('남산타워라는');
+    expect(withNamingParticle('부산역')).toBe('부산역이라는');
+    expect(withNamingParticle(' 서면 ')).toBe('서면이라는');
+  });
+
+  it('does not leave the (이)라는 placeholder in user-facing text', () => {
+    expect(withNamingParticle('해운대')).not.toContain('(');
+    expect(withNamingParticle('')).toBe('');
   });
 });
