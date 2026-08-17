@@ -29,11 +29,15 @@ import {
   needsVoiceMapConfirmation,
   nextVoiceClarification,
   resolveVoiceClarificationChoice,
+  shouldOfferChoiceInsteadOfListening,
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
   updateVoiceActivity,
   VOICE_MAP_CONFIRMATION_GUIDE,
+  VOICE_TRANSPORT_CHOICE_GUIDE,
+  voiceListeningOptions,
   voiceScheduleMissingFields,
+  withDerivedVoiceScheduleTitle,
   VoiceScheduleAssistantReply,
   VoiceScheduleClarification,
   VoiceSchedulePatch,
@@ -154,7 +158,9 @@ export default function VoiceScheduleScreen() {
     { id: 'u0', role: 'user', text: fixtureReply.transcript },
     { id: 'a1', role: 'assistant', text: fixtureReply.assistantMessage },
   ] : [{ id: 'a0', role: 'assistant', text: INITIAL_PROMPT }]);
-  const [proposal, setProposal] = useState<ScheduleDraft | null>(() => fixtureReply?.entryType === 'schedule' ? applyVoiceSchedulePatch(voiceDraft, fixtureReply.patch) : null);
+  const [proposal, setProposal] = useState<ScheduleDraft | null>(() => fixtureReply?.entryType === 'schedule'
+    ? withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(voiceDraft, fixtureReply.patch))
+    : null);
   const [taskProposal, setTaskProposal] = useState<VoiceTaskProposal | null>(() => fixtureReply?.task ?? null);
   const [taskSourceText, setTaskSourceText] = useState(() => fixtureReply?.entryType === 'task' ? fixtureReply.transcript : '');
   const [history, setHistory] = useState<VoiceScheduleHistoryTurn[]>([]);
@@ -162,7 +168,7 @@ export default function VoiceScheduleScreen() {
   const [clarification, setClarification] = useState<VoiceScheduleClarification | null>(() => fixtureReply?.clarification
     ?? (fixtureReply?.entryType === 'schedule' && fixtureReply.readyToApply
       ? nextVoiceClarification(
-        applyVoiceSchedulePatch(voiceDraft, fixtureReply.patch),
+        withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(voiceDraft, fixtureReply.patch)),
         mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), fixtureReply.patch),
       )
       : null));
@@ -297,7 +303,7 @@ export default function VoiceScheduleScreen() {
         scheduleAutoRestart(0, generation);
         return;
       }
-      const nextProposal = applyVoiceSchedulePatch(base, reply.patch);
+      const nextProposal = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(base, reply.patch));
       const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, reply.patch);
       const requiredClarification = reply.entryType === 'schedule' && reply.readyToApply && !reply.clarification
         ? nextVoiceClarification(nextProposal, nextConfirmations)
@@ -322,8 +328,13 @@ export default function VoiceScheduleScreen() {
       const mapGuide = reply.entryType === 'schedule' && nextReady && needsVoiceMapConfirmation(nextProposal)
         ? ` ${VOICE_MAP_CONFIRMATION_GUIDE}`
         : '';
-      const spoken = `${nextClarification?.prompt ?? reply.question ?? assistantText}${mapGuide}`;
-      if (nextReady) void speakThenWait(spoken, generation);
+      // Asking again for a word the microphone already missed just repeats the problem, so the
+      // fixed list opens and the turn waits for a tap instead of another take.
+      const offerChoice = shouldOfferChoiceInsteadOfListening(nextClarification);
+      if (offerChoice) setEditField('transport');
+      const choiceGuide = offerChoice ? ` ${VOICE_TRANSPORT_CHOICE_GUIDE}` : '';
+      const spoken = `${nextClarification?.prompt ?? reply.question ?? assistantText}${mapGuide}${choiceGuide}`;
+      if (nextReady || offerChoice) void speakThenWait(spoken, generation);
       else void speakThenListen(spoken, generation);
     } catch (error) {
       if (!mountedRef.current || generation !== flowGenerationRef.current) return;
@@ -408,10 +419,17 @@ export default function VoiceScheduleScreen() {
   useEffect(() => {
     if (status !== 'recording' || fixtureAutoListening) return;
     if (recorderState.isRecording) recordingObservedRef.current = true;
-    const activity = updateVoiceActivity(voiceActivityRef.current, recorderState.metering, recorderState.durationMillis);
+    // The opening turn is a whole schedule spoken in one go; everything after it answers a single
+    // question, so it can end sooner.
+    const activity = updateVoiceActivity(
+      voiceActivityRef.current,
+      recorderState.metering,
+      recorderState.durationMillis,
+      voiceListeningOptions(clarification ? 'answer' : 'open'),
+    );
     voiceActivityRef.current = activity.state;
     if (activity.shouldFinish) void finishRecording();
-  }, [finishRecording, fixtureAutoListening, recorderState.durationMillis, recorderState.isRecording, recorderState.metering, status]);
+  }, [clarification, finishRecording, fixtureAutoListening, recorderState.durationMillis, recorderState.isRecording, recorderState.metering, status]);
 
   useEffect(() => {
     const take = {
@@ -435,7 +453,7 @@ export default function VoiceScheduleScreen() {
 
   const applyManualPatch = (patch: VoiceSchedulePatch, resolvedField?: VoiceScheduleClarification['field']) => {
     const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, patch);
-    const next = applyVoiceSchedulePatch(proposal ?? voiceDraft, patch);
+    const next = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(proposal ?? voiceDraft, patch));
     const pending = clarification?.field === resolvedField ? null : clarification;
     const nextClarification = pending ?? nextVoiceClarification(next, nextConfirmations);
     setRequiredConfirmations(nextConfirmations);

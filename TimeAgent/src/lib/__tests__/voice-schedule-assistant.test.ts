@@ -1,5 +1,11 @@
 import { createDefaultScheduleDraft } from '@/lib/schedule-draft';
 import {
+  ANSWER_TURN_TRAILING_SILENCE_MS,
+  OPEN_TURN_MAX_LISTENING_MS,
+  OPEN_TURN_TRAILING_SILENCE_MS,
+  derivedVoiceScheduleTitle,
+  shouldOfferChoiceInsteadOfListening,
+  withDerivedVoiceScheduleTitle,
   applyVoiceSchedulePatch,
   canConfirmVoiceSchedule,
   createVoiceFirstScheduleDraft,
@@ -23,6 +29,7 @@ import {
   nextVoiceClarification,
   resolveVoiceClarificationChoice,
   voiceScheduleMissingFields,
+  voiceListeningOptions,
 } from '@/lib/voice-schedule-assistant';
 
 describe('voice schedule assistant domain', () => {
@@ -299,7 +306,9 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(true);
     activity = updateVoiceActivity(activity.state, -60, 1_400);
     expect(activity.shouldFinish).toBe(false);
-    activity = updateVoiceActivity(activity.state, -60, 2_650);
+    activity = updateVoiceActivity(activity.state, -60, 1_400 + OPEN_TURN_TRAILING_SILENCE_MS - 100);
+    expect(activity.shouldFinish).toBe(false);
+    activity = updateVoiceActivity(activity.state, -60, 1_400 + OPEN_TURN_TRAILING_SILENCE_MS + 50);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -310,16 +319,37 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -20, 800);
     expect(activity.state.heardSpeech).toBe(true);
 
+    // A speaker gathering the next clause is quiet for well over a second; that is not the end.
     activity = updateVoiceActivity(activity.state, -60, 1_000);
-    activity = updateVoiceActivity(activity.state, -60, 1_950);
+    activity = updateVoiceActivity(activity.state, -60, 2_800);
     expect(activity.shouldFinish).toBe(false);
 
-    activity = updateVoiceActivity(activity.state, -20, 2_100);
-    activity = updateVoiceActivity(activity.state, -60, 2_300);
-    activity = updateVoiceActivity(activity.state, -60, 3_450);
+    activity = updateVoiceActivity(activity.state, -20, 2_950);
+    activity = updateVoiceActivity(activity.state, -60, 3_150);
+    activity = updateVoiceActivity(activity.state, -60, 5_000);
     expect(activity.shouldFinish).toBe(false);
-    activity = updateVoiceActivity(activity.state, -60, 3_550);
+    activity = updateVoiceActivity(activity.state, -60, 5_200);
     expect(activity.shouldFinish).toBe(true);
+  });
+
+  it('ends an answer turn sooner than an opening one, because an answer is a word or two', () => {
+    const answer = voiceListeningOptions('answer');
+    let activity = updateVoiceActivity(createVoiceActivityState(), -60, 400, answer);
+    activity = updateVoiceActivity(activity.state, -22, 600, answer);
+    activity = updateVoiceActivity(activity.state, -20, 800, answer);
+    expect(activity.state.heardSpeech).toBe(true);
+
+    activity = updateVoiceActivity(activity.state, -60, 1_000, answer);
+    activity = updateVoiceActivity(activity.state, -60, 1_000 + ANSWER_TURN_TRAILING_SILENCE_MS + 50, answer);
+    expect(activity.shouldFinish).toBe(true);
+
+    // The same pause during the opening turn is still someone thinking mid-sentence.
+    let opening = updateVoiceActivity(createVoiceActivityState(), -60, 400);
+    opening = updateVoiceActivity(opening.state, -22, 600);
+    opening = updateVoiceActivity(opening.state, -20, 800);
+    opening = updateVoiceActivity(opening.state, -60, 1_000);
+    opening = updateVoiceActivity(opening.state, -60, 1_000 + ANSWER_TURN_TRAILING_SILENCE_MS + 50);
+    expect(opening.shouldFinish).toBe(false);
   });
 
   it('does not treat one short ambient-noise spike as speech', () => {
@@ -336,7 +366,7 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -52, 720);
     expect(activity.state.heardSpeech).toBe(true);
     activity = updateVoiceActivity(activity.state, -64, 900);
-    activity = updateVoiceActivity(activity.state, -64, 2_150);
+    activity = updateVoiceActivity(activity.state, -64, 900 + OPEN_TURN_TRAILING_SILENCE_MS + 50);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -388,7 +418,7 @@ describe('voice schedule assistant domain', () => {
 
     activity = updateVoiceActivity(activity.state, -42, 1_400);
     expect(activity.shouldFinish).toBe(false);
-    activity = updateVoiceActivity(activity.state, -42, 2_650);
+    activity = updateVoiceActivity(activity.state, -42, 1_400 + OPEN_TURN_TRAILING_SILENCE_MS + 50);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -402,7 +432,7 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(true);
 
     activity = updateVoiceActivity(activity.state, -77, 1_200);
-    activity = updateVoiceActivity(activity.state, -77, 2_450);
+    activity = updateVoiceActivity(activity.state, -77, 1_200 + OPEN_TURN_TRAILING_SILENCE_MS + 50);
     expect(activity.shouldFinish).toBe(true);
   });
 
@@ -426,22 +456,22 @@ describe('voice schedule assistant domain', () => {
     activity = updateVoiceActivity(activity.state, -20, 800);
     expect(activity.state.heardSpeech).toBe(true);
 
-    for (let elapsed = 920; elapsed <= 19_900; elapsed += 120) {
+    for (let elapsed = 920; elapsed <= OPEN_TURN_MAX_LISTENING_MS - 100; elapsed += 120) {
       activity = updateVoiceActivity(activity.state, elapsed % 240 === 0 ? -22 : -20, elapsed);
     }
     expect(activity.shouldFinish).toBe(false);
 
-    activity = updateVoiceActivity(activity.state, -20, 20_000);
+    activity = updateVoiceActivity(activity.state, -20, OPEN_TURN_MAX_LISTENING_MS);
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(true);
+    expect(shouldSubmitVoiceRecording(activity.state, OPEN_TURN_MAX_LISTENING_MS)).toBe(true);
   });
 
   it('restarts instead of submitting when the maximum window passes without any speech', () => {
     let activity = updateVoiceActivity(createVoiceActivityState(), -80, 400);
-    activity = updateVoiceActivity(activity.state, -80, 20_000);
+    activity = updateVoiceActivity(activity.state, -80, OPEN_TURN_MAX_LISTENING_MS);
 
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, OPEN_TURN_MAX_LISTENING_MS)).toBe(false);
   });
 
   it('never submits steady room noise, even when it sits above the absolute speech threshold', () => {
@@ -454,9 +484,9 @@ describe('voice schedule assistant domain', () => {
     expect(activity.state.heardSpeech).toBe(false);
     expect(shouldSubmitVoiceRecording(activity.state, 14_000)).toBe(false);
 
-    activity = updateVoiceActivity(activity.state, -45, 20_000);
+    activity = updateVoiceActivity(activity.state, -45, OPEN_TURN_MAX_LISTENING_MS);
     expect(activity.shouldFinish).toBe(true);
-    expect(shouldSubmitVoiceRecording(activity.state, 20_000)).toBe(false);
+    expect(shouldSubmitVoiceRecording(activity.state, OPEN_TURN_MAX_LISTENING_MS)).toBe(false);
   });
 
   it('still hears real speech that rises above a noisy room', () => {
@@ -496,5 +526,69 @@ describe('date wording from the assistant', () => {
     expect(normalizeSpokenDateText('내일', friday)).toBe('내일');
     // An impossible date is left as-is rather than rolled into a real one.
     expect(normalizeSpokenDateText('2026-13-45', friday)).toBe('2026-13-45');
+  });
+});
+
+describe('naming a schedule the speaker already described', () => {
+  it('names the appointment after the place, instead of asking for a label', () => {
+    expect(derivedVoiceScheduleTitle('부산역')).toBe('부산역 약속');
+    expect(derivedVoiceScheduleTitle('  해운대 스타벅스 ')).toBe('해운대 스타벅스 약속');
+    expect(derivedVoiceScheduleTitle('   ')).toBe('');
+  });
+
+  it('leaves a title the speaker did give alone', () => {
+    const named = { ...createDefaultScheduleDraft(), title: '치과 예약', destination: '서면역' };
+    expect(withDerivedVoiceScheduleTitle(named).title).toBe('치과 예약');
+  });
+
+  it('does not ask for a title once a place has been heard', () => {
+    const confirmations = { time: true, destination: true, transport: true };
+    const untitled = { ...createDefaultScheduleDraft(), title: '', destination: '부산역', date: '8월 18일 (내일)' };
+    expect(nextVoiceClarification(untitled, confirmations)).toBeNull();
+
+    // With neither a title nor a place there is genuinely nothing to name it after.
+    const empty = { ...createDefaultScheduleDraft(), title: '', destination: '', date: '8월 18일 (내일)' };
+    expect(nextVoiceClarification(empty, confirmations)?.field).toBe('title');
+  });
+
+  it('carries the derived title through a patch so the flow has one less question', () => {
+    const draft = { ...createDefaultScheduleDraft(), title: '', destination: '' };
+    const next = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(draft, { destination: '광안리 해수욕장' }));
+    expect(next.title).toBe('광안리 해수욕장 약속');
+  });
+});
+
+describe('a field the microphone keeps missing', () => {
+  it('offers the fixed list for transport rather than asking again', () => {
+    expect(shouldOfferChoiceInsteadOfListening(
+      { field: 'transport', prompt: '어떻게 이동할까요?', options: ['도보', '버스', '지하철', '자가용', '택시'] },
+    )).toBe(true);
+  });
+
+  it('still listens for the answers that only the speaker can give', () => {
+    expect(shouldOfferChoiceInsteadOfListening({ field: 'destination', prompt: '어디로 가시나요?', options: ['직접 입력'] })).toBe(false);
+    expect(shouldOfferChoiceInsteadOfListening({ field: 'time', prompt: '몇 시인가요?', options: ['직접 입력'] })).toBe(false);
+    expect(shouldOfferChoiceInsteadOfListening(null)).toBe(false);
+  });
+});
+
+describe('what counts as the speaker choosing a way to get there', () => {
+  it('does not treat the draft default as an answer', () => {
+    const none = createVoiceRequiredConfirmations();
+    expect(mergeVoiceRequiredConfirmations(none, { transport: 'AI 추천' }).transport).toBe(false);
+    expect(mergeVoiceRequiredConfirmations(none, { transport: '지하철' }).transport).toBe(true);
+  });
+
+  it('keeps an answer already given, whatever arrives next', () => {
+    const chosen = { time: false, destination: false, transport: true };
+    expect(mergeVoiceRequiredConfirmations(chosen, { transport: 'AI 추천' }).transport).toBe(true);
+  });
+
+  it('still asks how to get there when only the default came back', () => {
+    const confirmations = mergeVoiceRequiredConfirmations(
+      createVoiceRequiredConfirmations(),
+      { appointmentTime: '15:00', destination: '부산역', transport: 'AI 추천' },
+    );
+    expect(nextRequiredVoiceClarification(confirmations)?.field).toBe('transport');
   });
 });

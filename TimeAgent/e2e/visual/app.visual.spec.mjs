@@ -516,18 +516,30 @@ test('확정 계획 지도는 출발지에서 목적지까지 이동 경로를 �
   await expect(summary).toContainText('분');
 });
 
-test('발화에서 빠진 약속 항목을 순서대로 되물음', async ({ page }) => {
+test('말한 장소로 약속 이름을 짓고 빠진 항목만 되물음', async ({ page }) => {
   await page.goto('/voice-schedule?e2eState=missing-fields');
-  await expect(page.getByText('무슨 약속인가요?', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
-
-  await page.getByRole('button', { name: '일정명 확인 필요 수정', exact: true }).click();
-  await page.getByLabel('일정명 직접 수정', { exact: true }).fill('병원');
-  await page.getByLabel('일정명 직접 수정', { exact: true }).press('Enter');
+  // The place was spoken, so the name comes from it instead of costing another question.
+  await expect(page.getByRole('button', { name: '일정명 강남 세브란스병원 약속 수정', exact: true })).toBeVisible();
+  await expect(page.getByText('무슨 약속인가요?', { exact: true })).toHaveCount(0);
 
   await expect(page.getByText('언제 만나나요?', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: '내일', exact: true }).click();
   await expect(page.getByText('언제 만나나요?', { exact: true })).toHaveCount(0);
+});
+
+test('이동수단이 빠지면 다시 묻지 않고 예시 선택을 권함', async ({ page }) => {
+  await page.goto('/voice-schedule?e2eState=transport-missing');
+  // Repeating a word the microphone already missed rarely goes better, so the fixed list is open.
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
+  for (const option of ['도보', '버스', '지하철', '자가용', '택시']) {
+    await expect(page.getByRole('button', { name: option, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
+
+  await page.getByRole('button', { name: '택시', exact: true }).click();
+  await expect(page.getByRole('button', { name: '이동수단 택시 수정', exact: true })).toBeVisible();
+  await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
 });
 
 test('음성 이동수단은 서버 왕복 없이 즉시 반영됨', async ({ page }) => {

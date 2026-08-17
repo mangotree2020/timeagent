@@ -108,7 +108,9 @@ export function mergeVoiceRequiredConfirmations(
   return {
     time: current.time || Boolean(patch.appointmentTime),
     destination: current.destination || Boolean(patch.destination?.trim()),
-    transport: current.transport || Boolean(patch.transport),
+    // `AI 추천` is the draft's own default, not something anyone said. Counting it as an answer
+    // skipped the transport question entirely and confirmed a schedule nobody chose a way to reach.
+    transport: current.transport || (Boolean(patch.transport) && patch.transport !== 'AI 추천'),
   };
 }
 
@@ -134,11 +136,30 @@ export function resolveVoiceClarificationChoice(
 }
 
 /** The next thing to ask about, covering the appointment fields a speaker most often leaves out. */
+/**
+ * A title is a label, not a fact anyone should have to dictate. Someone who named the place has
+ * named the appointment well enough, and asking for it anyway adds a question to a sentence that
+ * already said everything. The place came from the speaker, so this composes rather than invents.
+ */
+export function derivedVoiceScheduleTitle(destination: string) {
+  const place = destination.trim();
+  return place ? `${place} 약속` : '';
+}
+
+/** Fills in a title the speaker did not give but implied, leaving one they did give alone. */
+export function withDerivedVoiceScheduleTitle(draft: ScheduleDraft): ScheduleDraft {
+  if (draft.title.trim()) return draft;
+  const title = derivedVoiceScheduleTitle(draft.destination);
+  return title ? { ...draft, title } : draft;
+}
+
 export function nextVoiceClarification(
   draft: ScheduleDraft,
   confirmations: VoiceRequiredConfirmations,
 ): VoiceScheduleClarification | null {
-  if (!draft.title?.trim()) return { field: 'title', prompt: '무슨 약속인가요?', options: ['직접 입력'] };
+  if (!draft.title?.trim() && !draft.destination.trim()) {
+    return { field: 'title', prompt: '무슨 약속인가요?', options: ['직접 입력'] };
+  }
   if (!draft.date?.trim()) return { field: 'date', prompt: '언제 만나나요?', options: ['오늘', '내일', '직접 입력'] };
   return nextRequiredVoiceClarification(confirmations);
 }
@@ -182,6 +203,17 @@ export function needsVoiceMapConfirmation(draft: Pick<ScheduleDraft, 'destinatio
 }
 
 export const VOICE_MAP_CONFIRMATION_GUIDE = '장소 검색 결과나 지도에서 정확한 위치를 확인해 주세요.';
+
+/**
+ * Transport words are one or two syllables and easy to mishear, and repeating a misheard word
+ * rarely goes better the second time. When this field is what is missing the app stops listening
+ * and offers its own fixed list, which is a tap rather than another guess.
+ */
+export function shouldOfferChoiceInsteadOfListening(clarification: VoiceScheduleClarification | null) {
+  return clarification?.field === 'transport';
+}
+
+export const VOICE_TRANSPORT_CHOICE_GUIDE = '아래 예시에서 골라 주세요.';
 
 export function canConfirmVoiceSchedule(
   draft: ScheduleDraft,
@@ -281,6 +313,29 @@ export function createVoiceActivityState(): VoiceActivityState {
   };
 }
 
+/**
+ * One opening utterance carries the time, the place and how the person is getting there, and
+ * speakers pause between those clauses to think. Ending the turn on the first such pause sent only
+ * "내일 오후 3시에" — which is exactly why the assistant kept asking for a place that had already
+ * been said. The turn now ends only after a pause long enough to mean the speaker is finished.
+ */
+export const OPEN_TURN_TRAILING_SILENCE_MS = 2_000;
+export const OPEN_TURN_MAX_LISTENING_MS = 25_000;
+
+/** An answer to one question is a word or two, so waiting as long would only feel slow. */
+export const ANSWER_TURN_TRAILING_SILENCE_MS = 1_100;
+export const ANSWER_TURN_MAX_LISTENING_MS = 15_000;
+
+/**
+ * How patiently to listen. The opening turn is a whole schedule; every turn after it answers a
+ * single question the app just asked.
+ */
+export function voiceListeningOptions(turn: 'open' | 'answer') {
+  return turn === 'open'
+    ? { trailingSilenceMs: OPEN_TURN_TRAILING_SILENCE_MS, maxListeningMs: OPEN_TURN_MAX_LISTENING_MS }
+    : { trailingSilenceMs: ANSWER_TURN_TRAILING_SILENCE_MS, maxListeningMs: ANSWER_TURN_MAX_LISTENING_MS };
+}
+
 export function updateVoiceActivity(
   previous: VoiceActivityState,
   metering: number | undefined,
@@ -298,7 +353,7 @@ export function updateVoiceActivity(
     maxListeningMs?: number;
   } = {},
 ) {
-  const { maxListeningMs = 20_000 } = options;
+  const { maxListeningMs = OPEN_TURN_MAX_LISTENING_MS } = options;
   const measured = measureVoiceActivity(previous, metering, durationMillis, options);
   // Every turn has to end on its own. Without an upper bound a room whose noise never drops would
   // keep the microphone open until the recorder's own limit, which is what forced a manual button.
@@ -314,10 +369,7 @@ function measureVoiceActivity(
     speechThresholdDb = -55,
     minimumListeningMs = 350,
     speechOnsetMs = 120,
-    // One utterance usually carries the title, time, place, and transport together, and speakers
-    // pause between those clauses. A short window cut them off mid-sentence, so the turn ends only
-    // after a pause long enough to mean the speaker is done.
-    trailingSilenceMs = 1_200,
+    trailingSilenceMs = OPEN_TURN_TRAILING_SILENCE_MS,
     noiseFloorRiseDb = 12,
     noiseFloorConfirmDb = 8,
     floorConfidenceSamples = 3,
