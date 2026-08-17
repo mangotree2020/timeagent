@@ -102,6 +102,19 @@ const MISSING_FIELDS_FIXTURE: VoiceScheduleAssistantReply = (() => {
   };
 })();
 
+const PLACE_CHECK_FIXTURE: VoiceScheduleAssistantReply = {
+  ...RESULT_FIXTURE,
+  transcript: '내일 3시에 역삼역에서 보자',
+  assistantMessage: '내일 오후 3시 역삼역 일정으로 이해했어요.',
+  patch: {
+    ...RESULT_FIXTURE.patch,
+    title: '역삼역 약속',
+    destination: '역삼역',
+    destinationAddress: '',
+    destinationCoordinate: null,
+  },
+};
+
 const CLARIFICATION_FIXTURE: VoiceScheduleAssistantReply = {
   entryType: 'schedule',
   transcript: '금요일 오후에 치과',
@@ -141,8 +154,9 @@ export default function VoiceScheduleScreen() {
   const fixtureTransportMissing = e2eState === 'transport-missing';
   const fixtureMissingFields = e2eState === 'missing-fields';
   const fixtureAutoListening = e2eState === 'auto-listening';
+  const fixturePlaceCheck = e2eState === 'place-check';
   const fixtureTask = e2eState === 'task';
-  const fixtureReply = fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureMissingFields ? MISSING_FIELDS_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
+  const fixtureReply = fixturePlaceCheck ? PLACE_CHECK_FIXTURE : fixtureTask ? TASK_FIXTURE : fixtureClarification ? CLARIFICATION_FIXTURE : fixtureMissingFields ? MISSING_FIELDS_FIXTURE : fixtureTransportMissing ? TRANSPORT_MISSING_FIXTURE : fixtureResult ? RESULT_FIXTURE : null;
   const { beginDraft, beginDraftWith, confirmDraftWith, draft, selectConfirmedPlan } = useSchedule();
   const { addTask, startTask } = useTaskExecution();
   const { mode: colorMode, palette } = useAppTheme();
