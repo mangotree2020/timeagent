@@ -1,5 +1,44 @@
 # 실행 계획
 
+## 2026-08-17 한 발화 일정 등록: 녹음이 문장을 자르던 문제 (완료, 기본 모델 유지)
+
+- Observe: "내일 오후 3시에 부산역에서 지하철 타고 갈 거야"가 장소를 되묻는 응답으로 돌아왔다. 운영 `assistant`에 같은 문장의 합성 음성을 그대로 보내자 시각·장소·이동수단·제목이 모두 정확히 나왔다. 서버가 아니라 앱이 보내는 오디오가 문제였다.
+- Measure: 절 사이에 1.5초 멈춤을 넣은 음성과, 1.2초 무음 시점에서 잘라낸 음성을 각각 보냈다. 전체 음성은 5/5 필드 정확·되묻기 없음, 잘린 음성은 시각만 남고 `clarification.field=destination`이 돌아왔다. 사용자가 보고한 증상과 일치한다.
+- Implement: 여는 발화의 후행 무음 판정을 1.2초에서 2.0초로, 최대 청취를 20초에서 25초로 늘렸다. 질문 하나에 답하는 이후 턴은 1.1초·15초로 짧게 유지한다. 약속명은 말한 목적지에서 만들어 더 이상 묻지 않는다. 이동수단이 빠지면 마이크를 다시 열지 않고 다섯 선택지를 펼친다. 초안 기본값 `AI 추천`은 사용자의 선택으로 세지 않는다. 서버는 같은 응답이 이미 채운 항목에 대한 되묻기를 응답에서 제거하고, 앱은 모델의 `readyToApply` 대신 초안 내용으로 완료를 판정한다. 오디오 지시문에 상대 날짜·시각·이동수단 어휘 힌트를 넣었다.
+- Model: 측정 도중 `GEMINI_SCHEDULE_MODEL`을 `gemini-3.5-flash`로 바꿔 배포했다가 되돌렸다. 2026-08-17 5,000건 비교에서 음성은 3.5가 정확도 이득 없이 p50 +1.14초·비용 +93%로 결론났고 승인 전 배포 금지가 기록돼 있었는데 이를 확인하지 않았다. `secrets unset`으로 원복했고 `/health`가 `gemini-3.1-flash-lite`임을 확인했다.
+- Verify: 합성 12사례에서 앱이 되묻지 않고 완료 11/12(예외는 의도적으로 잘라낸 사례), 이동수단 12/12, 제목 12/12. `npm run verify` 40스위트·364/364, 시각 회귀 234/234 통과. 실기기 `SM-N971N`에서 1.4초 멈춤을 넣은 발화가 한 번에 등록되고, 이동수단만 빠진 발화는 되묻지 않고 다섯 칩을 펼치는 것을 확인했다.
+- Next: 남은 실패는 고유명사 전사다. `서면역→역삼역`, `광안리 민락수변공원→강남역 밀락수변공원`, `모레→오늘`이 lite에서 재현되며 2026-08-17 비교가 기록한 `동래역→동내역`과 같은 계열이다. 3.5로 바꿔도 표본상 개선이 유의하지 않았으므로 모델 교체가 아니라 장소 검색 결과로 전사문을 보정하는 방향이 후보다.
+- Evidence: `scripts/voice-oneshot-probe.mjs`, `tmp/voice/case*.m4a`.
+
+## 2026-08-17 Gemini 3.1/3.5 혼합 5,000건 비교 (완료, 운영 변경 없음)
+
+- Accept: 동일 운영 계약으로 `gemini-3.1-flash-lite`와 `gemini-3.5-flash-lite`를 비교한다. 기존 핵심 한국어 21사례는 각 모델 100회, 별도 다양한 한국어 30사례는 각 10회, 속도·잡음·echo·대역 제한이 다른 합성 음성 10사례는 각 10회 측정한다. 운영 함수·모델·secret은 변경하지 않는다.
+- Design: Claude Code 2.1.233이 기존 fixture·판정기·system instruction을 읽기 전용 검토해 신규 30사례와 음성 조건을 제안했다. Codex가 활동명이 없어 제목 정답을 강제할 수 있던 자기교정 2건을 문장으로 보완하고, 제품 규칙 해석이 모호한 반복 1건을 명시 준비시간 사례로 교체했다. exact title 문자열 대신 `title=filled`를 검사하고, 합성 발음 `CGV/씨지브이`만 명시 alias로 허용했다. 파일럿 80건은 평가셋 검수용이며 최종 통계에서 제외했다.
+- Harness: core와 diverse fixture를 분리하고, 오디오 manifest, 단일 사례 선택, 합성 응답 진단 opt-in, `suiteFingerprint`, 중복 attempt 거부를 추가했다. 모델 두 개는 같은 순간에 호출하고 fixture 5쌍을 동시에 보내는 고정 부하로 실행했다. 모든 결과에 `parallelModels=true`, `fixtureConcurrency=5`를 기록해 기존 단일 요청 지연과 섞이지 않게 했다. 10회 단위 checkpoint 10개를 원시 run으로 재집계했다.
+- Measure: 최종 표본은 모델별 2,500, 총 5,000 run이다. core 텍스트에서 3.1/3.5 사례 통과 93.71%/97.48%, 필드 97.95%/99.08%, p50 2,007/1,873ms, p95 2,672/2,173ms, 1,000건 $0.885/$1.090. 구조 미통과 13/8건은 전부 502·503 인프라 실패이고 의미 정확도는 구조 응답 기준 94.30%/97.85%다. diverse 텍스트는 사례 82.67%/88.67%, 필드 96.07%/96.30%, p50 2,192/2,004ms, p95 2,930/2,315ms, 1,000건 $0.918/$1.137. audio는 사례 67%/62%, 필드 94.86%/93.19%, p50 3,160/4,296ms, p95 4,180/6,018ms, 1,000건 $0.992/$1.918이다.
+- Statistics: 반복 run을 독립 시나리오처럼 세지 않았다. 텍스트 51 fixture에서 3.5 우세 18, 3.1 우세 6, 동률 27이며 fixture 단위 양측 sign test p=0.0227로 3.5 방향성이 확인됐다. audio 10 fixture는 3.1 우세 4, 3.5 우세 2, 동률 4이고 p=0.6875로 정확도 차이는 유의하지 않다. core 구조 응답 쌍의 McNemar p=2.27e-9는 같은 문장의 반복 안정성 차이를 뜻하며 새로운 시나리오 일반화 표본 수로 해석하지 않는다.
+- Review: Codex는 5,000개 원시 run을 독립 재계산해 모델 라벨, HTTP, 구조/사례/필드, nearest-rank p50/p95, 비용과 attempt 1~100 무중복을 확인했다. Claude Code도 최종 JSON을 독립 검토해 텍스트는 3.5, 음성은 3.1이 유리하며 단일 모델보다 modality 라우팅이 적절하다고 같은 결론을 냈다. 합성 응답 진단에서 음성 실패는 `동래역→동내/동네역`, `초읍→초원/누락` 같은 실제 고유명사 전사 오류임을 확인했다.
+- Decide: **지금 운영 기본값은 `gemini-3.1-flash-lite`로 유지한다.** 음성 일정이 핵심 UX인데 3.5는 audio p50 +1.14초, p95 +1.84초, 비용 +93%이고 정확도 이득이 없다. 다음 구현 후보는 단일 교체가 아니라 입력이 text면 3.5, audio면 3.1을 선택하는 서버 라우팅이다. 사용자가 구현을 승인하기 전에는 배포하지 않는다.
+- Cost: 최종 5,000건의 공식 표준 단가 추정은 3.1 $2.2211, 3.5 $2.8123, 합계 $5.0334다. 파일럿·진단·중단된 부분 실행은 이 수치에서 제외했다. 3.5 audio에는 평균 사고 토큰 272.8개가 발생해 3.1보다 비용과 지연이 커졌다.
+- Verify: 최종 `npm run verify`가 TypeScript·Expo lint·40개 Jest 스위트, 346/346 테스트를 통과했다. 앱 UI 소스는 변경하지 않았고 같은 작업 흐름에서 360×800·390×844·430×932 시각 회귀 231/231 통과 상태를 유지한다.
+- Cleanup: 원격 `assistant-benchmark`를 삭제해 HTTP 404를 확인했다. 운영은 `assistant` v19와 `/health`의 `gemini-3.1-flash-lite` 그대로이며 mobility v9, weather v5도 변경하지 않았다.
+- Evidence: `tmp/gemini-mixed-20260817/core-100-merged.json`, `diverse-10.json`, `audio-10.json`, `scripts/fixtures/gemini-schedule-diverse.json`, `gemini-schedule-audio-manifest.json`, `scripts/generate-gemini-audio-fixtures.mjs`, `docs/GEMINI_BENCHMARK.md`.
+- Risk: 텍스트는 독립 51문장, 음성은 Yuna 합성 10문장뿐이다. 음성 결론은 실제 화자·사투리·기기 마이크·생활 소음 20~30문장으로 재확인해야 한다. 고정 동시성 5의 지연은 부하 비교값이며 과거 순차 p50과 직접 비교하지 않는다.
+
+## 2026-08-17 Gemini 3모델 비교와 기본 모델 결정 (완료, 기본값 유지)
+
+- Accept: `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`를 운영과 같은 요청 계약·system instruction·응답 스키마로 비교하고, 구조화 성공률·사례 통과율·필드 정확도·p50/p95·1,000건 비용을 실측 근거로 기본 모델을 결정한다. 운영 `assistant`(version 19), `GEMINI_SCHEDULE_MODEL`, 기존 secret은 건드리지 않는다.
+- Observe: 직전 실행이 하네스와 격리 함수를 만들고 `assistant-benchmark` v1을 배포했지만 벤치마크 완료를 기다리지 않고 끝나 `tmp/gemini-benchmark-3models.json`이 0바이트였다. 실측 결과가 없었다.
+- Implement: 하네스를 재검토해 네 가지를 고쳤다. (1) 모델을 사례 안에서 번갈아 호출하도록 순서를 바꿔 특정 모델만 느린 구간에 몰리지 않게 했다. (2) 모델을 지정했는데 응답이 다른 모델로 표시되면 점수를 매기지 않고 하네스 실패로 기록한다. 기본 endpoint가 운영 `assistant`이므로 URL을 빠뜨리면 운영 모델의 응답이 후보 모델 결과로 둔갑할 수 있었다. (3) 실패를 `model`·`harness`·`infrastructure`로 분류해 모델 오류와 하네스/스키마 비호환을 구분한다. (4) 회차를 나눠 동기 실행한 뒤 전체 run을 다시 집계하는 `--merge`를 넣었다. 평균의 평균이 되지 않으며 endpoint·사례 수·clientContext·단가 출처가 다르면 병합을 거부한다. 판정에서는 이동수단의 앱 기본값 `AI 추천`을 채워지지 않은 값으로 세도록 했다. 초안을 그대로 되돌려준 것이라 앱 상태가 바뀌지 않는데 환각으로 감점되고 있었다.
+- Verify: 공식 가격표를 다시 확인해 세 모델 단가가 맞고 `gemini-3.6-flash`의 오디오 입력이 실제로 표에 없다는 것(따라서 추정하지 않는 것)을 확인했다. 하네스 전체를 로컬 HTTP 서버 대상으로 도는 통합 테스트를 추가했다. 모델 교차 호출 순서, 모델 불일치 거부, 실패 분류, 결과 JSON에 응답 본문이 남지 않는 성질을 검사한다. Codex 교차 검증에서 fixture·후보 모델이 다른 결과 및 같은 attempt의 중복 병합을 막는 `suiteFingerprint`와 거부 검사를 추가했다. 최종 `npm run verify` 39개 스위트·338/338, `npm run visual:test` 360×800·390×844·430×932 전체 231/231을 통과했다. 연결 Android `SM-N971N`에서 설치 패키지와 `com.timeagent.app/.MainActivity` 실행 상태를 확인했다.
+- Measure: `assistant-benchmark` v1(`verify_jwt = true`)에 합성 텍스트 21사례 × 3모델 × 3회 = 189 요청을 동기 실행했다. 189건 전부 HTTP 200과 운영 계약을 통과해 구조화 성공률 100%이고, `harness`·`infrastructure` 실패는 0건이다. 사례 통과율은 3.6-flash 96.8%, 3.1-flash-lite 95.2%, 3.5-flash-lite 93.7%. 1,000건 비용은 $2.188 / $0.885 / $1.092. p50은 2,528 / 2,365 / 2,041ms.
+- Cross-check: Codex가 189개 원시 run으로 HTTP 상태, 응답 모델 라벨, 구조/사례/필드 집계와 p50/p95를 독립 재계산해 문서 수치와 일치함을 확인했다. 이어 Yuna 합성 한국어 M4A 1사례를 3모델에 각 3회 호출했고 9/9 구조·사례 통과, 45/45 필드 통과였다. 음성 p50은 3.1-lite 3,177ms, 3.5-lite 7,547ms, 3.6-flash 6,570ms였고 3.1-lite/3.5-lite 평균 요청 비용은 $0.001017/$0.002088, 3.6은 공식 오디오 단가가 없어 미상이다. 첫 인증 실패 실행은 모델에 도달하지 않은 JWT 401 하네스 실패로 제외했다.
+- Decide: **기본 모델을 `gemini-3.1-flash-lite`로 유지한다.** 사례 통과 격차는 63회 중 2건, 필드 정확도 격차는 288개 검사 중 2개로 표본상 유의하지 않은 반면 `gemini-3.6-flash`는 비용이 2.5배이고 2027-01-01 단가로는 4.9배가 된다. `gemini-3.5-flash-lite`는 p50이 324ms 빠르지만 비용이 23% 높고 통과율이 가장 낮았다. 앱 기본 모델은 변경하지 않았다.
+- Next: 실패 9건 중 6건이 `내일`을 `clientContext.localDate`가 아니라 `nowIso`의 UTC 날짜로 푸는 한 가지 원인이며 세 모델에 공통이다. 모델 교체가 아니라 system instruction의 상대 날짜 규칙을 강화한 뒤 같은 평가셋으로 재측정하는 것이 다음 항목이다.
+- Cleanup: 측정과 검증을 마친 뒤 원격 `assistant-benchmark` 함수를 삭제하고 URL의 HTTP 404를 확인했다. 운영 `assistant` v19, `mobility` v9, `weather` v5는 그대로이며 운영 `/health`도 `gemini-3.1-flash-lite`, configured true다. 로컬 하네스·단위 테스트·격리 함수 소스는 재실행을 위해 남겼다.
+- Evidence: `scripts/benchmark-gemini-assistant.mjs`, `scripts/benchmark-assistant-judge.js`, `scripts/benchmark-gemini-assistant.test.js`, `scripts/benchmark-assistant-judge.test.js`, `scripts/assistant-benchmark-contract.test.js`, `scripts/fixtures/gemini-schedule-benchmark.json`, `supabase/functions/assistant-benchmark/index.ts`, `docs/GEMINI_BENCHMARK.md`, 원본 결과 `tmp/gemini-benchmark-3models.json`, `tmp/gemini-benchmark-audio-smoke.json`.
+- 남은 위험: 텍스트 3회 반복과 합성 음성 한 문장 3회는 모델 간 일반적 순위를 확정하기에는 적은 표본이다. 억양·잡음·실사용 문장 다양성은 미측정이며 `gemini-3.6-flash`의 오디오 입력 단가는 공식 표에 없어 비용 비교도 할 수 없다.
+
 ## 2026-08-16 Google Play Alpha 테스터 5명 추가 (완료)
 
 - Accept: 사용자 제공 Gmail 계정 6개를 `TimeAgent 내부 테스터` 이메일 목록에 추가한다.
