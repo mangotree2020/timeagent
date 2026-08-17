@@ -2,6 +2,7 @@ import {
   buildGeminiInteractionBody,
   extractGeminiOutputText,
   extractGeminiUsage,
+  withoutRedundantClarification,
   GEMINI_INTERACTIONS_URL,
 } from '../../../supabase/functions/_shared/gemini-assistant';
 
@@ -118,5 +119,46 @@ describe('Gemini assistant adapter', () => {
     expect(instruction).toContain('네 가지');
     expect(instruction).toContain('사용자가 말하지 않은');
     expect(instruction).toContain('빠른 선택지');
+  });
+});
+
+describe('withoutRedundantClarification', () => {
+  const reply = (clarificationField: string, patch: Record<string, unknown>) => ({
+    entryType: 'schedule',
+    transcript: '내일 오후 3시에 부산역에서 지하철 타고 갈 거야',
+    assistantMessage: '확인했어요.',
+    question: null,
+    readyToApply: false,
+    clarification: { field: clarificationField, prompt: '확인해 주세요', options: ['직접 입력'] },
+    task: null,
+    patch,
+  });
+
+  it('drops a question about something the same answer already filled in', () => {
+    const asked = reply('destination', { destination: '부산역', appointmentTime: '15:00' });
+    expect(withoutRedundantClarification(asked).clarification).toBeNull();
+
+    const time = reply('time', { appointmentTime: '15:00' });
+    expect(withoutRedundantClarification(time).clarification).toBeNull();
+  });
+
+  it('keeps a question about something genuinely missing', () => {
+    const asked = reply('transport', { destination: '부산역', appointmentTime: '15:00' });
+    expect(withoutRedundantClarification(asked).clarification).toEqual(asked.clarification);
+  });
+
+  it('still asks how to get there when only the draft default came back', () => {
+    const asked = reply('transport', { destination: '부산역', transport: 'AI 추천' });
+    expect(withoutRedundantClarification(asked).clarification).toEqual(asked.clarification);
+
+    const chosen = reply('transport', { destination: '부산역', transport: '지하철' });
+    expect(withoutRedundantClarification(chosen).clarification).toBeNull();
+  });
+
+  it('leaves a reply with nothing to drop exactly as it was', () => {
+    const none = { ...reply('time', {}), clarification: null };
+    expect(withoutRedundantClarification(none)).toBe(none);
+    const blank = reply('destination', { destination: '   ' });
+    expect(withoutRedundantClarification(blank).clarification).toEqual(blank.clarification);
   });
 });

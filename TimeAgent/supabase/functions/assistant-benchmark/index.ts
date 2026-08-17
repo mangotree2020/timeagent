@@ -1,3 +1,18 @@
+// Isolated benchmark-only twin of the production `assistant` function.
+//
+// Not part of the running product: it is deployed only while a model comparison is in flight and
+// deleted as soon as the numbers are recorded, so that no unused endpoint is left able to spend the
+// project's Gemini quota. `docs/GEMINI_BENCHMARK.md` describes the deploy-measure-delete cycle.
+//
+// It exists so the same request contract, system instruction and response schema can be sent to
+// several Gemini models without redeploying or reconfiguring production. Differences from
+// `assistant/index.ts`, and nothing else:
+//   1. the model comes from the request body and must be on BENCHMARK_MODELS,
+//   2. it is deployed with verify_jwt so only an authenticated caller can spend the Gemini quota,
+//   3. it has no default and no environment fallback, so production model configuration cannot
+//      silently decide which model a benchmark row was measured on.
+// The response validators below are byte-identical copies of the production ones and
+// `scripts/assistant-benchmark-contract.test.js` fails if they ever diverge.
 import {
   buildGeminiInteractionBody,
   extractGeminiOutputText,
@@ -9,7 +24,7 @@ import {
 } from "../_shared/gemini-assistant.ts";
 import { corsHeaders, jsonResponse } from "../_shared/http.ts";
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
+const BENCHMARK_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.6-flash"];
 const MAX_AUDIO_BASE64 = 7_000_000;
 const MAX_HISTORY = 8;
 
@@ -22,7 +37,7 @@ Deno.serve(async (request) => {
     return jsonResponse({
       status: "ok",
       provider: "gemini",
-      model: configuredModel(),
+      models: BENCHMARK_MODELS,
       geminiConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")?.trim()),
     });
   }
@@ -36,6 +51,9 @@ Deno.serve(async (request) => {
   try {
     const body: unknown = await request.json();
     if (!isRequestBody(body)) return errorResponse("INVALID_INPUT", "말하거나 입력한 내용을 확인해 주세요.", false, 400);
+    if (typeof body.model !== "string" || !BENCHMARK_MODELS.includes(body.model)) {
+      return errorResponse("INVALID_INPUT", "허용된 벤치마크 모델이 아닙니다.", false, 400);
+    }
 
     const turn: GeminiAssistantTurn = {
       conversationId: body.conversationId,
@@ -45,12 +63,14 @@ Deno.serve(async (request) => {
       clientContext: body.clientContext,
       flowContext: body.flowContext,
     };
+    const started = Date.now();
     const response = await geminiRequest(
       GEMINI_INTERACTIONS_URL,
       apiKey,
-      buildGeminiInteractionBody(configuredModel(), turn),
+      buildGeminiInteractionBody(body.model, turn),
       45_000,
     );
+    const upstreamMs = Date.now() - started;
     const payload: unknown = await response.json();
     const outputText = extractGeminiOutputText(payload);
     if (!outputText) throw new AssistantError("UPSTREAM_REJECTED", "음성을 인식하지 못했거나 일정 응답을 만들지 못했습니다.", false, 422);
@@ -60,7 +80,8 @@ Deno.serve(async (request) => {
       ...result,
       _meta: {
         provider: "gemini",
-        model: configuredModel(),
+        model: body.model,
+        upstreamLatencyMs: upstreamMs,
         usage: extractGeminiUsage(payload),
       },
     });
@@ -71,11 +92,6 @@ Deno.serve(async (request) => {
     return errorResponse("SERVICE_UNAVAILABLE", "AI 일정을 일시적으로 확인하지 못했습니다.", true, 503);
   }
 });
-
-function configuredModel() {
-  const model = Deno.env.get("GEMINI_SCHEDULE_MODEL")?.trim() || DEFAULT_GEMINI_MODEL;
-  return /^[a-zA-Z0-9._-]+$/.test(model) ? model : DEFAULT_GEMINI_MODEL;
-}
 
 async function geminiRequest(url: string, apiKey: string, body: unknown, timeoutMs: number) {
   const controller = new AbortController();
@@ -153,7 +169,7 @@ function invalidResponse() {
   return new AssistantError("INVALID_RESPONSE", "AI 일정 응답을 확인하지 못했습니다.", true, 502);
 }
 
-function isRequestBody(value: unknown): value is { conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string; localDate: string }; flowContext: GeminiAssistantTurn["flowContext"] } {
+function isRequestBody(value: unknown): value is { model: unknown; conversationId: string; draft: Record<string, unknown>; history: Array<{ role: "user" | "assistant"; text: string }>; input: Input; clientContext: { nowIso: string; timezone: string; localDate: string }; flowContext: GeminiAssistantTurn["flowContext"] } {
   if (!isRecord(value)
     || typeof value.conversationId !== "string"
     || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.conversationId)

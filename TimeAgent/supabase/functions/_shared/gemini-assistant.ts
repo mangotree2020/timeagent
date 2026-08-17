@@ -74,6 +74,29 @@ export function normalizeGeminiAudioMimeType(value: string) {
   return null;
 }
 
+/**
+ * A question about something the same answer already filled in. Models ask these when they are
+ * being careful — "부산역" lands in the patch and a question about the destination arrives beside
+ * it — and the person hears the app ask for what they just said. The app still asks about anything
+ * genuinely missing, so dropping a redundant question costs nothing.
+ */
+export function withoutRedundantClarification<T extends Record<string, unknown>>(result: T): T {
+  const clarification = result.clarification;
+  if (!isRecord(clarification) || typeof clarification.field !== "string") return result;
+  const patch = isRecord(result.patch) ? result.patch : {};
+  const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+  const answered: Record<string, boolean> = {
+    title: filled(patch.title),
+    date: filled(patch.date),
+    time: filled(patch.appointmentTime),
+    destination: filled(patch.destination),
+    // The draft's own default is not an answer to how someone is getting there.
+    transport: filled(patch.transport) && patch.transport !== "AI 추천",
+  };
+  if (!answered[clarification.field]) return result;
+  return { ...result, clarification: null };
+}
+
 export function extractGeminiOutputText(value: unknown) {
   if (!isRecord(value) || value.status !== "completed" || !Array.isArray(value.steps)) return null;
   for (let index = value.steps.length - 1; index >= 0; index -= 1) {

@@ -47,7 +47,21 @@ for (let index = 1; index <= cases; index += 1) {
     continue;
   }
   const patch = payload.patch ?? {};
+  // What the app decides, not what the model flagged: the title is derived from the place, and the
+  // draft's own `AI 추천` default is not someone choosing how to travel.
+  const title = patch.title?.trim() || (patch.destination?.trim() ? `${patch.destination.trim()} 약속` : '');
+  const transportChosen = Boolean(patch.transport) && patch.transport !== 'AI 추천';
+  const appMissing = [
+    title ? null : '일정명',
+    patch.date?.trim() ? null : '날짜',
+    /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(patch.appointmentTime ?? '') ? null : '시간',
+    patch.destination?.trim() ? null : '장소',
+    transportChosen ? null : '이동수단',
+  ].filter(Boolean);
   results.push({
+    appTitle: title,
+    appMissing,
+    appAsks: payload.clarification?.field ?? appMissing[0] ?? null,
     index,
     spoken,
     transcript: payload.transcript,
@@ -74,7 +88,8 @@ for (const row of results) {
   console.log(`  날짜/시각: ${row.date ?? '(없음)'} ${row.time ?? '(없음)'}`);
   console.log(`  장소     : ${row.destination ?? '(없음)'}`);
   console.log(`  이동수단 : ${row.transport ?? '(없음)'}`);
-  console.log(`  준비완료 : ${row.readyToApply} / 되묻기: ${row.clarification ?? '없음'}${row.prompt ? ` — "${row.prompt}"` : ''}`);
+  console.log(`  앱 제목  : ${row.appTitle || '(없음)'}`);
+  console.log(`  앱 되묻기: ${row.appAsks ?? '없음'}${row.prompt && row.clarification ? ` — "${row.prompt}"` : ''}`);
   console.log(`  토큰     : audio=${row.audioTokens} total=${row.totalTokens} (${row.model})`);
 }
 
@@ -82,6 +97,6 @@ const ok = results.filter((row) => !row.error);
 const field = (name) => ok.filter((row) => row[name]).length;
 console.log(`\n=== 요약 (${ok.length}/${results.length} 응답) ===`);
 console.log(`시각 추출 ${field('time')}/${ok.length} · 장소 추출 ${field('destination')}/${ok.length} · 이동수단 추출 ${field('transport')}/${ok.length} · 제목 추출 ${field('title')}/${ok.length}`);
-console.log(`되묻기 없이 완료: ${ok.filter((row) => row.readyToApply && !row.clarification).length}/${ok.length}`);
+console.log(`앱이 되묻지 않고 완료: ${ok.filter((row) => !row.appAsks).length}/${ok.length}`);
 const totals = ok.map((row) => row.totalTokens ?? 0);
 if (totals.length) console.log(`평균 토큰: ${Math.round(totals.reduce((a, b) => a + b, 0) / totals.length)}`);

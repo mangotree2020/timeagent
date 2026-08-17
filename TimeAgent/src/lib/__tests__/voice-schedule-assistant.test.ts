@@ -5,6 +5,7 @@ import {
   OPEN_TURN_TRAILING_SILENCE_MS,
   derivedVoiceScheduleTitle,
   shouldOfferChoiceInsteadOfListening,
+  isVoiceTurnComplete,
   withDerivedVoiceScheduleTitle,
   applyVoiceSchedulePatch,
   canConfirmVoiceSchedule,
@@ -590,5 +591,38 @@ describe('what counts as the speaker choosing a way to get there', () => {
       { appointmentTime: '15:00', destination: '부산역', transport: 'AI 추천' },
     );
     expect(nextRequiredVoiceClarification(confirmations)?.field).toBe('transport');
+  });
+});
+
+describe('deciding a turn is over', () => {
+  const complete = {
+    ...createDefaultScheduleDraft(),
+    title: '부산역 약속', date: '8월 18일 (내일)', appointmentTime: '15:00', destination: '부산역',
+  };
+  const answered = { time: true, destination: true, transport: true };
+
+  it('trusts the draft over the assistant flagging itself unready', () => {
+    // A careful model fills every field and still says it is not ready; listening again then lets
+    // room noise reopen questions that already have answers.
+    expect(isVoiceTurnComplete({ entryType: 'schedule', task: null }, null, complete, answered)).toBe(true);
+  });
+
+  it('is not over while something is still missing', () => {
+    const noPlace = { ...complete, destination: '' };
+    expect(isVoiceTurnComplete({ entryType: 'schedule', task: null }, null, noPlace, answered)).toBe(false);
+
+    const unanswered = { time: true, destination: true, transport: false };
+    expect(isVoiceTurnComplete({ entryType: 'schedule', task: null }, null, complete, unanswered)).toBe(false);
+  });
+
+  it('is not over while a question is on screen', () => {
+    const asked = { field: 'transport' as const, prompt: '어떻게 이동할까요?', options: ['버스'] };
+    expect(isVoiceTurnComplete({ entryType: 'schedule', task: null }, asked, complete, answered)).toBe(false);
+  });
+
+  it('judges a task on the actions it proposed', () => {
+    const task = { title: '보고서 작성', actions: [{ label: '문서 열기', estimatedMinutes: 2 }] };
+    expect(isVoiceTurnComplete({ entryType: 'task', task }, null, createDefaultScheduleDraft(), answered)).toBe(true);
+    expect(isVoiceTurnComplete({ entryType: 'task', task: null }, null, createDefaultScheduleDraft(), answered)).toBe(false);
   });
 });

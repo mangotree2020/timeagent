@@ -23,7 +23,7 @@ import {
   createVoiceActivityState,
   createVoiceRequiredConfirmations,
   createVoiceFirstScheduleDraft,
-  isVoiceReplyAwaitingUser,
+  isVoiceTurnComplete,
   isVoiceTakeFinished,
   mergeVoiceRequiredConfirmations,
   needsVoiceMapConfirmation,
@@ -305,7 +305,8 @@ export default function VoiceScheduleScreen() {
       }
       const nextProposal = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(base, reply.patch));
       const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, reply.patch);
-      const requiredClarification = reply.entryType === 'schedule' && reply.readyToApply && !reply.clarification
+      // Whatever the assistant thinks of its own answer, the draft decides what is still missing.
+      const requiredClarification = reply.entryType === 'schedule' && !reply.clarification
         ? nextVoiceClarification(nextProposal, nextConfirmations)
         : null;
       const nextClarification = reply.clarification ?? requiredClarification;
@@ -318,7 +319,7 @@ export default function VoiceScheduleScreen() {
         setProposal(nextProposal);
         setTaskProposal(null);
       }
-      const nextReady = isVoiceReplyAwaitingUser(reply, nextClarification);
+      const nextReady = isVoiceTurnComplete(reply, nextClarification, nextProposal, nextConfirmations);
       setRequiredConfirmations(nextConfirmations);
       setAssistantReady(nextReady);
       setClarification(nextClarification);

@@ -194,6 +194,24 @@ export function isVoiceReplyAwaitingUser(
 }
 
 /**
+ * Whether the turn is over and the next move belongs to the user. The assistant's own readiness
+ * flag is advisory only: a careful model fills every field and still marks itself unready, and
+ * listening again then lets room noise reopen questions that already have answers. What the draft
+ * holds is what decides.
+ */
+export function isVoiceTurnComplete(
+  reply: Pick<VoiceScheduleAssistantReply, 'entryType' | 'task'>,
+  pendingClarification: VoiceScheduleClarification | null,
+  draft: ScheduleDraft,
+  confirmations: VoiceRequiredConfirmations,
+) {
+  if (reply.entryType === 'task') return Boolean(reply.task);
+  return pendingClarification === null
+    && voiceScheduleMissingFields(draft).length === 0
+    && nextRequiredVoiceClarification(confirmations) === null;
+}
+
+/**
  * A destination the assistant heard is only a name until the map pins it, and the coordinate is what
  * schedule confirmation requires. When it is missing, the spoken guidance has to send the user to the
  * search results or the map instead of implying the schedule is ready.
