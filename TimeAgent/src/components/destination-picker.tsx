@@ -38,6 +38,7 @@ type DestinationPickerProps = {
 };
 
 const DEFAULT_MAP_CENTER = { latitude: 35.1796, longitude: 129.0756 };
+const LOCATION_WAIT_MS = 2_500;
 
 export function DestinationPicker({ value, onChange, title = '목적지 찾기', autoSearch = false, autoSelectExact = false, showSelectedMap = false }: DestinationPickerProps) {
   const styles = useThemedStyles(createStyles);
@@ -118,8 +119,13 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
       if (!permission.granted) return null;
       const last = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 });
       if (last) return { latitude: last.coords.latitude, longitude: last.coords.longitude };
-      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      return { latitude: current.coords.latitude, longitude: current.coords.longitude };
+      // A first fix indoors can take many seconds. The check is worth a short wait, not a stall —
+      // without a position the name alone still decides, which is where this began.
+      const current = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATION_WAIT_MS)),
+      ]);
+      return current ? { latitude: current.coords.latitude, longitude: current.coords.longitude } : null;
     } catch {
       return null;
     }
