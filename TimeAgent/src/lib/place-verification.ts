@@ -1,6 +1,7 @@
 import { Coordinate, GeocodedPlace } from './journey';
 import { haversineDistanceMeters } from './kma-weather';
 import { withNamingParticle } from './local-notifications';
+import { soundsLikeSpokenPlace, spokenPlaceContains } from './place-transcription';
 import { SavedPlace } from './saved-places';
 
 /**
@@ -26,14 +27,11 @@ export type PlaceVerification =
   | { kind: 'confirmed'; place: GeocodedPlace }
   /**
    * Found something, but not something to act on alone. `distant` means the only match is a city
-   * away; `ambiguous` means several places answer to the same name.
+   * away; `ambiguous` means several places answer to the same name; `misheard` means nothing
+   * answered to the name as heard and these came back under a spelling that sounds close to it.
    */
-  | { kind: 'choose'; reason: 'distant' | 'ambiguous'; candidates: PlaceCandidate[] }
+  | { kind: 'choose'; reason: 'distant' | 'ambiguous' | 'misheard'; candidates: PlaceCandidate[] }
   | { kind: 'none' };
-
-function normalizePlaceName(value: string) {
-  return value.replace(/\s+/g, '').toLowerCase();
-}
 
 function distanceFrom(origin: Coordinate | null, place: GeocodedPlace) {
   return origin ? haversineDistanceMeters(origin, place.coordinate) : null;
@@ -48,31 +46,44 @@ export function verifySpokenPlace({
   results,
   origin,
   savedPlaces = [],
+  variantNames = [],
 }: {
   spokenName: string;
   results: GeocodedPlace[];
   /** Where the person is, or their last known position. Null when neither is available. */
   origin: Coordinate | null;
   savedPlaces?: SavedPlace[];
+  /**
+   * Spellings the heard name may have been written as, when the search was run under those too.
+   * A result that answers only to one of these is never filled in on its own: it is a different
+   * word from the one that was said, however close it sounds.
+   */
+  variantNames?: string[];
 }): PlaceVerification {
-  const spoken = normalizePlaceName(spokenName);
-  if (!spoken || !results.length) return { kind: 'none' };
+  if (!spokenName.trim() || !results.length) return { kind: 'none' };
 
-  const visited = new Set(savedPlaces.map((place) => normalizePlaceName(place.name)));
+  const visited = savedPlaces.map((place) => place.name);
   const candidates: PlaceCandidate[] = results.map((place) => ({
     place,
     distanceMeters: distanceFrom(origin, place),
-    visitedBefore: visited.has(normalizePlaceName(place.name)),
+    visitedBefore: visited.some((name) => soundsLikeSpokenPlace(name, place.name)),
   }));
 
-  const exact = candidates.filter((item) => normalizePlaceName(item.place.name) === spoken);
-  const pool = exact.length ? exact : candidates;
-  const ranked = rankCandidates(pool);
+  // Matched by how the name is said, not how it is spelled: 민락수변공원 is what the map calls the
+  // place someone said, even though the recogniser wrote down 밀락수변공원.
+  const heard = candidates.filter((item) => soundsLikeSpokenPlace(item.place.name, spokenName));
+  const ranked = rankCandidates(heard.length ? heard : candidates);
 
-  if (exact.length > 1) {
+  if (heard.length > 1) {
     return { kind: 'choose', reason: 'ambiguous', candidates: ranked.slice(0, MAX_PLACE_CANDIDATES) };
   }
-  if (exact.length !== 1) return { kind: 'none' };
+  if (heard.length !== 1) {
+    const corrected = candidates.filter((item) => variantNames.some((variant) => (
+      soundsLikeSpokenPlace(item.place.name, variant) || spokenPlaceContains(item.place.name, variant)
+    )));
+    if (!corrected.length) return { kind: 'none' };
+    return { kind: 'choose', reason: 'misheard', candidates: rankCandidates(corrected).slice(0, MAX_PLACE_CANDIDATES) };
+  }
 
   const best = ranked[0];
   // Somewhere this person has already been is confirmation enough, however far away it is.
@@ -114,6 +125,11 @@ export function formatPlaceDistance(distanceMeters: number | null) {
 export function describePlaceVerification(verification: Extract<PlaceVerification, { kind: 'choose' }>, spokenName: string) {
   if (verification.reason === 'ambiguous') {
     return `${withNamingParticle(spokenName)} 이름의 장소가 여러 곳이에요. 어디인지 골라 주세요.`;
+  }
+  if (verification.reason === 'misheard') {
+    // Say that the name was not found rather than that it was wrong: the person said it correctly
+    // and the app is the one guessing here.
+    return `${withNamingParticle(spokenName)} 이름으로는 찾지 못해서 비슷하게 들리는 이름으로 찾아봤어요. 맞는 곳이 있으면 골라 주세요.`;
   }
   const distance = formatPlaceDistance(verification.candidates[0]?.distanceMeters ?? null);
   return distance

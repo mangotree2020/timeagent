@@ -18,6 +18,7 @@ import {
   PlaceVerification,
   verifySpokenPlace,
 } from '@/lib/place-verification';
+import { spokenNameVariants } from '@/lib/place-transcription';
 import { displayAddress, loadSavedPlaces, mergeRemoteSavedPlaces, rememberPlace, SavedPlace } from '@/lib/saved-places';
 import { createConfiguredSavedPlacesRemote } from '@/lib/saved-places-remote';
 import { useAuth } from '@/state/auth-context';
@@ -39,6 +40,23 @@ type DestinationPickerProps = {
 
 const DEFAULT_MAP_CENTER = { latitude: 35.1796, longitude: 129.0756 };
 const LOCATION_WAIT_MS = 2_500;
+/**
+ * Other spellings are searched in parallel, so this is one more round trip rather than three — but
+ * it is still the map's quota and the person's wait, and the spellings past the third are the
+ * weakest guesses anyway.
+ */
+const MAX_VARIANT_SEARCHES = 3;
+
+/** Several spellings can lead to the same place; the person should be offered it once. */
+function dedupePlaces(places: GeocodedPlace[]) {
+  const seen = new Set<string>();
+  return places.filter((place) => {
+    const key = `${place.name}@${place.coordinate.latitude},${place.coordinate.longitude}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export function DestinationPicker({ value, onChange, title = '목적지 찾기', autoSearch = false, autoSelectExact = false, showSelectedMap = false }: DestinationPickerProps) {
   const styles = useThemedStyles(createStyles);
@@ -150,9 +168,30 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
       const origin = autoSelectExact ? await readCurrentCoordinate() : null;
       const results = await provider.searchPlaces(normalized, origin ?? mapCoordinate, controller.signal);
       if (controller.signal.aborted) return;
-      const verification = autoSelectExact
+      let verification = autoSelectExact
         ? verifySpokenPlace({ spokenName: normalized, results, origin, savedPlaces })
         : { kind: 'none' as const };
+
+      // Korean speech recognition writes what it hears, and the phonetic spelling can be a query no
+      // map answers: 동내역 came back an error where 동래역 is a station. Ask again under the
+      // spellings that would be said the same way before giving up on the name.
+      if (autoSelectExact && verification.kind === 'none') {
+        const variantNames = spokenNameVariants(normalized, MAX_VARIANT_SEARCHES);
+        if (variantNames.length) {
+          const found = await Promise.all(variantNames.map((variant) => provider
+            .searchPlaces(variant, origin ?? mapCoordinate, controller.signal)
+            .catch(() => [] as GeocodedPlace[])));
+          if (controller.signal.aborted) return;
+          verification = verifySpokenPlace({
+            spokenName: normalized,
+            results: dedupePlaces([...results, ...found.flat()]),
+            origin,
+            savedPlaces,
+            variantNames,
+          });
+        }
+      }
+
       if (verification.kind === 'confirmed') {
         const place = verification.place;
         onChange({ destination: place.name, destinationAddress: displayAddress(place), destinationCoordinate: place.coordinate });

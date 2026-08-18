@@ -102,6 +102,100 @@ describe('verifying a place the assistant heard', () => {
   });
 });
 
+describe('a name the recogniser spelled the way it is said', () => {
+  const minrak = place('민락수변공원', { latitude: 35.1533, longitude: 129.1289 });
+  const dongnae = place('동래역', { latitude: 35.2100, longitude: 129.0784 });
+  const nampo = place('남포동', { latitude: 35.0977, longitude: 129.0324 });
+
+  it('accepts the map’s spelling of the word that was said', () => {
+    // 민락수변공원 is pronounced [밀락…]. The person said the place; only the spelling is the
+    // recogniser's, so there is nothing here to ask about.
+    expect(verifySpokenPlace({ spokenName: '밀락수변공원', results: [minrak], origin: BUSAN }))
+      .toEqual({ kind: 'confirmed', place: minrak });
+    expect(verifySpokenPlace({ spokenName: '동내역', results: [dongnae], origin: BUSAN }))
+      .toEqual({ kind: 'confirmed', place: dongnae });
+  });
+
+  it('still checks distance on a name it matched by sound', () => {
+    const seoulJongno = place('종로', { latitude: 37.5729, longitude: 126.9794 });
+    const result = verifySpokenPlace({ spokenName: '종노', results: [seoulJongno], origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.reason).toBe('distant');
+  });
+
+  it('recognises a place already visited under its spoken spelling', () => {
+    const result = verifySpokenPlace({
+      spokenName: '종노',
+      results: [place('종로', { latitude: 37.5729, longitude: 126.9794 })],
+      origin: BUSAN,
+      savedPlaces: [saved('종로', { latitude: 37.5729, longitude: 126.9794 })],
+    });
+
+    expect(result.kind).toBe('confirmed');
+  });
+
+  it('matches the station the map annotates with its line', () => {
+    // What the search actually returns for 동래역, and what a name-only check could never match.
+    const annotated = place('동래역[부산지하철1호선]', dongnae.coordinate);
+
+    expect(verifySpokenPlace({ spokenName: '동내역', results: [annotated], origin: BUSAN }))
+      .toEqual({ kind: 'confirmed', place: annotated });
+  });
+
+  it('offers the longer name the map gave back for a spelling it guessed at', () => {
+    // 남포동 comes back as 중구 남포동, and 광안리 as 광안리해수욕장.
+    const district = place('중구 남포동', nampo.coordinate);
+    const result = verifySpokenPlace({
+      spokenName: '난포동',
+      results: [district],
+      origin: BUSAN,
+      variantNames: ['남포동'],
+    });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.reason).toBe('misheard');
+    expect(result.candidates[0].place).toBe(district);
+  });
+
+  it('asks about a spelling it guessed at rather than filling it in', () => {
+    // 난포동 for 남포동 is an ear, not a sound change. The app found it by trying another spelling,
+    // so it is a different word from the one that was said and the person has to say.
+    const result = verifySpokenPlace({
+      spokenName: '난포동',
+      results: [nampo],
+      origin: BUSAN,
+      variantNames: ['남포동', '낭포동'],
+    });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.reason).toBe('misheard');
+    expect(result.candidates[0].place).toBe(nampo);
+    expect(describePlaceVerification(result, '난포동')).toContain('난포동이라는');
+    expect(describePlaceVerification(result, '난포동')).toContain('비슷하게 들리는');
+  });
+
+  it('says nothing when even the other spellings found nothing that fits', () => {
+    expect(verifySpokenPlace({
+      spokenName: '난포동',
+      results: [gangnam],
+      origin: BUSAN,
+      variantNames: ['남포동'],
+    }).kind).toBe('none');
+  });
+
+  it('prefers what was actually said over a spelling it guessed at', () => {
+    const result = verifySpokenPlace({
+      spokenName: '동내역',
+      results: [nampo, dongnae],
+      origin: BUSAN,
+      variantNames: ['남포동'],
+    });
+
+    expect(result).toEqual({ kind: 'confirmed', place: dongnae });
+  });
+});
+
 describe('what the person is told', () => {
   it('reads distance the way the rest of the app does', () => {
     expect(formatPlaceDistance(null)).toBe('');
