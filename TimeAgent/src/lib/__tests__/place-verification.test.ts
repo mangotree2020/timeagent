@@ -135,6 +135,27 @@ describe('a name the recogniser spelled the way it is said', () => {
     expect(result.kind).toBe('confirmed');
   });
 
+  it('does not ask which 부산역 when both entries are the same 부산역', () => {
+    // What the map returns for 부산역: the place and the station, 151m apart. Asking which one is
+    // asking nothing, and it used to fill in without a word.
+    const plaza = place('부산역', { latitude: 35.11554918, longitude: 129.0403223 });
+    const platform = place('부산역[부산지하철1호선]', { latitude: 35.11446595, longitude: 129.03932242 });
+
+    expect(verifySpokenPlace({ spokenName: '부산역', results: [plaza, platform], origin: BUSAN }).kind)
+      .toBe('confirmed');
+  });
+
+  it('still asks when one name really does answer for two places', () => {
+    // The two 동래역 stations are 1.5km apart — far enough that picking for someone picks a walk.
+    const line1 = place('동래역[부산지하철1호선]', { latitude: 35.20512318, longitude: 129.078261 });
+    const donghae = place('동래역[동해선]', { latitude: 35.19734652, longitude: 129.09167671 });
+    const result = verifySpokenPlace({ spokenName: '동내역', results: [line1, donghae], origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.reason).toBe('ambiguous');
+    expect(result.candidates).toHaveLength(2);
+  });
+
   it('matches the station the map annotates with its line', () => {
     // What the search actually returns for 동래역, and what a name-only check could never match.
     const annotated = place('동래역[부산지하철1호선]', dongnae.coordinate);

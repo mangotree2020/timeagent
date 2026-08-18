@@ -14,6 +14,14 @@ export const DISTANT_PLACE_METERS = 50_000;
 /** How many options to put in front of someone. More than three is a list, not a question. */
 export const MAX_PLACE_CANDIDATES = 3;
 
+/**
+ * Within this, entries under one name are one place written down more than once, and asking which
+ * is asking nothing: 부산역 comes back as both 부산역 and 부산역[부산지하철1호선], 151m apart, and
+ * 서면역 as its two lines 96m apart. Beyond it the name really does answer for two places — the two
+ * 동래역 stations are 1.5km apart, which is a walk someone should get to decide.
+ */
+export const SAME_PLACE_METERS = 300;
+
 export type PlaceCandidate = {
   place: GeocodedPlace;
   /** Null when the device could not say where it is; distance then cannot be part of the decision. */
@@ -74,10 +82,10 @@ export function verifySpokenPlace({
   const heard = candidates.filter((item) => soundsLikeSpokenPlace(item.place.name, spokenName));
   const ranked = rankCandidates(heard.length ? heard : candidates);
 
-  if (heard.length > 1) {
+  if (heard.length > 1 && !isOnePlace(ranked)) {
     return { kind: 'choose', reason: 'ambiguous', candidates: ranked.slice(0, MAX_PLACE_CANDIDATES) };
   }
-  if (heard.length !== 1) {
+  if (!heard.length) {
     const corrected = candidates.filter((item) => variantNames.some((variant) => (
       soundsLikeSpokenPlace(item.place.name, variant) || spokenPlaceContains(item.place.name, variant)
     )));
@@ -100,6 +108,16 @@ export function verifySpokenPlace({
     reason: 'distant',
     candidates: [best, ...nearby].slice(0, MAX_PLACE_CANDIDATES),
   };
+}
+
+/**
+ * Whether every entry that answered to the name sits close enough to be one place. The nearest is
+ * the one that gets filled in, so the question is whether choosing differently would take anyone
+ * anywhere else.
+ */
+function isOnePlace(candidates: PlaceCandidate[]) {
+  const first = candidates[0].place.coordinate;
+  return candidates.every((item) => haversineDistanceMeters(first, item.place.coordinate) <= SAME_PLACE_METERS);
 }
 
 /** Places already visited first, then the closest, then whatever order the map returned. */
