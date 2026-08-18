@@ -2,6 +2,7 @@ import {
   buildGeminiInteractionBody,
   extractGeminiOutputText,
   extractGeminiUsage,
+  scheduleModelFor,
   withoutRedundantClarification,
   GEMINI_INTERACTIONS_URL,
 } from '../../../supabase/functions/_shared/gemini-assistant';
@@ -119,6 +120,51 @@ describe('Gemini assistant adapter', () => {
     expect(instruction).toContain('네 가지');
     expect(instruction).toContain('사용자가 말하지 않은');
     expect(instruction).toContain('빠른 선택지');
+  });
+});
+
+describe('which model answers', () => {
+  const env = (values: Record<string, string>) => (name: string) => values[name];
+
+  it('sends text to 3.5-flash-lite and audio to 3.1-flash-lite', () => {
+    // The split the 5,000-run comparison measured: 3.5 was more accurate and faster on text and no
+    // more accurate on audio, where it cost 1.14s and 93% more per request.
+    expect(scheduleModelFor('text', env({}))).toBe('gemini-3.5-flash-lite');
+    expect(scheduleModelFor('audio', env({}))).toBe('gemini-3.1-flash-lite');
+  });
+
+  it('lets one secret pin both modalities back to a single model', () => {
+    const pinned = env({ GEMINI_SCHEDULE_MODEL: 'gemini-3.1-flash-lite' });
+
+    expect(scheduleModelFor('text', pinned)).toBe('gemini-3.1-flash-lite');
+    expect(scheduleModelFor('audio', pinned)).toBe('gemini-3.1-flash-lite');
+  });
+
+  it('lets the pin win over a per-modality setting, so rollback needs one secret and not three', () => {
+    const both = env({
+      GEMINI_SCHEDULE_MODEL: 'gemini-3.1-flash-lite',
+      GEMINI_SCHEDULE_MODEL_TEXT: 'gemini-3.6-flash',
+      GEMINI_SCHEDULE_MODEL_AUDIO: 'gemini-3.6-flash',
+    });
+
+    expect(scheduleModelFor('text', both)).toBe('gemini-3.1-flash-lite');
+    expect(scheduleModelFor('audio', both)).toBe('gemini-3.1-flash-lite');
+  });
+
+  it('moves one modality without touching the other', () => {
+    const textOnly = env({ GEMINI_SCHEDULE_MODEL_TEXT: 'gemini-3.6-flash' });
+
+    expect(scheduleModelFor('text', textOnly)).toBe('gemini-3.6-flash');
+    expect(scheduleModelFor('audio', textOnly)).toBe('gemini-3.1-flash-lite');
+  });
+
+  it('ignores a malformed name rather than sending it upstream', () => {
+    // A typo in a secret should not be able to take the assistant down for every request.
+    for (const broken of ['', '   ', 'gemini 3.5', 'gemini/../admin', 'gemini-3.5\nflash']) {
+      expect(scheduleModelFor('text', env({ GEMINI_SCHEDULE_MODEL: broken }))).toBe('gemini-3.5-flash-lite');
+    }
+    // Whitespace around an otherwise good name is a paste artefact, not a typo.
+    expect(scheduleModelFor('audio', env({ GEMINI_SCHEDULE_MODEL: ' gemini-3.6-flash ' }))).toBe('gemini-3.6-flash');
   });
 });
 

@@ -17,6 +17,34 @@ type GeminiInput =
   | { type: "text"; text: string }
   | { type: "audio"; data: string; mime_type: string };
 
+/**
+ * Which model answers depends on what arrived, because the 5,000-run comparison did not find one
+ * winner. On text, 3.5-flash-lite passed more cases (97.5% against 93.7%) and answered faster; on
+ * audio it was no more accurate while costing 1.14s more at the median and 93% more per request.
+ * Routing takes the better half of each rather than paying the audio penalty to win at text.
+ */
+export const DEFAULT_TEXT_MODEL = "gemini-3.5-flash-lite";
+export const DEFAULT_AUDIO_MODEL = "gemini-3.1-flash-lite";
+
+/**
+ * `GEMINI_SCHEDULE_MODEL` pins both modalities to one model and wins over the per-modality
+ * settings. It is the rollback lever: one secret, and routing is out of the picture without a
+ * deploy — which is what someone reaching for it mid-incident will want. A malformed name is
+ * ignored rather than passed upstream, so a typo in a secret cannot take the assistant down.
+ */
+export function scheduleModelFor(kind: "text" | "audio", readEnv: (name: string) => string | undefined) {
+  const pinned = validModelName(readEnv("GEMINI_SCHEDULE_MODEL"));
+  if (pinned) return pinned;
+  const audio = kind === "audio";
+  const configured = validModelName(readEnv(audio ? "GEMINI_SCHEDULE_MODEL_AUDIO" : "GEMINI_SCHEDULE_MODEL_TEXT"));
+  return configured ?? (audio ? DEFAULT_AUDIO_MODEL : DEFAULT_TEXT_MODEL);
+}
+
+function validModelName(value: string | undefined) {
+  const model = value?.trim();
+  return model && /^[a-zA-Z0-9._-]+$/.test(model) ? model : null;
+}
+
 export function buildGeminiInteractionBody(model: string, turn: GeminiAssistantTurn) {
   if (!/^[a-zA-Z0-9._-]+$/.test(model)) throw new Error("Invalid Gemini model name");
   const inputInstruction = turn.input.kind === "audio"

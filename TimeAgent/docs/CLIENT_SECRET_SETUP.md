@@ -50,7 +50,7 @@ npx supabase functions deploy weather --no-verify-jwt
 
 함수에서는 `Deno.env.get('NAVER_CLIENT_SECRET')` 형태로 읽는다. 앱 코드와 `EXPO_PUBLIC_` 변수에는 비밀값을 두지 않는다.
 
-음성 일정 도우미는 `GEMINI_API_KEY`를 Edge Function Secret으로만 읽는다. 선택적으로 `GEMINI_SCHEDULE_MODEL`을 설정할 수 있으며 기본 모델은 `gemini-3.1-flash-lite`다. Gemini가 인라인 음성 전사와 구조화된 일정 제안을 한 요청에서 처리한다. 앱에는 공개 proxy URL인 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 둘 수 있다. 이 값이 없으면 mobility URL의 마지막 `/mobility`를 `/assistant`로 바꿔 같은 Supabase 프로젝트를 사용한다.
+음성 일정 도우미는 `GEMINI_API_KEY`를 Edge Function Secret으로만 읽는다. 모델은 입력 형태에 따라 갈린다. 텍스트는 `gemini-3.5-flash-lite`, 음성은 `gemini-3.1-flash-lite`가 기본이며 근거는 `docs/GEMINI_BENCHMARK.md`의 5,000건 비교다. Gemini가 인라인 음성 전사와 구조화된 일정 제안을 한 요청에서 처리한다. 앱에는 공개 proxy URL인 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 둘 수 있다. 이 값이 없으면 mobility URL의 마지막 `/mobility`를 `/assistant`로 바꿔 같은 Supabase 프로젝트를 사용한다.
 
 배포된 endpoint는 다음과 같다.
 
@@ -77,7 +77,9 @@ Supabase Edge Function Secrets에 다음을 암호화된 비밀값으로 등록�
 
 선택 설정:
 
-- `GEMINI_SCHEDULE_MODEL`: 기본값 `gemini-3.1-flash-lite`
+- `GEMINI_SCHEDULE_MODEL_TEXT`: 기본값 `gemini-3.5-flash-lite`
+- `GEMINI_SCHEDULE_MODEL_AUDIO`: 기본값 `gemini-3.1-flash-lite`
+- `GEMINI_SCHEDULE_MODEL`: 설정하면 두 형태 모두 이 모델 하나로 고정된다. 위 두 값보다 우선하므로 라우팅을 되돌리는 레버는 secret 하나다. 형식이 잘못된 이름은 무시하고 기본값을 쓴다.
 
 앱 빌드 환경에는 공개 proxy URL인 `EXPO_PUBLIC_MOBILITY_API_BASE_URL`, `EXPO_PUBLIC_WEATHER_API_BASE_URL`과 필요 시 `EXPO_PUBLIC_ASSISTANT_API_BASE_URL`만 설정한다. 개발·스테이징·운영 키와 공급자 허용 범위를 각각 분리한다.
 

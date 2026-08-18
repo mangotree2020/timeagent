@@ -51,9 +51,13 @@ describe('isolated benchmark Edge Function stays a twin of production', () => {
   });
 
   test('it never falls back to the production model configuration', () => {
-    expect(production).toContain('GEMINI_SCHEDULE_MODEL');
+    // Production routes by modality and reads secrets to do it; the twin must do neither, or a
+    // benchmark row could be measured on whatever model production happens to be configured for.
+    expect(production).toContain('scheduleModelFor');
+    expect(benchmark).not.toContain('scheduleModelFor');
     expect(benchmark).not.toContain('GEMINI_SCHEDULE_MODEL');
-    expect(benchmark).not.toContain('DEFAULT_GEMINI_MODEL');
+    expect(benchmark).not.toContain('DEFAULT_TEXT_MODEL');
+    expect(benchmark).not.toContain('DEFAULT_AUDIO_MODEL');
   });
 });
 

@@ -5,11 +5,11 @@ import {
   GEMINI_INTERACTIONS_URL,
   GeminiAssistantTurn,
   normalizeGeminiAudioMimeType,
+  scheduleModelFor,
   withoutRedundantClarification,
 } from "../_shared/gemini-assistant.ts";
 import { corsHeaders, jsonResponse } from "../_shared/http.ts";
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 const MAX_AUDIO_BASE64 = 7_000_000;
 const MAX_HISTORY = 8;
 
@@ -22,7 +22,7 @@ Deno.serve(async (request) => {
     return jsonResponse({
       status: "ok",
       provider: "gemini",
-      model: configuredModel(),
+      models: { text: modelFor("text"), audio: modelFor("audio") },
       geminiConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")?.trim()),
     });
   }
@@ -45,10 +45,11 @@ Deno.serve(async (request) => {
       clientContext: body.clientContext,
       flowContext: body.flowContext,
     };
+    const model = modelFor(body.input.kind);
     const response = await geminiRequest(
       GEMINI_INTERACTIONS_URL,
       apiKey,
-      buildGeminiInteractionBody(configuredModel(), turn),
+      buildGeminiInteractionBody(model, turn),
       45_000,
     );
     const payload: unknown = await response.json();
@@ -60,7 +61,7 @@ Deno.serve(async (request) => {
       ...result,
       _meta: {
         provider: "gemini",
-        model: configuredModel(),
+        model,
         usage: extractGeminiUsage(payload),
       },
     });
@@ -72,9 +73,8 @@ Deno.serve(async (request) => {
   }
 });
 
-function configuredModel() {
-  const model = Deno.env.get("GEMINI_SCHEDULE_MODEL")?.trim() || DEFAULT_GEMINI_MODEL;
-  return /^[a-zA-Z0-9._-]+$/.test(model) ? model : DEFAULT_GEMINI_MODEL;
+function modelFor(kind: Input["kind"]) {
+  return scheduleModelFor(kind, (name) => Deno.env.get(name));
 }
 
 async function geminiRequest(url: string, apiKey: string, body: unknown, timeoutMs: number) {

@@ -1,5 +1,16 @@
 # 실행 계획
 
+## 2026-08-18 입력 형태로 모델을 고르는 서버 라우팅 (완료, 운영 배포)
+
+- Accept: 5,000건 비교가 남긴 결론을 운영에 반영한다. 텍스트 요청은 `gemini-3.5-flash-lite`, 음성 요청은 `gemini-3.1-flash-lite`가 답한다. 되돌리는 방법이 배포 없이 있어야 한다.
+- Decide: 사용자 승인을 받고 진행했다. 이전 기록의 "승인 전 배포 금지"는 이 승인으로 해소됐다.
+- Implement: 모델 결정을 `_shared/gemini-assistant.ts`의 `scheduleModelFor(kind, readEnv)`로 옮겨 순수 함수로 만들고 `assistant`가 요청의 `input.kind`로 호출한다. 우선순위는 `GEMINI_SCHEDULE_MODEL`(둘 다 이 모델 하나로 고정) → `GEMINI_SCHEDULE_MODEL_TEXT`/`GEMINI_SCHEDULE_MODEL_AUDIO` → 기본값이다. 단일 secret이 라우팅을 통째로 덮는 구조라 롤백은 secret 하나 설정이며 배포가 필요 없다. 형식이 잘못된 이름은 상류로 보내지 않고 무시한다. secret 오타 하나가 모든 요청을 죽이지 못하게 하기 위해서다. `/health`는 `model` 스칼라 대신 `models: {text, audio}`를 낸다.
+- Verify: 라우팅 단위 테스트 5건(기본 분기, 단일 고정, 고정 우선, 한쪽만 이동, 잘못된 이름 무시)을 추가했고 `npm run verify` 41스위트·386/386 통과. 격리 트윈 계약 테스트는 트윈이 `scheduleModelFor`와 모델 환경변수를 갖지 않는지로 갱신했다. 벤치마크 행이 운영 모델 설정에 좌우되면 안 되기 때문이다.
+- Measure: `assistant` v26 배포 후 운영에서 실측했다. `/health`가 `{"text":"gemini-3.5-flash-lite","audio":"gemini-3.1-flash-lite"}`를 냈고, 같은 문장을 텍스트와 음성으로 각각 보내 `_meta.model`이 의도한 모델로 갈리는 것을 확인했다. 두 응답 모두 날짜 2026-08-19·15:00·부산역·지하철을 정확히 채우고 되묻지 않았다.
+- Cost: 텍스트 요청 단가가 약 23% 오르고(1,000건 $0.885 → $1.090) 음성은 그대로다. 텍스트 사례 통과율 93.7% → 97.5%가 그 대가다.
+- Rollback: `npx supabase secrets set GEMINI_SCHEDULE_MODEL=gemini-3.1-flash-lite` 하나로 배포 전 동작으로 돌아간다.
+- Evidence: `supabase/functions/_shared/gemini-assistant.ts`, `supabase/functions/assistant/index.ts`, `src/lib/__tests__/gemini-assistant.test.ts`, `scripts/assistant-benchmark-contract.test.js`, `docs/CLIENT_SECRET_SETUP.md`.
+
 ## 2026-08-17 들린 장소를 현재 위치로 검증 (완료)
 
 - Observe: 음성 인식이 `서면역`을 `역삼역`으로 바꾸면 이름만 비교하는 검색은 서울 역삼역을 정확히 일치하는 결과로 판단해 그대로 확정했다. 게다가 검색 원점이 사용자의 실제 위치가 아니라 `DEFAULT_MAP_CENTER`(부산 하드코딩)였다. 지도를 열지 않은 서울 사용자는 말한 장소가 부산 기준으로 검색됐다.
@@ -8,7 +19,8 @@
 - Verify: 단위 41스위트·379/379(장소 검증 11건 신규), 시각 회귀 234/234, lint·tsc 통과. 실기기 `SM-N971N`(부산)에서 `역삼역` 발화가 자동 확정되지 않고 부산 결과 목록으로 떨어지는 것을 확인했다.
 - Limit: NAVER 검색이 원점 편향으로 먼 지역 결과를 대부분 걸러내서, 거리 판정 분기는 실기기에서 자연 발생시키기 어려웠다. 해당 분기는 단위 테스트로만 검증했다. 웹 e2e는 위치 권한과 검색 네트워크가 테스트 환경에서 동작하지 않아 추가하지 않았다.
 - Next: 사용자가 제안한 4단계(전용 STT 문맥 보정)는 남겨 뒀다. 지금은 검색을 보정이 아니라 검증에만 쓰고 확신이 없으면 사용자가 고른다.
-- Evidence: `src/lib/place-verification.ts`, `src/lib/__tests__/place-verification.test.ts`.
+- Followup: 실기기 확인에서 이 기능이 낸 문구에 플레이스홀더가 남아 있었다. 두 곳의 `남산타워`를 물을 때 `남산타워(이)라는 이름의 장소가 여러 곳이에요`로 읽혔다. 이름은 방금 들은 말이라 `(이)라는`이 대신할 것이 없으므로 받침에 맞는 조사로 붙이도록 고쳤다(`withNamingParticle`).
+- Evidence: `src/lib/place-verification.ts`, `src/lib/__tests__/place-verification.test.ts`, `src/lib/local-notifications.ts`.
 
 ## 2026-08-17 말한 이동수단과 약속명을 그대로 받기 (완료, 기본 모델 유지)
 
