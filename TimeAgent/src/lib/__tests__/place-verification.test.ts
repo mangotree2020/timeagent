@@ -1,7 +1,9 @@
 import {
+  chooseNationwidePlaces,
   describePlaceVerification,
   DISTANT_PLACE_METERS,
   formatPlaceDistance,
+  MAX_PLACE_CANDIDATES,
   verifySpokenPlace,
 } from '../place-verification';
 import { GeocodedPlace } from '../journey';
@@ -217,6 +219,79 @@ describe('a name the recogniser spelled the way it is said', () => {
   });
 });
 
+describe('choosing among what the whole country answered', () => {
+  const hongdae = place('홍대입구역[2호선]', { latitude: 37.5570, longitude: 126.9245 });
+  const hongdaeExit = place('홍대입구역 9번출구', { latitude: 37.5578, longitude: 126.9236 });
+  const daejeon = place('서구 둔산동', { latitude: 36.3504, longitude: 127.3845 });
+  const daegu = place('동구 둔산동', { latitude: 35.8714, longitude: 128.6014 });
+
+  it('never fills in a place found somewhere nobody named, however alone it stands', () => {
+    // The one thing this must not do: the app went looking across the country off its own bat, so
+    // even a single unambiguous answer 325km away is the person’s to confirm.
+    const result = chooseNationwidePlaces({ spokenName: '홍대입구역', results: [hongdae], origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.reason).toBe('faraway');
+    expect(result.candidates).toEqual([
+      { place: hongdae, distanceMeters: expect.any(Number), visitedBefore: false },
+    ]);
+    expect(result.candidates[0].distanceMeters).toBeGreaterThan(300_000);
+  });
+
+  it('offers the word itself rather than the places written inside it', () => {
+    const result = chooseNationwidePlaces({ spokenName: '홍대입구역', results: [hongdaeExit, hongdae], origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.candidates.map((candidate) => candidate.place)).toEqual([hongdae]);
+  });
+
+  it('falls back to the longer names carrying it when nothing answers outright', () => {
+    // 둔산동 is only ever written 서구 둔산동 in 대전 and 동구 둔산동 in 대구, so the longer names are
+    // the whole answer to which one was meant. The nearer of the two leads.
+    const result = chooseNationwidePlaces({ spokenName: '둔산동', results: [daejeon, daegu], origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.candidates.map((candidate) => candidate.place.name)).toEqual(['동구 둔산동', '서구 둔산동']);
+  });
+
+  it('leads with somewhere this person has been, however far past the nearer one it is', () => {
+    const result = chooseNationwidePlaces({
+      spokenName: '둔산동',
+      results: [daegu, daejeon],
+      origin: BUSAN,
+      savedPlaces: [saved('서구 둔산동', daejeon.coordinate)],
+    });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.candidates[0].place.name).toBe('서구 둔산동');
+    expect(result.candidates[0].visitedBefore).toBe(true);
+  });
+
+  it('asks with a handful of options rather than reading out the country', () => {
+    const everywhere = ['서구', '동구', '북구', '남구'].map((district, index) =>
+      place(`${district} 둔산동`, { latitude: 35.5 + index, longitude: 127.5 }));
+    const result = chooseNationwidePlaces({ spokenName: '둔산동', results: everywhere, origin: BUSAN });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.candidates).toHaveLength(MAX_PLACE_CANDIDATES);
+  });
+
+  it('has nothing to offer when nothing that came back answers to the name', () => {
+    // A sweep of 17 regions returns whatever each one had. Anything that is not the name asked for
+    // is not an option, it is noise.
+    expect(chooseNationwidePlaces({ spokenName: '홍대입구역', results: [seomyeon], origin: BUSAN })).toEqual({ kind: 'none' });
+    expect(chooseNationwidePlaces({ spokenName: '홍대입구역', results: [], origin: BUSAN })).toEqual({ kind: 'none' });
+    expect(chooseNationwidePlaces({ spokenName: '  ', results: [hongdae], origin: BUSAN })).toEqual({ kind: 'none' });
+  });
+
+  it('still offers what it found when the device cannot say where the person is', () => {
+    const result = chooseNationwidePlaces({ spokenName: '홍대입구역', results: [hongdae], origin: null });
+
+    if (result.kind !== 'choose') throw new Error('expected a question');
+    expect(result.candidates[0].distanceMeters).toBeNull();
+  });
+});
+
 describe('what the person is told', () => {
   it('reads distance the way the rest of the app does', () => {
     expect(formatPlaceDistance(null)).toBe('');
@@ -240,5 +315,11 @@ describe('what the person is told', () => {
     // The name is quoted back with a real particle, not the (이)라는 placeholder.
     expect(describePlaceVerification(ambiguous, '서면역')).toContain('서면역이라는');
     expect(describePlaceVerification(ambiguous, '서면역')).not.toContain('(이)');
+
+    // A place in another province is a surprising answer unless the person is told the app went
+    // looking for it there.
+    const faraway = chooseNationwidePlaces({ spokenName: '역삼역', results: [yeoksam], origin: BUSAN });
+    if (faraway.kind !== 'choose') throw new Error('expected a question');
+    expect(describePlaceVerification(faraway, '역삼역')).toContain('전국에서 찾았어요');
   });
 });

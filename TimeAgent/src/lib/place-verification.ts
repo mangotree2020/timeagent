@@ -36,9 +36,11 @@ export type PlaceVerification =
   /**
    * Found something, but not something to act on alone. `distant` means the only match is a city
    * away; `ambiguous` means several places answer to the same name; `misheard` means nothing
-   * answered to the name as heard and these came back under a spelling that sounds close to it.
+   * answered to the name as heard and these came back under a spelling that sounds close to it;
+   * `faraway` means nothing near the person answered at all and these were found by looking across
+   * the country.
    */
-  | { kind: 'choose'; reason: 'distant' | 'ambiguous' | 'misheard'; candidates: PlaceCandidate[] }
+  | { kind: 'choose'; reason: 'distant' | 'ambiguous' | 'misheard' | 'faraway'; candidates: PlaceCandidate[] }
   | { kind: 'none' };
 
 function distanceFrom(origin: Coordinate | null, place: GeocodedPlace) {
@@ -119,6 +121,51 @@ export function verifySpokenPlace({
 }
 
 /**
+ * What to offer once the search has been run across the whole country because nothing near the
+ * person answered. These are never filled in on their own however clear they look: the app went
+ * looking somewhere the person never said, and a destination 300km away is theirs to confirm.
+ *
+ * Names that are the word itself come first — 홍대입구역 before 홍대입구역 9번출구 — and where nothing
+ * matches outright, the longer names that contain it are all there is: 둔산동 is only ever written
+ * 서구 둔산동 in 대전 and 동구 둔산동 in 대구, which is the whole answer to which one was meant.
+ */
+export function chooseNationwidePlaces({
+  spokenName,
+  results,
+  origin,
+  savedPlaces = [],
+}: {
+  spokenName: string;
+  results: GeocodedPlace[];
+  origin: Coordinate | null;
+  savedPlaces?: SavedPlace[];
+}): PlaceVerification {
+  if (!spokenName.trim() || !results.length) return { kind: 'none' };
+
+  const visited = savedPlaces.map((place) => place.name);
+  const candidate = (place: GeocodedPlace): PlaceCandidate => ({
+    place,
+    distanceMeters: distanceFrom(origin, place),
+    visitedBefore: visited.some((name) => soundsLikeSpokenPlace(name, place.name)),
+  });
+
+  const named = results.filter((place) => soundsLikeSpokenPlace(place.name, spokenName));
+  const containing = results.filter((place) => !named.includes(place) && spokenPlaceContains(place.name, spokenName));
+  const pool = named.length ? named : containing;
+  if (!pool.length) return { kind: 'none' };
+
+  // Least extra material first: 서구 둔산동 is the place, 동구 둔산동 옻골마을 is somewhere inside it.
+  const ranked = pool.map(candidate).sort((left, right) => {
+    if (left.visitedBefore !== right.visitedBefore) return left.visitedBefore ? -1 : 1;
+    const byLength = left.place.name.length - right.place.name.length;
+    if (byLength !== 0) return byLength;
+    if (left.distanceMeters === null || right.distanceMeters === null) return 0;
+    return left.distanceMeters - right.distanceMeters;
+  });
+  return { kind: 'choose', reason: 'faraway', candidates: ranked.slice(0, MAX_PLACE_CANDIDATES) };
+}
+
+/**
  * Whether every entry that answered to the name sits close enough to be one place. The nearest is
  * the one that gets filled in, so the question is whether choosing differently would take anyone
  * anywhere else.
@@ -151,6 +198,11 @@ export function formatPlaceDistance(distanceMeters: number | null) {
 export function describePlaceVerification(verification: Extract<PlaceVerification, { kind: 'choose' }>, spokenName: string) {
   if (verification.reason === 'ambiguous') {
     return `${withNamingParticle(spokenName)} 이름의 장소가 여러 곳이에요. 어디인지 골라 주세요.`;
+  }
+  if (verification.reason === 'faraway') {
+    // Say where the app went looking. A place hundreds of kilometres away is a surprising answer
+    // unless the person is told the search widened to find it.
+    return `${withNamingParticle(spokenName)} 곳이 이 근처에는 없어서 전국에서 찾았어요. 맞는 곳을 골라 주세요.`;
   }
   if (verification.reason === 'misheard') {
     // Say that the name was not found rather than that it was wrong: the person said it correctly

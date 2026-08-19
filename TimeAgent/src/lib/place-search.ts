@@ -1,7 +1,7 @@
 import { Coordinate, GeocodedPlace } from './journey';
-import { KoreaRegion, regionSpokenIn } from './korea-regions';
+import { KOREA_REGIONS, KoreaRegion, regionSpokenIn } from './korea-regions';
 import { spokenNameVariants } from './place-transcription';
-import { PlaceVerification, verifySpokenPlace } from './place-verification';
+import { chooseNationwidePlaces, PlaceVerification, verifySpokenPlace } from './place-verification';
 import { SavedPlace } from './saved-places';
 
 /**
@@ -9,6 +9,13 @@ import { SavedPlace } from './saved-places';
  * are searched in parallel, so this is one more round trip rather than three.
  */
 export const MAX_VARIANT_SEARCHES = 3;
+
+/**
+ * How many spellings the nationwide sweep carries: the name as heard, and the one other spelling
+ * most likely to be what it meant. Across 17 regions that is 34 queries — measured at about
+ * 0.6 seconds in parallel — and it only ever runs after everything nearby has already come up empty.
+ */
+export const NATIONWIDE_SPELLINGS = 2;
 
 /** Runs one query, anchored wherever the caller says. Rejections are part of the answer, not the end. */
 export type PlaceQuery = (query: string, near: Coordinate | null) => Promise<GeocodedPlace[]>;
@@ -21,15 +28,10 @@ export type SpokenPlaceSearch = {
    * named, with nothing on screen to say where they came from.
    */
   results: GeocodedPlace[];
-  /**
-   * Set when the place was not found anywhere near the person and they have not said where it is.
-   * Search is anchored to where they are standing, so a place in another province is not merely
-   * hard to find — it is unreachable. Which region it is in is the one thing they know for certain,
-   * so it is worth a question.
-   */
-  askRegion: boolean;
   /** The region read out of the spoken name, when they had already said it. */
   spokenRegion: KoreaRegion | null;
+  /** Set when the answer came from the nationwide sweep rather than from anywhere near the person. */
+  searchedNationwide: boolean;
   /**
    * Set when the map could not answer and nothing else did either. Carried rather than thrown
    * because a name the map rejects is the strongest hint that it was written down as it sounds:
@@ -60,7 +62,6 @@ export async function searchSpokenPlace({
   origin,
   savedPlaces = [],
   search,
-  region = null,
   maxVariants = MAX_VARIANT_SEARCHES,
 }: {
   spokenName: string;
@@ -68,15 +69,13 @@ export async function searchSpokenPlace({
   origin: Coordinate | null;
   savedPlaces?: SavedPlace[];
   search: PlaceQuery;
-  /** The region they picked, when the app has already had to ask. */
-  region?: KoreaRegion | null;
   maxVariants?: number;
 }): Promise<SpokenPlaceSearch> {
   // Saying 서울 홍대입구역 answers the region question in advance — but only as an anchor. Left in the
   // query the region word costs the answer: it returns a hotel called 서울홍대 instead of the station.
-  const spoken = region ? null : regionSpokenIn(spokenName);
+  const spoken = regionSpokenIn(spokenName);
   const name = spoken?.placeName ?? spokenName;
-  const anchor = region ?? spoken?.region ?? null;
+  const anchor = spoken?.region ?? null;
   const regionNamed = Boolean(anchor);
   const near = anchor?.coordinate ?? origin;
 
@@ -86,34 +85,50 @@ export async function searchSpokenPlace({
     return [] as GeocodedPlace[];
   });
 
-  const settle = (verification: PlaceVerification, found: GeocodedPlace[]): SpokenPlaceSearch => {
-    // Asking again after they have already said where gets the same answer twice.
-    const asking = verification.kind === 'none' && !regionNamed;
-    return {
-      verification,
-      results: found,
-      askRegion: asking,
-      spokenRegion: spoken?.region ?? null,
-      // A question someone can answer beats an error they cannot, so the failure is dropped rather
-      // than carried alongside it — there is nothing for a caller to do with both.
-      failure: verification.kind === 'none' && !asking ? failure : null,
-    };
-  };
+  const settle = (
+    verification: PlaceVerification,
+    found: GeocodedPlace[],
+    searchedNationwide = false,
+  ): SpokenPlaceSearch => ({
+    verification,
+    results: found,
+    spokenRegion: spoken?.region ?? null,
+    searchedNationwide,
+    // An answer someone can act on beats an error they cannot, so the failure is only reported when
+    // nothing else came of the search.
+    failure: verification.kind === 'none' ? failure : null,
+  });
 
   const heard = verifySpokenPlace({ spokenName: name, results, origin, savedPlaces, regionNamed });
   if (heard.kind !== 'none') return settle(heard, results);
 
+  // A name no sound change touches has no other spelling to try, but it can still be somewhere else
+  // in the country, so the sweep below is not skipped along with the spellings.
   const variantNames = spokenNameVariants(name, maxVariants);
-  if (!variantNames.length) return settle(heard, results);
+  if (variantNames.length) {
+    const found = await Promise.all(variantNames.map((variant) => search(variant, near).catch(() => [] as GeocodedPlace[])));
+    const corrected = verifySpokenPlace({
+      spokenName: name,
+      results: dedupePlaces([...results, ...found.flat()]),
+      origin,
+      savedPlaces,
+      variantNames,
+      regionNamed,
+    });
+    if (corrected.kind !== 'none') return settle(corrected, results);
+  }
+  if (regionNamed) return settle(heard, results);
 
-  const found = await Promise.all(variantNames.map((variant) => search(variant, near).catch(() => [] as GeocodedPlace[])));
-  const verification = verifySpokenPlace({
-    spokenName: name,
-    results: dedupePlaces([...results, ...found.flat()]),
-    origin,
-    savedPlaces,
-    variantNames,
-    regionNamed,
-  });
-  return settle(verification, results);
+  // Nothing near the person answers to the name, and search only ever reaches what it is pointed at.
+  // Somewhere else in the country almost certainly has it, so the app goes and looks rather than
+  // handing back an error or a question about provinces.
+  const nationwide = await searchNationwide([name, ...variantNames].slice(0, NATIONWIDE_SPELLINGS), search);
+  return settle(chooseNationwidePlaces({ spokenName: name, results: nationwide, origin, savedPlaces }), results, true);
+}
+
+/** The same name asked of every region at once, because one anchor only ever sees its own. */
+async function searchNationwide(names: string[], search: PlaceQuery) {
+  const found = await Promise.all(names.flatMap((name) => KOREA_REGIONS
+    .map((region) => search(name, region.coordinate).catch(() => [] as GeocodedPlace[]))));
+  return dedupePlaces(found.flat());
 }

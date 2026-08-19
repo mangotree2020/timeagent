@@ -11,14 +11,12 @@ import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { googleAuthProvider } from '@/lib/google-auth-provider';
 import { Coordinate, GeocodedPlace } from '@/lib/journey';
-import { withNamingParticle } from '@/lib/local-notifications';
 import { createConfiguredMobilityProvider, MobilityApiError } from '@/lib/mobility-api';
 import {
   describePlaceVerification,
   formatPlaceDistance,
   PlaceVerification,
 } from '@/lib/place-verification';
-import { KoreaRegion, KOREA_REGIONS } from '@/lib/korea-regions';
 import { searchSpokenPlace } from '@/lib/place-search';
 import { displayAddress, loadSavedPlaces, mergeRemoteSavedPlaces, rememberPlace, SavedPlace } from '@/lib/saved-places';
 import { createConfiguredSavedPlacesRemote } from '@/lib/saved-places-remote';
@@ -67,8 +65,6 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
   const [mapStatus, setMapStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   // Set while the app is asking rather than deciding, so the list can explain itself.
   const [verification, setVerification] = useState<Extract<PlaceVerification, { kind: 'choose' }> | null>(null);
-  // Set when the place was nowhere near the person and only they can say which province it is in.
-  const [askRegion, setAskRegion] = useState(false);
 
   // The owner can replace the destination after this picker is mounted, which the voice flow does on
   // every assistant turn. Without following it the field keeps searching for the name it opened with,
@@ -76,8 +72,6 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
   if (syncedDestination !== value.destination) {
     setSyncedDestination(value.destination);
     setQuery(value.destination);
-    // A different name is a different question; the region answered for the old one.
-    setAskRegion(false);
   }
 
   const userId = user?.id ?? null;
@@ -138,20 +132,16 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
   }, []);
 
   /** What the list shows when the app has nothing to say about the results beyond finding them. */
-  const showResults = useCallback((results: GeocodedPlace[], region: KoreaRegion | null = null) => {
+  const showResults = useCallback((results: GeocodedPlace[]) => {
     setVerification(null);
-    setAskRegion(false);
     setPlaces(results);
     setStatus(results.length ? 'success' : 'empty');
-    // Naming the region back is what tells someone the list is answering the question they were
-    // just asked, rather than repeating the search that had already failed.
-    const where = region ? `${region.name}에서 ` : '';
     setMessage(results.length
-      ? `${where}${results.length}개의 장소를 찾았습니다.`
-      : `${where}일치하는 장소가 없습니다. 검색어를 바꾸거나 지도에서 지정해 주세요.`);
+      ? `${results.length}개의 장소를 찾았습니다.`
+      : '일치하는 장소가 없습니다. 검색어를 바꾸거나 지도에서 지정해 주세요.');
   }, []);
 
-  const search = useCallback(async (region: KoreaRegion | null = null) => {
+  const search = useCallback(async () => {
     const normalized = query.trim();
     if (!normalized) return;
     requestRef.current?.abort();
@@ -180,25 +170,13 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
         return;
       }
 
-      const { verification, results, askRegion: needsRegion, failure } = await searchSpokenPlace({
+      const { verification, results, failure } = await searchSpokenPlace({
         spokenName: normalized,
         origin,
         savedPlaces,
         search: runSearch,
-        region,
       });
       if (controller.signal.aborted) return;
-
-      // Nothing near the person answers to the name. Somewhere else in the country probably does,
-      // and which province is the one thing they can say without guessing.
-      if (needsRegion) {
-        setVerification(null);
-        setPlaces([]);
-        setAskRegion(true);
-        setStatus('success');
-        setMessage(`${withNamingParticle(normalized)} 곳을 이 근처에서 찾지 못했어요. 어느 지역인가요?`);
-        return;
-      }
       if (failure) throw failure;
 
       if (verification.kind === 'confirmed') {
@@ -207,7 +185,6 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
         setQuery(place.name);
         setPlaces([]);
         setVerification(null);
-        setAskRegion(false);
         setStatus('idle');
         setMessage(`${place.name} 위치를 지도에서 확인했습니다.`);
         setMapCoordinate(place.coordinate);
@@ -218,17 +195,15 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
       if (verification.kind === 'choose') {
         // Never substitute a name the person did not say. Show what was found and let them decide.
         setVerification(verification);
-        setAskRegion(false);
         setPlaces(verification.candidates.map((candidate) => candidate.place));
         setStatus('success');
         setMessage(describePlaceVerification(verification, normalized));
         return;
       }
-      showResults(results, region);
+      showResults(results);
     } catch (error) {
       if (controller.signal.aborted) return;
       setPlaces([]);
-      setAskRegion(false);
       setStatus('error');
       setMessage(error instanceof MobilityApiError ? error.message : '장소를 검색하지 못했습니다. 지도에서 직접 지정할 수 있어요.');
     }
@@ -319,15 +294,8 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
     <View style={styles.section}>
       <Text style={styles.label}>장소명 검색</Text>
-      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={c.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null }); setStatus('idle'); setPlaces([]); setAskRegion(false); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={c.surface} /></Pressable></View>
+      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={c.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null }); setStatus('idle'); setPlaces([]); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={c.surface} /></Pressable></View>
       {message ? <Text accessibilityLiveRegion="polite" style={[styles.message, status === 'error' && styles.error]}>{message}</Text> : null}
-      {askRegion ? <View style={styles.regionList}>{KOREA_REGIONS.map((region) => <Pressable
-        key={region.name}
-        accessibilityRole="button"
-        accessibilityLabel={`${region.name} 지역에서 다시 찾기`}
-        onPress={() => void search(region)}
-        style={({ pressed }) => [styles.regionChip, pressed && styles.pressed]}
-      ><Text style={styles.regionText}>{region.name}</Text></Pressable>)}</View> : null}
       {places.map((place) => {
         // While the app is asking rather than deciding, each option carries how far away it is —
         // that is the fact that tells a misheard station in another city from the right one.
@@ -376,9 +344,6 @@ const createStyles = (c: AppPalette) => {
   selectedName: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
   section: { gap: space.sm }, label: { fontSize: 13, color: c.textMuted, fontWeight: '800' },
   savedList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  regionList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  regionChip: { minHeight: 44, minWidth: 62, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.deepBlue },
-  regionText: { color: c.deepBlue, fontSize: 14, fontWeight: '800' },
   savedChip: { minHeight: 44, maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
   savedText: { flexShrink: 1, color: c.deepBlue, fontSize: 13, fontWeight: '800' },
   searchRow: { flexDirection: 'row', gap: space.sm },

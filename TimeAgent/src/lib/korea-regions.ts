@@ -6,13 +6,14 @@ import type { Coordinate } from './journey';
  * error, and 강남역 comes back as a 강남 restaurant down the road. The place exists — the search
  * never reached it.
  *
- * Naming the region moves the anchor. It is a question the person can answer in one tap, and unlike
- * a spelling it is something they know for certain, so the app asks instead of guessing.
+ * These are the anchors that reach the rest of it. Each 시도 gets asked at once when nothing near
+ * the person answered, and one of them is read straight out of the spoken name when they had
+ * already said where — which is the anchor moved without a question being put to anyone.
  */
 export type KoreaRegion = {
-  /** What the person taps. The short form people say, not the administrative one. */
+  /** The short form people say, not the administrative one. */
   name: string;
-  /** Where the search is anchored from — a well-known centre, not a centroid. */
+  /** Where a search is anchored from — a well-known centre, not a centroid. */
   coordinate: Coordinate;
 };
 
@@ -36,11 +37,6 @@ export const KOREA_REGIONS: readonly KoreaRegion[] = [
   { name: '울산', coordinate: { latitude: 35.5384, longitude: 129.3114 } },
   { name: '제주', coordinate: { latitude: 33.4996, longitude: 126.5312 } },
 ];
-
-export function findKoreaRegion(name: string) {
-  const wanted = name.trim();
-  return KOREA_REGIONS.find((region) => region.name === wanted) ?? null;
-}
 
 /**
  * A region the person already named while speaking. Saying 서울 홍대입구역 answers the question before

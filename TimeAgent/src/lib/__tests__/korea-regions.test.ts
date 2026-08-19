@@ -1,4 +1,4 @@
-import { findKoreaRegion, KOREA_REGIONS, regionSpokenIn } from '../korea-regions';
+import { KOREA_REGIONS, regionSpokenIn } from '../korea-regions';
 
 describe('the regions someone can name', () => {
   it('covers all 17 시도 with distinct names and real coordinates', () => {
@@ -11,12 +11,6 @@ describe('the regions someone can name', () => {
       expect(coordinate.longitude).toBeGreaterThan(125);
       expect(coordinate.longitude).toBeLessThan(132);
     }
-  });
-
-  it('finds a region by the short name people actually say', () => {
-    expect(findKoreaRegion('서울')?.coordinate.latitude).toBeCloseTo(37.5665, 3);
-    expect(findKoreaRegion(' 대전 ')?.name).toBe('대전');
-    expect(findKoreaRegion('서울특별시')).toBeNull();
   });
 });
 
