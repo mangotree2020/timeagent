@@ -18,7 +18,7 @@ import {
   PlaceVerification,
   verifySpokenPlace,
 } from '@/lib/place-verification';
-import { spokenNameVariants } from '@/lib/place-transcription';
+import { searchSpokenPlace } from '@/lib/place-search';
 import { displayAddress, loadSavedPlaces, mergeRemoteSavedPlaces, rememberPlace, SavedPlace } from '@/lib/saved-places';
 import { createConfiguredSavedPlacesRemote } from '@/lib/saved-places-remote';
 import { useAuth } from '@/state/auth-context';
@@ -40,23 +40,6 @@ type DestinationPickerProps = {
 
 const DEFAULT_MAP_CENTER = { latitude: 35.1796, longitude: 129.0756 };
 const LOCATION_WAIT_MS = 2_500;
-/**
- * Other spellings are searched in parallel, so this is one more round trip rather than three — but
- * it is still the map's quota and the person's wait, and the spellings past the third are the
- * weakest guesses anyway.
- */
-const MAX_VARIANT_SEARCHES = 3;
-
-/** Several spellings can lead to the same place; the person should be offered it once. */
-function dedupePlaces(places: GeocodedPlace[]) {
-  const seen = new Set<string>();
-  return places.filter((place) => {
-    const key = `${place.name}@${place.coordinate.latitude},${place.coordinate.longitude}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
 
 export function DestinationPicker({ value, onChange, title = '목적지 찾기', autoSearch = false, autoSelectExact = false, showSelectedMap = false }: DestinationPickerProps) {
   const styles = useThemedStyles(createStyles);
@@ -149,6 +132,16 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
     }
   }, []);
 
+  /** What the list shows when the app has nothing to say about the results beyond finding them. */
+  const showResults = useCallback((results: GeocodedPlace[]) => {
+    setVerification(null);
+    setPlaces(results);
+    setStatus(results.length ? 'success' : 'empty');
+    setMessage(results.length
+      ? `${results.length}개의 장소를 찾았습니다.`
+      : '일치하는 장소가 없습니다. 검색어를 바꾸거나 지도에서 지정해 주세요.');
+  }, []);
+
   const search = useCallback(async () => {
     const normalized = query.trim();
     if (!normalized) return;
@@ -166,31 +159,25 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
       // The person's own position decides whether a name match can be trusted, so it is read before
       // the results are judged — not to steer the search, but to check what came back.
       const origin = autoSelectExact ? await readCurrentCoordinate() : null;
-      const results = await provider.searchPlaces(normalized, origin ?? mapCoordinate, controller.signal);
-      if (controller.signal.aborted) return;
-      let verification = autoSelectExact
-        ? verifySpokenPlace({ spokenName: normalized, results, origin, savedPlaces })
-        : { kind: 'none' as const };
-
-      // Korean speech recognition writes what it hears, and the phonetic spelling can be a query no
-      // map answers: 동내역 came back an error where 동래역 is a station. Ask again under the
-      // spellings that would be said the same way before giving up on the name.
-      if (autoSelectExact && verification.kind === 'none') {
-        const variantNames = spokenNameVariants(normalized, MAX_VARIANT_SEARCHES);
-        if (variantNames.length) {
-          const found = await Promise.all(variantNames.map((variant) => provider
-            .searchPlaces(variant, origin ?? mapCoordinate, controller.signal)
-            .catch(() => [] as GeocodedPlace[])));
-          if (controller.signal.aborted) return;
-          verification = verifySpokenPlace({
-            spokenName: normalized,
-            results: dedupePlaces([...results, ...found.flat()]),
-            origin,
-            savedPlaces,
-            variantNames,
-          });
-        }
+      const runSearch = (query: string) => provider.searchPlaces(query, origin ?? mapCoordinate, controller.signal);
+      // Typing a name looks it up and lists what came back. A name the assistant heard gets checked
+      // instead — against where the person is, and against the spellings Korean pronunciation would
+      // have hidden it behind.
+      if (!autoSelectExact) {
+        const results = await runSearch(normalized);
+        if (controller.signal.aborted) return;
+        showResults(results);
+        return;
       }
+
+      const { verification, results, failure } = await searchSpokenPlace({
+        spokenName: normalized,
+        origin,
+        savedPlaces,
+        search: runSearch,
+      });
+      if (controller.signal.aborted) return;
+      if (failure) throw failure;
 
       if (verification.kind === 'confirmed') {
         const place = verification.place;
@@ -213,17 +200,14 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
         setMessage(describePlaceVerification(verification, normalized));
         return;
       }
-      setVerification(null);
-      setPlaces(results);
-      setStatus(results.length ? 'success' : 'empty');
-      setMessage(results.length ? `${results.length}개의 장소를 찾았습니다.` : '일치하는 장소가 없습니다. 검색어를 바꾸거나 지도에서 지정해 주세요.');
+      showResults(results);
     } catch (error) {
       if (controller.signal.aborted) return;
       setPlaces([]);
       setStatus('error');
       setMessage(error instanceof MobilityApiError ? error.message : '장소를 검색하지 못했습니다. 지도에서 직접 지정할 수 있어요.');
     }
-  }, [autoSelectExact, mapCoordinate, onChange, persistPlace, provider, query, readCurrentCoordinate, savedPlaces]);
+  }, [autoSelectExact, mapCoordinate, onChange, persistPlace, provider, query, readCurrentCoordinate, savedPlaces, showResults]);
 
   const selectPlace = useCallback(async (place: GeocodedPlace) => {
     const selected = {
