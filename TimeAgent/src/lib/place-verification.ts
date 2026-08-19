@@ -55,12 +55,18 @@ export function verifySpokenPlace({
   origin,
   savedPlaces = [],
   variantNames = [],
+  regionNamed = false,
 }: {
   spokenName: string;
   results: GeocodedPlace[];
   /** Where the person is, or their last known position. Null when neither is available. */
   origin: Coordinate | null;
   savedPlaces?: SavedPlace[];
+  /**
+   * Set once the person has said which region the place is in. Distance from them is then expected
+   * rather than suspicious — they are making an appointment somewhere else, which is allowed.
+   */
+  regionNamed?: boolean;
   /**
    * Spellings the heard name may have been written as, when the search was run under those too.
    * A result that answers only to one of these is never filled in on its own: it is a different
@@ -99,6 +105,8 @@ export function verifySpokenPlace({
   // With no idea where the person is, distance cannot be judged, and a single exact name is all
   // there is to go on.
   if (best.distanceMeters === null) return { kind: 'confirmed', place: best.place };
+  // They named the region, so the answer being far away is the answer they asked for.
+  if (regionNamed) return { kind: 'confirmed', place: best.place };
   if (best.distanceMeters <= DISTANT_PLACE_METERS) return { kind: 'confirmed', place: best.place };
 
   // A city away. Offer it alongside whatever is nearby that also answered, and let the person say.
