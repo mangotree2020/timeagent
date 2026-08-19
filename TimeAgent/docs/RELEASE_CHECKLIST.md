@@ -140,6 +140,20 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-19 비공개 테스트 1.0.8 빌드 (제출본, 업로드 대기)
+
+앞의 `1.0.6 (7)` 빌드와 앱 코드가 같고 `app.json`의 버전 값만 올린 것이다. 실기기에서 확인한 전국 검색 동작은 그 항목에 기록돼 있으며, 이 빌드가 실제로 제출할 산출물이다.
+
+- 버전 `1.0.8 (8)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.8-versionCode8.aab` (68,495,055 bytes)
+- AAB SHA-256: `8ba04f7de457fde212db11f79ebdfa4e8863c6e8124e477350ff2f23c50dbed9`
+- APK: `artifacts/TimeAgent-1.0.8-versionCode8.apk` (117,384,581 bytes)
+- APK SHA-256: `399367878494d51aec5f60931ee0350500d4e26932bd9c087b5a56a41e328675`
+- 서명: `CN=TimeAgent Upload`, SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`
+- 권한: `READ_CALENDAR` 유지, `WRITE_CALENDAR`·외부 저장소·화면 오버레이 없음
+- 실기기: SM-N971N에 설치해 `1.0.8 (8)`로 올라가고 앱이 실행되며 로그인 세션과 홈 화면이 복원되는 것을 확인했다.
+- 빌드 판정은 `npm`의 종료 코드가 아니라 로그의 `BUILD SUCCESSFUL`로 한다. Gradle 데몬이 중간에 `stop command received`로 죽어도 래퍼가 0을 반환해 성공처럼 보이는 경우가 있다. 이번 작업에서 실제로 한 번 발생했다.
+
 ## 프로덕션 액세스 진행 상황 (2026-08-14 확인)
 
 Play Console 대시보드 기준이며 이전 기록의 테스터 7명보다 진전됐다.
