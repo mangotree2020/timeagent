@@ -126,6 +126,20 @@ npm run release:android
 - 업로드 뒤 Play가 `이 App Bundle 유형과 연결된 가독화 파일이 없습니다`를 안내하지만 이 앱은 난독화를 쓰지 않으므로 무시한다. `android/app/build.gradle`의 `enableMinifyInReleaseBuilds` 기본값이 `false`이고 `android/gradle.properties`에 해당 속성이 없어 `minifyEnabled false`로 빌드되며, 매핑 파일이 생성되는 `android/app/build/outputs/mapping/release/` 디렉터리 자체가 없다. 스택 트레이스는 이미 읽을 수 있는 형태다. 용량을 줄이려고 minify를 켜려면 NAVER 지도와 Nitro Google Signin처럼 리플렉션을 쓰는 모듈의 ProGuard 규칙 검증과 실기기 재확인이 필요하다.
 - 2026-08-14 `5 (1.0.4)`를 비공개 테스트 Alpha에 `전체 출시 시작`으로 제출했다. 대시보드 업데이트 상태는 `검토 중`이며 `관리형 게시`가 사용 중지 상태라 검토를 통과하면 테스터에게 자동 배포된다. 같은 트랙에 새 버전을 올려도 프로덕션 액세스의 14일 카운트는 초기화되지 않았다.
 
+## 2026-08-19 비공개 테스트 1.0.6 빌드 (업로드 대기)
+
+- 버전 `1.0.6 (7)`, 패키지 `com.timeagent.app`, targetSdk 36, ABI `arm64-v8a`·`armeabi-v7a`. Play에 올라간 최신 버전은 `1.0.4 (5)`라 versionCode를 더 올리지 않고 그대로 제출한다.
+- AAB: `artifacts/TimeAgent-1.0.6-versionCode7.aab` (68,495,065 bytes)
+- AAB SHA-256: `48267b62c29fde968752d9de29cc9871c81ae6ea5570cb166c2f96460a361daf`
+- APK: `artifacts/TimeAgent-1.0.6-versionCode7.apk` (117,384,581 bytes)
+- APK SHA-256: `041d8b0df6553ed638905d8f98810f2c3174a481d18df79a02d7bb55d547e376`
+- 서명: `CN=TimeAgent Upload`, SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, SHA-256 `8F:0D:B5:A5:…:68:D8:2F:A2`. 기록된 업로드 인증서와 일치하며 APK Signature Scheme v2로 서명됐다.
+- 권한: `READ_CALENDAR` 유지, `WRITE_CALENDAR`·외부 저장소·화면 오버레이 없음, `allowBackup=false`.
+- 검증: `npm run verify` 성공(TypeScript, Expo lint, Jest 44개 스위트·442/442).
+- 실기기 확인(SM-N971N, 부산 해운대): 음성 `내일 오후 3시 홍대입구역에서 회의` → `홍대입구역이라는 곳이 이 근처에는 없어서 전국에서 찾았어요`와 홍대입구역 3건(모두 333km)이 뜨고 자동 입력은 없다. 후보를 고르면 목적지·지도·최근 장소에 반영된다. 근처 이름 `서면역`은 질문 없이 즉시 확정돼 이전 동작이 유지된다.
+- Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
+- 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
+
 ## 프로덕션 액세스 진행 상황 (2026-08-14 확인)
 
 Play Console 대시보드 기준이며 이전 기록의 테스터 7명보다 진전됐다.
