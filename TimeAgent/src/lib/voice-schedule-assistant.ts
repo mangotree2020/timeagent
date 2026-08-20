@@ -1,3 +1,4 @@
+import { pronunciationKey } from '@/lib/place-transcription';
 import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 
 export type VoiceSchedulePatch = Partial<Pick<ScheduleDraft,
@@ -83,6 +84,9 @@ export function createVoiceFirstScheduleDraft(draft: ScheduleDraft): ScheduleDra
     destination: '',
     destinationAddress: '',
     destinationCoordinate: null,
+    // The distance belongs to the place that was just cleared. Left behind, the next destination is
+    // timed by how far away the previous one was.
+    destinationDistanceMeters: null,
     durationMinutes: 60,
     recurrence: '반복 없음',
   };
@@ -502,6 +506,45 @@ export function shouldSubmitVoiceRecording(
 
 const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
 
+/** How much of a name has to be shared before it counts as the one that was said. */
+const SPOKEN_PLACE_EVIDENCE_SYLLABLES = 2;
+
+/**
+ * Whether a place name traces back to something the person actually said. The instruction already
+ * tells the model to invent nothing, and a user found 강남역 in a conversation that never mentioned
+ * it — a prompt is a request, not a guarantee, so the answer is checked here as well.
+ *
+ * The test is deliberately weak, because the model is allowed to complete a name: 강남 세브란스 may
+ * come back as 강남 세브란스병원, and 부산역 as 부산역[부산지하철1호선]. Any run of two syllables in
+ * common is enough. What it catches is the invented place, which shares nothing with the words that
+ * were spoken.
+ */
+export function spokenPlaceEvidence(destination: string, spoken: readonly string[]) {
+  const name = pronunciationKey(destination);
+  if (!name) return false;
+  const heard = spoken.map((text) => pronunciationKey(text)).filter(Boolean);
+  if (!heard.length) return false;
+  const syllables = [...name];
+  for (let start = 0; start + SPOKEN_PLACE_EVIDENCE_SYLLABLES <= syllables.length; start += 1) {
+    const run = syllables.slice(start, start + SPOKEN_PLACE_EVIDENCE_SYLLABLES).join('');
+    if (heard.some((text) => text.includes(run))) return true;
+  }
+  // A one-syllable place is all there is to match, so it has to be there in full.
+  return syllables.length < SPOKEN_PLACE_EVIDENCE_SYLLABLES && heard.some((text) => text.includes(name));
+}
+
+/**
+ * Drops a destination nobody said. Everything else in the patch stands: the turn is still useful,
+ * and the app goes on to ask where rather than filling in a place it invented and quietly planning
+ * a journey to it.
+ */
+export function withSpokenDestinationOnly(patch: VoiceSchedulePatch, spoken: readonly string[]): VoiceSchedulePatch {
+  const destination = patch.destination?.trim();
+  if (!destination || spokenPlaceEvidence(destination, spoken)) return patch;
+  const { destination: _dropped, destinationAddress: _address, destinationCoordinate: _coordinate, ...kept } = patch;
+  return kept;
+}
+
 export function applyVoiceSchedulePatch(draft: ScheduleDraft, patch: VoiceSchedulePatch): ScheduleDraft {
   const { preparationMinutes, ...schedulePatch } = patch;
   const destinationChanged = (patch.destination !== undefined && patch.destination !== draft.destination)
@@ -515,6 +558,9 @@ export function applyVoiceSchedulePatch(draft: ScheduleDraft, patch: VoiceSchedu
     destinationCoordinate: patch.destinationCoordinate !== undefined
       ? patch.destinationCoordinate
       : destinationChanged ? null : draft.destinationCoordinate,
+    // The distance was measured to the old place. A new destination has to be measured again, and
+    // until it is, the plan times the journey by mode rather than by somewhere else's distance.
+    destinationDistanceMeters: destinationChanged ? null : draft.destinationDistanceMeters,
   };
 }
 
@@ -579,7 +625,7 @@ function normalizeTaskProposal(value: unknown): VoiceTaskProposal | null {
       || action.estimatedMinutes > 5) throw invalidResponse();
     return { label: action.label.trim(), estimatedMinutes: action.estimatedMinutes };
   });
-  return { title: value.title.trim(), actions };
+  return { title: value.title.trim(), actions: dedupeByLabel(actions) };
 }
 
 function normalizeClarification(value: unknown): VoiceScheduleClarification | null {
@@ -631,7 +677,7 @@ function normalizePatch(value: Record<string, unknown>): VoiceSchedulePatch {
   const routines = value.routines;
   if (routines !== null && routines !== undefined) {
     if (!Array.isArray(routines) || routines.length > 12) throw invalidResponse();
-    patch.routines = routines.map((routine, index) => normalizeRoutine(routine, index));
+    patch.routines = dedupeByLabel(routines.map((routine, index) => normalizeRoutine(routine, index)));
   }
   const durationMinutes = value.durationMinutes;
   if (durationMinutes !== null && durationMinutes !== undefined) {
@@ -649,6 +695,22 @@ function normalizePatch(value: Record<string, unknown>): VoiceSchedulePatch {
     patch.preparationMinutes = preparationMinutes;
   }
   return patch;
+}
+
+/**
+ * The same action named twice is one action. The model lists 짐 챙기기 among the preparation steps
+ * and then again at the end often enough to matter, and two rows under one name are worse than a
+ * missing one: minutes changed on the first do nothing to the second, and deleting one leaves its
+ * twin sitting there. Spacing is ignored so 짐 챙기기 and 짐챙기기 count as the one thing they are.
+ */
+function dedupeByLabel<T extends { label: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.label.replace(/\s+/g, '');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeRoutine(value: unknown, index: number): RoutineDraft {

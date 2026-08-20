@@ -18,6 +18,7 @@ import {
   isVoiceTakeFinished,
   normalizeSpokenDateText,
   normalizeVoiceScheduleReply,
+  withSpokenDestinationOnly,
   resolveSpokenDateReference,
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
@@ -252,6 +253,50 @@ describe('voice schedule assistant domain', () => {
 
     // Spoken durations are the person's own, so a learned average must not replace them later.
     expect(applied.routines).toEqual([{ id: 'voice-preparation', icon: 'routine', label: '약속 준비', minutes: 30, minutesEditedByUser: true }]);
+  });
+
+  it('keeps one row for a preparation action the assistant named twice', () => {
+    // Seen on the device: 짐 챙기기 came back in the middle of the list and again at the end. Two
+    // rows under one name cannot be edited — minutes changed on one leave the other alone, and
+    // deleting one leaves its twin. Spacing is not a difference either.
+    const reply = normalizeVoiceScheduleReply({
+      transcript: '내일 세 시 약속',
+      assistantMessage: '준비 항목을 정리했어요.',
+      question: null,
+      readyToApply: true,
+      patch: {
+        routines: [
+          { label: '샤워', minutes: 12 },
+          { label: '짐 챙기기', minutes: 5 },
+          { label: '옷 입기', minutes: 5 },
+          { label: '짐챙기기', minutes: 8 },
+        ],
+      },
+    });
+
+    expect(reply.patch.routines?.map((routine) => routine.label)).toEqual(['샤워', '짐 챙기기', '옷 입기']);
+    // The first mention is the one that stays, with the minutes it was given there.
+    expect(reply.patch.routines?.[1]).toEqual({ id: 'voice-1', icon: 'routine', label: '짐 챙기기', minutes: 5, minutesEditedByUser: true });
+  });
+
+  it('keeps one row for a task action the assistant named twice', () => {
+    const reply = normalizeVoiceScheduleReply({
+      entryType: 'task',
+      transcript: '보고서 작성해야 해',
+      assistantMessage: '이렇게 나눠볼게요.',
+      question: null,
+      readyToApply: true,
+      patch: {},
+      task: {
+        title: '보고서 작성',
+        actions: [
+          { label: '자료 모으기', estimatedMinutes: 5 },
+          { label: '자료 모으기', estimatedMinutes: 3 },
+        ],
+      },
+    });
+
+    expect(reply.task?.actions).toEqual([{ label: '자료 모으기', estimatedMinutes: 5 }]);
   });
 
   it('rejects invalid times and routine durations from an untrusted response', () => {
@@ -624,5 +669,57 @@ describe('deciding a turn is over', () => {
     const task = { title: '보고서 작성', actions: [{ label: '문서 열기', estimatedMinutes: 2 }] };
     expect(isVoiceTurnComplete({ entryType: 'task', task }, null, createDefaultScheduleDraft(), answered)).toBe(true);
     expect(isVoiceTurnComplete({ entryType: 'task', task: null }, null, createDefaultScheduleDraft(), answered)).toBe(false);
+  });
+});
+
+describe('a place the person never said', () => {
+  it('drops a destination that shares nothing with what was spoken', () => {
+    // Reported from the device: 강남역 arrived in a conversation about somewhere else entirely. The
+    // instruction forbids it, and a forbidden thing that still happens has to be caught in code.
+    const patch = withSpokenDestinationOnly({
+      title: '회의',
+      appointmentTime: '15:00',
+      destination: '강남역',
+      destinationAddress: '서울 강남구',
+      destinationCoordinate: { latitude: 37.4979, longitude: 127.0276 },
+    }, ['내일 세 시에 회의 있어']);
+
+    expect(patch.destination).toBeUndefined();
+    expect(patch.destinationAddress).toBeUndefined();
+    expect(patch.destinationCoordinate).toBeUndefined();
+    // The rest of the turn is still worth having; only the invented place goes.
+    expect(patch).toEqual({ title: '회의', appointmentTime: '15:00' });
+  });
+
+  it('keeps a place the map spelled out more fully than it was said', () => {
+    // 강남 세브란스 comes back as 강남 세브란스병원, and 부산역 with the line written after it.
+    // Completing a name is not inventing one.
+    const fuller = withSpokenDestinationOnly({ destination: '강남 세브란스병원' }, ['내일 3시 강남 세브란스']);
+    const annotated = withSpokenDestinationOnly({ destination: '부산역[부산지하철1호선]' }, ['부산역에서 보자']);
+
+    expect(fuller.destination).toBe('강남 세브란스병원');
+    expect(annotated.destination).toBe('부산역[부산지하철1호선]');
+  });
+
+  it('recognises the place through how it is said, not how it was typed', () => {
+    // The recogniser writes what it hears: 동내역 for 동래역, 밀락 for 민락.
+    expect(withSpokenDestinationOnly({ destination: '동래역' }, ['동내역 앞에서 만나']).destination).toBe('동래역');
+  });
+
+  it('keeps a place named in an earlier turn of the same conversation', () => {
+    const patch = withSpokenDestinationOnly({ destination: '홍대입구역' }, ['홍대입구역에서 보자', '내일 세 시']);
+
+    expect(patch.destination).toBe('홍대입구역');
+  });
+
+  it('drops a place when the person has not said anything yet', () => {
+    expect(withSpokenDestinationOnly({ destination: '강남역' }, []).destination).toBeUndefined();
+    expect(withSpokenDestinationOnly({ destination: '강남역' }, ['  ']).destination).toBeUndefined();
+  });
+
+  it('leaves a patch with no destination exactly as it is', () => {
+    const patch = { appointmentTime: '15:00' };
+
+    expect(withSpokenDestinationOnly(patch, ['세 시'])).toBe(patch);
   });
 });

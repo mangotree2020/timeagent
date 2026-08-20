@@ -11,6 +11,8 @@ import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { googleAuthProvider } from '@/lib/google-auth-provider';
 import { Coordinate, GeocodedPlace } from '@/lib/journey';
+import { readCurrentCoordinate } from '@/lib/current-position';
+import { haversineDistanceMeters } from '@/lib/kma-weather';
 import { createConfiguredMobilityProvider, MobilityApiError } from '@/lib/mobility-api';
 import {
   describePlaceVerification,
@@ -26,6 +28,8 @@ export type DestinationValue = {
   destination: string;
   destinationAddress: string;
   destinationCoordinate: Coordinate | null;
+  /** How far the chosen place is from the person, for whoever times the journey to it. */
+  destinationDistanceMeters?: number | null;
 };
 
 type DestinationPickerProps = {
@@ -59,6 +63,8 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [showMap, setShowMap] = useState(false);
+  /** The located place the map was last opened for, so closing it stays closed until the next one. */
+  const [syncedLocatedPlace, setSyncedLocatedPlace] = useState<string | null>(null);
   const [mapExpanded, setMapExpanded] = useState(false);
   const [mapCoordinate, setMapCoordinate] = useState<Coordinate>(value.destinationCoordinate ?? DEFAULT_MAP_CENTER);
   const [mapPlace, setMapPlace] = useState<GeocodedPlace | null>(null);
@@ -72,6 +78,17 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
   if (syncedDestination !== value.destination) {
     setSyncedDestination(value.destination);
     setQuery(value.destination);
+  }
+
+  // A newly located place is a new thing to look at, so the voice flow's map opens for it. It opens
+  // by setting the flag once rather than by being derived from the coordinate: derived, the map came
+  // straight back on the next render after 지도 닫기 and the button did nothing at all.
+  const locatedKey = value.destinationCoordinate
+    ? `${value.destinationCoordinate.latitude},${value.destinationCoordinate.longitude}`
+    : null;
+  if (syncedLocatedPlace !== locatedKey) {
+    setSyncedLocatedPlace(locatedKey);
+    if (showSelectedMap && locatedKey) setShowMap(true);
   }
 
   const userId = user?.id ?? null;
@@ -107,29 +124,6 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
     const here = await readCurrentCoordinate();
     if (here) setMapCoordinate(here);
   };
-
-  /**
-   * Where the person actually is, used to judge a search result rather than to bias it. Without it
-   * a name match in another city looks exactly like the right answer. Null when the permission is
-   * missing or the device has no fix; the check then falls back to the name alone.
-   */
-  const readCurrentCoordinate = useCallback(async () => {
-    try {
-      const permission = await Location.getForegroundPermissionsAsync();
-      if (!permission.granted) return null;
-      const last = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 });
-      if (last) return { latitude: last.coords.latitude, longitude: last.coords.longitude };
-      // A first fix indoors can take many seconds. The check is worth a short wait, not a stall —
-      // without a position the name alone still decides, which is where this began.
-      const current = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATION_WAIT_MS)),
-      ]);
-      return current ? { latitude: current.coords.latitude, longitude: current.coords.longitude } : null;
-    } catch {
-      return null;
-    }
-  }, []);
 
   /** What the list shows when the app has nothing to say about the results beyond finding them. */
   const showResults = useCallback((results: GeocodedPlace[]) => {
@@ -181,7 +175,12 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
       if (verification.kind === 'confirmed') {
         const place = verification.place;
-        onChange({ destination: place.name, destinationAddress: displayAddress(place), destinationCoordinate: place.coordinate });
+        onChange({
+          destination: place.name,
+          destinationAddress: displayAddress(place),
+          destinationCoordinate: place.coordinate,
+          destinationDistanceMeters: origin ? haversineDistanceMeters(origin, place.coordinate) : null,
+        });
         setQuery(place.name);
         setPlaces([]);
         setVerification(null);
@@ -209,11 +208,21 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
     }
   }, [autoSelectExact, mapCoordinate, onChange, persistPlace, provider, query, readCurrentCoordinate, savedPlaces, showResults]);
 
+  /** The distance to a place from where the person is standing, or null if that cannot be read. */
+  const distanceFromHere = useCallback(async (coordinate: Coordinate) => {
+    const here = await readCurrentCoordinate();
+    return here ? haversineDistanceMeters(here, coordinate) : null;
+  }, [readCurrentCoordinate]);
+
   const selectPlace = useCallback(async (place: GeocodedPlace) => {
     const selected = {
       destination: place.name,
       destinationAddress: displayAddress(place),
       destinationCoordinate: place.coordinate,
+      // How far this actually is decides how long the journey takes, and here is the one moment the
+      // app knows both ends of it. Null when the device cannot say where it is: the plan then falls
+      // back to the per-mode default rather than timing a trip of unknown length.
+      destinationDistanceMeters: await distanceFromHere(place.coordinate),
     };
     onChange(selected);
     setQuery(place.name);
@@ -294,7 +303,7 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
     <View style={styles.section}>
       <Text style={styles.label}>장소명 검색</Text>
-      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={c.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null }); setStatus('idle'); setPlaces([]); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={c.surface} /></Pressable></View>
+      <View style={styles.searchRow}><TextInput accessibilityLabel="목적지" returnKeyType="search" onSubmitEditing={() => void search()} placeholder="예: 서면 볼링장, 서울시청" placeholderTextColor={c.textMuted} value={query} onChangeText={(next) => { setQuery(next); onChange({ destination: next, destinationAddress: '', destinationCoordinate: null, destinationDistanceMeters: null }); setStatus('idle'); setPlaces([]); setMessage(''); }} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="목적지 검색" disabled={status === 'loading' || !query.trim()} onPress={() => void search()} style={({ pressed }) => [styles.searchButton, (!query.trim() || status === 'loading') && styles.disabled, pressed && styles.pressed]}><AppIcon name="search" size={20} iconColor={c.surface} /></Pressable></View>
       {message ? <Text accessibilityLiveRegion="polite" style={[styles.message, status === 'error' && styles.error]}>{message}</Text> : null}
       {places.map((place) => {
         // While the app is asking rather than deciding, each option carries how far away it is —
@@ -308,7 +317,7 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
     </View>
 
     <Button label={showMap ? '지도 닫기' : '지도에서 직접 지정'} variant="secondary" onPress={openMap} />
-    {showMap || (showSelectedMap && value.destinationCoordinate) ? <View style={styles.mapSection}>
+    {showMap ? <View style={styles.mapSection}>
       <View style={styles.mapHint}><Text style={[type.bodyMuted, styles.flex]}>지도에서 목적지 위치를 한 번 눌러 주세요.</Text><Pressable accessibilityRole="button" accessibilityLabel="지도 전체 화면으로 보기" onPress={() => setMapExpanded(true)} style={({ pressed }) => [styles.expandButton, pressed && styles.pressed]}><AppIcon name="expand" size={18} iconColor={c.deepBlue} /></Pressable></View>
       <DestinationMap coordinate={mapCoordinate} onSelect={(coordinate) => void chooseMapCoordinate(coordinate)} />
       {mapStatus === 'loading' ? <Text accessibilityLiveRegion="polite" style={styles.message}>선택한 위치의 주소를 확인하고 있습니다.</Text> : null}

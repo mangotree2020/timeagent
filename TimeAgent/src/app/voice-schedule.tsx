@@ -38,6 +38,7 @@ import {
   voiceListeningOptions,
   voiceScheduleMissingFields,
   withDerivedVoiceScheduleTitle,
+  withSpokenDestinationOnly,
   VoiceScheduleAssistantReply,
   VoiceScheduleClarification,
   VoiceSchedulePatch,
@@ -317,8 +318,13 @@ export default function VoiceScheduleScreen() {
         scheduleAutoRestart(0, generation);
         return;
       }
-      const nextProposal = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(base, reply.patch));
-      const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, reply.patch);
+      // A place has to come from the person. The instruction says so too, but a user found 강남역 in
+      // a conversation that never mentioned it, so what came back is checked against what was said
+      // before any of it reaches the draft.
+      const spokenSoFar = [...history.filter((turn) => turn.role === 'user').map((turn) => turn.text), transcript];
+      const patch = withSpokenDestinationOnly(reply.patch, spokenSoFar);
+      const nextProposal = withDerivedVoiceScheduleTitle(applyVoiceSchedulePatch(base, patch));
+      const nextConfirmations = mergeVoiceRequiredConfirmations(requiredConfirmations, patch);
       // Whatever the assistant thinks of its own answer, the draft decides what is still missing.
       const requiredClarification = reply.entryType === 'schedule' && !reply.clarification
         ? nextVoiceClarification(nextProposal, nextConfirmations)
