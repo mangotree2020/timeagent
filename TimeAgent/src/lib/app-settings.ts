@@ -2,12 +2,30 @@ import { TransportMode } from './schedule-draft';
 import { PreparationGender, RoutinePresetName } from './preparation-profile';
 
 export const APP_SETTINGS_STORAGE_KEY = '@on-time/app-settings';
-const APP_SETTINGS_VERSION = 4;
+const APP_SETTINGS_VERSION = 5;
 
 export type CoachTone = '친근하게' | '간결하게' | '단호하게';
 export type RoutinePreset = RoutinePresetName;
 export type PreferredTransport = Exclude<TransportMode, 'AI 추천'>;
 export type AppColorMode = 'light' | 'dark';
+
+/**
+ * The display language someone picked. Nothing offers the choice at the moment — the picker was
+ * taken back out while translation waits for Phase 2 — but the field stays: settings already saved
+ * with it must keep loading, and Phase 2 needs somewhere to put the answer.
+ */
+export type AppLanguage = 'ko' | 'en' | 'ja' | 'zh';
+
+export const APP_LANGUAGES: readonly { id: AppLanguage; label: string; flag: string }[] = [
+  { id: 'ko', label: '한국어', flag: '🇰🇷' },
+  { id: 'en', label: 'English', flag: '🇺🇸' },
+  { id: 'ja', label: '日本語', flag: '🇯🇵' },
+  { id: 'zh', label: '中文', flag: '🇨🇳' },
+];
+
+export function isAppLanguage(value: unknown): value is AppLanguage {
+  return APP_LANGUAGES.some((option) => option.id === value);
+}
 
 export type AppSettings = {
   version: typeof APP_SETTINGS_VERSION;
@@ -20,6 +38,7 @@ export type AppSettings = {
   voiceControl: boolean;
   notifications: boolean;
   colorMode: AppColorMode;
+  language: AppLanguage;
   /** Per-step start alarms and the spoken coach that goes with them. */
   stepCoaching: boolean;
 };
@@ -41,6 +60,7 @@ export function createDefaultAppSettings(): AppSettings {
     voiceControl: true,
     notifications: true,
     colorMode: 'light',
+    language: 'ko',
     stepCoaching: true,
   };
 }
@@ -52,9 +72,10 @@ export async function loadAppSettings(storage: StorageLike): Promise<AppSettings
   try {
     const parsed: unknown = JSON.parse(raw);
     if (isAppSettings(parsed)) return parsed;
-    if (isVersionThreeSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, stepCoaching: true };
-    if (isVersionTwoSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, colorMode: 'light', stepCoaching: true };
-    if (isLegacyAppSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, preparationGender: 'unspecified', colorMode: 'light', stepCoaching: true };
+    if (isVersionFourSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, language: 'ko' };
+    if (isVersionThreeSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, language: 'ko', stepCoaching: true };
+    if (isVersionTwoSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, language: 'ko', colorMode: 'light', stepCoaching: true };
+    if (isLegacyAppSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, preparationGender: 'unspecified', language: 'ko', colorMode: 'light', stepCoaching: true };
     return createDefaultAppSettings();
   } catch {
     return createDefaultAppSettings();
@@ -69,6 +90,23 @@ function isAppSettings(value: unknown): value is AppSettings {
   if (!value || typeof value !== 'object') return false;
   const settings = value as Partial<AppSettings>;
   return settings.version === APP_SETTINGS_VERSION
+    && typeof settings.defaultLocation === 'string'
+    && isPreferredTransport(settings.preferredTransport)
+    && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)
+    && isRoutinePreset(settings.routinePreset)
+    && isPreparationGender(settings.preparationGender)
+    && (settings.coachTone === '친근하게' || settings.coachTone === '간결하게' || settings.coachTone === '단호하게')
+    && typeof settings.voiceControl === 'boolean'
+    && typeof settings.notifications === 'boolean'
+    && (settings.colorMode === 'light' || settings.colorMode === 'dark')
+    && isAppLanguage(settings.language)
+    && typeof settings.stepCoaching === 'boolean';
+}
+
+function isVersionFourSettings(value: unknown): value is Omit<AppSettings, 'version' | 'language'> & { version: 4 } {
+  if (!value || typeof value !== 'object') return false;
+  const settings = value as Partial<Omit<AppSettings, 'version'>> & { version?: unknown };
+  return settings.version === 4
     && typeof settings.defaultLocation === 'string'
     && isPreferredTransport(settings.preferredTransport)
     && (settings.bufferMinutes === 3 || settings.bufferMinutes === 5 || settings.bufferMinutes === 10)

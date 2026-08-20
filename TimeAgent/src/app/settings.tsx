@@ -42,14 +42,13 @@ import { useAuth } from '@/state/auth-context';
 import { useSchedule } from '@/state/schedule-context';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 
-type DetailKey = 'appearance' | 'location' | 'transport' | 'buffer' | 'routine' | 'tone' | 'gender';
+type DetailKey = 'location' | 'transport' | 'buffer' | 'routine' | 'tone' | 'gender' | 'metrics';
 
 const transports: PreferredTransport[] = ['도보', '버스', '지하철', '자가용', '택시'];
 const bufferOptions: AppSettings['bufferMinutes'][] = [3, 5, 10];
 const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비', '여유있는 준비'];
 const toneOptions: CoachTone[] = ['친근하게', '간결하게', '단호하게'];
 const preparationGenderOptions: PreparationGender[] = ['unspecified', 'female', 'male'];
-const appearanceOptions: AppColorMode[] = ['light', 'dark'];
 const emptyPlusEligibility: PlusOfferEligibility = { eligible: false, completedSchedules: 0, remainingSchedules: 3 };
 
 // What account deletion actually clears, kept in step with `deleteAccount()` in
@@ -88,7 +87,8 @@ export default function SettingsScreen() {
   const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary>(() => summarizeAnalytics(createEmptyAnalyticsStore()));
   const [plusEligibility, setPlusEligibility] = useState(emptyPlusEligibility);
   const [plusInterest, setPlusInterest] = useState<PlusInterestState>(createEmptyPlusInterestState);
-  const learnedStats = [...personalizationProfile.routines, ...personalizationProfile.transports];
+  // Only preparation steps are learned; journeys come from live routes and are not listed here.
+  const learnedStats = personalizationProfile.routines;
   const learnedSamples = learnedStats.reduce((total, item) => total + item.sampleCount, 0);
 
   useFocusEffect(useCallback(() => {
@@ -182,10 +182,16 @@ export default function SettingsScreen() {
       <Screen>
         <Header title="설정" eyebrow="내 생활에 맞게 TimeAgent를 조정하세요" />
 
-        <Section label="화면 모드">
-          <Setting icon="settings" title="화면 스타일" detail={settings.colorMode === 'dark' ? '다크 모드' : '화이트 모드'} expanded={expanded === 'appearance'} onPress={() => toggleDetail('appearance')} />
-          {expanded === 'appearance' ? <ChoicePanel description="화이트 모드가 기본이며 선택한 화면 모드는 이 기기에 저장됩니다." options={appearanceOptions} selected={settings.colorMode} label={(value) => value === 'dark' ? '다크 모드' : '화이트 모드'} onSelect={(colorMode) => { update({ colorMode }); setMode(colorMode); }} /> : null}
-        </Section>
+        {/* Two modes behind a row that opened a list to choose between them: three taps to change
+            a thing you can see change. The switch is the setting — and it stands alone, because a
+            card drawn around one pill was a box around a box. */}
+        <View style={styles.modeSection}>
+          <Text style={styles.section}>화면 모드</Text>
+          <ColorModeSwitch
+            mode={settings.colorMode}
+            onChange={(colorMode) => { update({ colorMode }); setMode(colorMode); }}
+          />
+        </View>
 
         <Section label="로그인 계정">
           <View style={styles.accountRow}>
@@ -255,9 +261,10 @@ export default function SettingsScreen() {
         <Section label="준비 루틴">
           <Setting icon="routine" title="성별에 따른 기본 준비 항목" detail={preparationGenderLabel(settings.preparationGender)} expanded={expanded === 'gender'} onPress={() => toggleDetail('gender')} />
           {expanded === 'gender' ? <ChoicePanel description="성별 선택은 필수가 아니며 새 일정의 시작 목록에만 적용돼요. 추천 항목과 시간은 일정마다 자유롭게 바꿀 수 있어요." options={preparationGenderOptions} selected={settings.preparationGender} label={(value) => value === 'female' ? '여성' : value === 'male' ? '남성' : '선택 안 함'} onSelect={(preparationGender) => update({ preparationGender })} /> : null}
-          <Setting icon="routine" title="사용할 준비 루틴" detail={settings.routinePreset} expanded={expanded === 'routine'} onPress={() => toggleDetail('routine')} />
+          {/* The chosen preset and what it means read as one line: a second row naming it again said
+              nothing the row above had not already said. */}
+          <Setting icon={routineSummary.icon} title="사용할 준비 루틴" detail={`${settings.routinePreset} · ${routineSummary.totalMinutes}분 · ${routineSummary.description}`} expanded={expanded === 'routine'} onPress={() => toggleDetail('routine')} />
           {expanded === 'routine' ? <ChoicePanel compact options={routineOptions} selected={settings.routinePreset} onSelect={(routinePreset) => update({ routinePreset })} /> : null}
-          <Setting icon={routineSummary.icon} title={settings.routinePreset} detail={routineSummary.detail} />
         </Section>
 
         <Section label="실제 시간 학습">
@@ -278,16 +285,14 @@ export default function SettingsScreen() {
             onPress={() => router.push('/plus')}
           />
           <Text style={styles.plusNote}>출시 후보 기능과 가격안에 대한 관심만 이 기기에 저장합니다. 현재 기능은 제한되지 않아요.</Text>
-          <Setting
-            icon="chart"
-            title="Phase 0 테스트 결과"
-            detail="비식별 집계 확인 · 내가 선택해서 공유"
-            onPress={() => router.push('/pilot-summary')}
-          />
         </Section>
 
         <Section label="MVP 지표 · 이 기기">
-          <View style={styles.metricIntro}><AppIcon name="chart" size={20} /><View style={{ flex: 1 }}><Text style={type.body}>제품 경험 측정</Text><Text style={type.caption}>일정 내용이나 위치는 보내지 않고 이 기기에 이벤트 수치만 저장합니다.</Text></View></View>
+          {/* Nine rows of counters opened every time someone came to change a setting. They are worth
+              keeping and not worth meeting unasked, so the section states what it measures and opens
+              on a tap. */}
+          <Setting icon="chart" title="제품 경험 측정" detail="일정 내용이나 위치는 보내지 않고 이 기기에 이벤트 수치만 저장합니다." expanded={expanded === 'metrics'} onPress={() => toggleDetail('metrics')} />
+          {expanded === 'metrics' ? <>
           <MetricRow label="첫 일정 생성 완료율" value={formatRate(analyticsSummary.scheduleCompletionRate)} detail={`${analyticsSummary.scheduleCompletions}/${analyticsSummary.scheduleStarts}회 완료`} />
           <MetricRow label="평균 일정 생성 시간" value={analyticsSummary.averageScheduleCreationSeconds === null ? '측정 대기' : formatDurationSeconds(analyticsSummary.averageScheduleCreationSeconds)} detail="등록 시작부터 AI 계획 생성까지" />
           <MetricRow label="알림에서 준비 진입" value={formatRate(analyticsSummary.notificationStartRate)} detail={`알림 응답 ${analyticsSummary.notificationOpens}회`} />
@@ -295,10 +300,10 @@ export default function SettingsScreen() {
           <MetricRow label="평균 단계 시간 오차" value={analyticsSummary.averageStepErrorMinutes === null ? '측정 대기' : `${analyticsSummary.averageStepErrorMinutes}분`} detail="계획과 실제 소요 시간의 절대 차이" />
           <MetricRow label="정시 도착률" value={formatRate(analyticsSummary.onTimeArrivalRate)} detail={`누적 이벤트 ${analyticsSummary.eventCount}개`} />
           <MetricRow label="Plus 관심 / 철회" value={`${analyticsSummary.plusInterestSelections} / ${analyticsSummary.plusInterestWithdrawals}`} detail={`Plus 화면 확인 ${analyticsSummary.plusOfferViews}회`} />
-          <MetricRow label="Phase 0 결과 공유" value={`${analyticsSummary.pilotSummaryShares}회`} detail="사용자가 완료를 확인한 공유" />
-          <DetailPanel>
+          <View style={styles.resetArea}>
             {!showAnalyticsReset ? <Button label="측정 데이터 초기화" variant="secondary" onPress={() => setShowAnalyticsReset(true)} /> : <View style={styles.resetPanel}><Text style={type.body}>이 기기의 MVP 측정 데이터를 삭제할까요?</Text><Text style={type.caption}>학습 기록과 일정은 유지되며 측정 지표만 초기화됩니다.</Text><View style={styles.resetActions}><View style={{ flex: 1 }}><Button label="취소" variant="secondary" onPress={() => setShowAnalyticsReset(false)} /></View><View style={{ flex: 1 }}><Button label="지표 삭제" onPress={() => { setShowAnalyticsReset(false); void clearAnalyticsStore(AsyncStorage).then(() => setAnalyticsSummary(summarizeAnalytics(createEmptyAnalyticsStore()))); }} /></View></View></View>}
-          </DetailPanel>
+          </View>
+          </> : null}
         </Section>
 
         <Section label="AI 코치">
@@ -334,6 +339,33 @@ export default function SettingsScreen() {
 function Section({ label, children }: PropsWithChildren<{ label: string }>) {
   const styles = useThemedStyles(createStyles);
   return <View style={{ gap: space.sm }}><Text style={styles.section}>{label}</Text><Card style={{ paddingVertical: 4 }}>{children}</Card></View>;
+}
+
+/**
+ * One tap, one change. The knob sits on the side the current mode is on and carries that mode's
+ * sign — sun on the left for light, moon on the right for dark — so the control reads as the state
+ * it is in rather than as a question about it.
+ */
+function ColorModeSwitch({ mode, onChange }: { mode: AppColorMode; onChange: (mode: AppColorMode) => void }) {
+  const styles = useThemedStyles(createStyles);
+  const c = useAppTheme().palette;
+  const dark = mode === 'dark';
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel="다크 모드"
+      accessibilityState={{ checked: dark }}
+      accessibilityHint="누르면 화이트 모드와 다크 모드가 바로 바뀝니다"
+      onPress={() => onChange(dark ? 'light' : 'dark')}
+      style={({ pressed }) => [styles.modeSwitch, dark ? styles.modeSwitchDark : styles.modeSwitchLight, pressed && styles.pressed]}
+    >
+      {dark ? <Text style={[styles.modeLabel, styles.modeLabelDark]}>다크 모드</Text> : null}
+      <View style={[styles.modeKnob, dark ? styles.modeKnobDark : styles.modeKnobLight]}>
+        <AppIcon name={dark ? 'darkMode' : 'lightMode'} size={22} iconColor={dark ? c.navy : '#F7B733'} />
+      </View>
+      {dark ? null : <Text style={[styles.modeLabel, styles.modeLabelLight]}>화이트 모드</Text>}
+    </Pressable>
+  );
 }
 
 function DetailPanel({ children }: PropsWithChildren) {
@@ -450,6 +482,16 @@ const createStyles = (c: AppPalette) => {
   icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted },
   arrow: { transform: [{ rotate: '0deg' }] },
   arrowExpanded: { transform: [{ rotate: '90deg' }] },
+  modeSection: { gap: space.sm },
+  modeSwitch: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, paddingHorizontal: 8, borderRadius: 32 },
+  modeSwitchLight: { backgroundColor: c.primarySoft },
+  modeSwitchDark: { backgroundColor: c.surfaceInverse },
+  modeKnob: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  modeKnobLight: { backgroundColor: c.surface },
+  modeKnobDark: { backgroundColor: c.ice },
+  modeLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '900', letterSpacing: 0.4 },
+  modeLabelLight: { color: c.deepBlue },
+  modeLabelDark: { color: c.onInverse },
   detailPanel: { paddingHorizontal: space.sm, paddingVertical: space.md, gap: space.sm, backgroundColor: c.surfaceMuted, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: space.md, fontSize: 16, color: c.text },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -469,6 +511,9 @@ const createStyles = (c: AppPalette) => {
   metricValue: { maxWidth: '45%', color: c.deepBlue, fontSize: 14, fontWeight: '900', textAlign: 'right' },
   emptyLearning: { ...type.caption, paddingHorizontal: space.md, paddingVertical: space.lg },
   learningStatus: { ...type.caption, paddingHorizontal: space.md, paddingBottom: space.md },
+  // No panel tint behind the reset control: the shading read as a disabled block sitting under the
+  // metrics rather than as an action belonging to them.
+  resetArea: { paddingHorizontal: space.sm, paddingVertical: space.md, gap: space.sm },
   resetPanel: { gap: space.sm, paddingTop: space.sm },
   deletionLabel: { color: c.navy, fontSize: 13, fontWeight: '900' },
   deletionItem: { ...type.caption, marginTop: -4, paddingLeft: space.xs },

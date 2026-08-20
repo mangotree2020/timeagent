@@ -55,12 +55,16 @@ export function routineTotalMinutes(routines: readonly RoutineDraft[]) {
   return routines.reduce((sum, routine) => sum + routine.minutes, 0);
 }
 
-/** One-line summary of the currently selected preset for the settings screen. */
+/**
+ * What the currently selected preset looks like on the settings row that offers it: the icon that
+ * belongs to the preset, how long it runs, and the phrase that says what choosing it means. The row
+ * prints the preset name itself, so this describes it rather than repeating it.
+ */
 export function routinePresetSummary(gender: PreparationGender, preset: RoutinePresetName) {
-  const total = routineTotalMinutes(routinesForPreset(gender, preset));
-  if (preset === '빠른 준비') return { icon: 'quick' as const, detail: `총 ${total}분 · 샤워와 필수 준비 중심` };
-  if (preset === '여유있는 준비') return { icon: 'time' as const, detail: `총 ${total}분 · 기본 구성에 여유 점검 10분 추가` };
-  return { icon: 'routine' as const, detail: `총 ${total}분 · 성별 추천 기본 구성` };
+  const totalMinutes = routineTotalMinutes(routinesForPreset(gender, preset));
+  if (preset === '빠른 준비') return { icon: 'quick' as const, totalMinutes, description: '샤워와 필수 준비 중심' };
+  if (preset === '여유있는 준비') return { icon: 'time' as const, totalMinutes, description: '기본 구성에 여유 점검 10분 추가' };
+  return { icon: 'routine' as const, totalMinutes, description: '성별 추천 기본 구성' };
 }
 
 export function preparationGenderLabel(gender: PreparationGender) {

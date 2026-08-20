@@ -46,9 +46,14 @@ describe('routine presets', () => {
     expect(routinesForPreset('male', '기본 외출 준비').map((item) => item.label)).toContain('면도');
   });
 
-  it('summarizes the selected preset with its own icon and real total minutes', () => {
-    expect(routinePresetSummary('male', '빠른 준비')).toEqual({ icon: 'quick', detail: '총 22분 · 샤워와 필수 준비 중심' });
-    expect(routinePresetSummary('male', '기본 외출 준비')).toEqual({ icon: 'routine', detail: '총 40분 · 성별 추천 기본 구성' });
-    expect(routinePresetSummary('male', '여유있는 준비')).toEqual({ icon: 'time', detail: '총 50분 · 기본 구성에 여유 점검 10분 추가' });
+  it('describes the selected preset with its own icon, and does not repeat its name', () => {
+    // The settings row is titled 사용할 준비 루틴 and prints the preset name itself, so the summary
+    // is what choosing it means — a second copy of the name would fill the line and say nothing.
+    expect(routinePresetSummary('male', '빠른 준비')).toEqual({ icon: 'quick', totalMinutes: 22, description: '샤워와 필수 준비 중심' });
+    expect(routinePresetSummary('male', '기본 외출 준비')).toEqual({ icon: 'routine', totalMinutes: 40, description: '성별 추천 기본 구성' });
+    expect(routinePresetSummary('male', '여유있는 준비')).toEqual({ icon: 'time', totalMinutes: 50, description: '기본 구성에 여유 점검 10분 추가' });
+    for (const preset of ['빠른 준비', '기본 외출 준비', '여유있는 준비'] as const) {
+      expect(routinePresetSummary('male', preset).description).not.toContain(preset);
+    }
   });
 });

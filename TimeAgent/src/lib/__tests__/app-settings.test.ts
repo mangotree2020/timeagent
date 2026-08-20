@@ -72,6 +72,28 @@ describe('app settings persistence', () => {
     });
   });
 
+  it('opens on Korean for settings saved before a language could be picked', async () => {
+    // The screens are written in Korean, so an upgrade that silently answered this question with
+    // anything else would change what someone sees without being asked.
+    expect(createDefaultAppSettings().language).toBe('ko');
+
+    const saved = { ...createDefaultAppSettings(), version: 4, colorMode: 'dark' as const };
+    delete (saved as Partial<AppSettings>).language;
+    const storage = createMemoryStorage(JSON.stringify(saved));
+
+    await expect(loadAppSettings(storage)).resolves.toEqual({
+      ...saved,
+      version: createDefaultAppSettings().version,
+      language: 'ko',
+    });
+  });
+
+  it('falls back to the defaults for a language nobody offers', async () => {
+    const storage = createMemoryStorage(JSON.stringify({ ...createDefaultAppSettings(), language: 'de' }));
+
+    await expect(loadAppSettings(storage)).resolves.toEqual(createDefaultAppSettings());
+  });
+
   it('keeps the step coach on by default and turns it on for settings saved before it existed', async () => {
     expect(createDefaultAppSettings().stepCoaching).toBe(true);
 
