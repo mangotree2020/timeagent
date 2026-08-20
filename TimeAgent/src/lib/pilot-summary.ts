@@ -3,6 +3,8 @@ import { PlusInterestState, plusPlanLabel } from './monetization';
 
 export type PilotSegment = 'student' | 'worker' | 'variable-routine' | 'prefer-not-to-answer';
 
+export const PILOT_SEGMENT_STORAGE_KEY = '@on-time/pilot-segment';
+
 export const PILOT_SEGMENTS: readonly { id: PilotSegment; label: string; detail: string }[] = [
   { id: 'student', label: '학생', detail: '수업·시험·면접·아르바이트 일정 중심' },
   { id: 'worker', label: '직장인·프리랜서', detail: '출근·외부 미팅·연속 일정 중심' },
@@ -27,8 +29,31 @@ export type PilotSummary = {
   selectedPlanLabel: string;
 };
 
+type StorageLike = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<unknown>;
+};
+
 export function pilotSegmentLabel(segment: PilotSegment) {
   return PILOT_SEGMENTS.find((option) => option.id === segment)?.label ?? '응답하지 않음';
+}
+
+function isPilotSegment(value: unknown): value is PilotSegment {
+  return PILOT_SEGMENTS.some((option) => option.id === value);
+}
+
+/**
+ * The segment someone picked last time. It is asked once and remembered, so the Plus screen never
+ * re-opens with the question already answered looking unanswered.
+ */
+export async function loadPilotSegment(storage: StorageLike): Promise<PilotSegment | null> {
+  const raw = await storage.getItem(PILOT_SEGMENT_STORAGE_KEY);
+  return isPilotSegment(raw) ? raw : null;
+}
+
+export async function savePilotSegment(storage: StorageLike, segment: PilotSegment) {
+  await storage.setItem(PILOT_SEGMENT_STORAGE_KEY, segment);
+  return segment;
 }
 
 export function buildPilotSummary(
@@ -55,26 +80,25 @@ export function buildPilotSummary(
   };
 }
 
-export function formatPilotSummaryText(summary: PilotSummary) {
-  return [
-    '[TimeAgent Phase 0 테스트 결과]',
-    `사용자 유형: ${summary.segmentLabel}`,
-    `완료 일정: ${summary.completedSchedules}회`,
-    `첫 일정 생성 완료율: ${formatRate(summary.scheduleCompletionRate)}`,
-    `알림에서 준비 시작률: ${formatRate(summary.notificationStartRate)}`,
-    `지연안 적용 / 거절: ${formatRate(summary.delayApplyRate)} / ${formatRate(summary.delayRejectRate)}`,
-    `평균 단계 시간 오차: ${summary.averageStepErrorMinutes === null ? '측정 대기' : `${summary.averageStepErrorMinutes}분`}`,
-    `정시 도착률: ${formatRate(summary.onTimeArrivalRate)}`,
-    `Plus 화면 확인: ${summary.plusOfferViews}회`,
-    `Plus 관심 / 철회: ${summary.plusInterestSelections}회 / ${summary.plusInterestWithdrawals}회`,
-    `현재 관심 상태: ${summary.interestStatusLabel}`,
-    `선택 가격안: ${summary.selectedPlanLabel}`,
-    '',
-    '이 기기의 집계값만 사용했습니다.',
-    '일정명·장소·위치·음성·연락처·기기 식별자는 포함하지 않았습니다.',
-  ].join('\n');
-}
-
-function formatRate(value: number | null) {
-  return value === null ? '측정 대기' : `${value}%`;
+/**
+ * What actually leaves the device. Counts and rates only: the labels the screen reads out are made
+ * from these on the way in, so nothing here carries a schedule name, a place, a time, or anything
+ * that could point back at one person's day.
+ */
+export function pilotSummaryPayload(summary: PilotSummary) {
+  return {
+    segment: summary.segment,
+    completedSchedules: summary.completedSchedules,
+    scheduleCompletionRate: summary.scheduleCompletionRate,
+    notificationStartRate: summary.notificationStartRate,
+    delayApplyRate: summary.delayApplyRate,
+    delayRejectRate: summary.delayRejectRate,
+    averageStepErrorMinutes: summary.averageStepErrorMinutes,
+    onTimeArrivalRate: summary.onTimeArrivalRate,
+    plusOfferViews: summary.plusOfferViews,
+    plusInterestSelections: summary.plusInterestSelections,
+    plusInterestWithdrawals: summary.plusInterestWithdrawals,
+    interested: summary.interestStatusLabel === '관심 등록',
+    selectedPlan: summary.selectedPlanLabel,
+  };
 }

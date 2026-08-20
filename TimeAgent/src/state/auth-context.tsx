@@ -4,6 +4,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 import { stopBackgroundJourney } from '@/lib/background-journey-service';
 import { googleAuthErrorMessage, GoogleAuthUser } from '@/lib/google-auth';
 import { googleAuthProvider } from '@/lib/google-auth-provider';
+import { createConfiguredPilotSummaryRemote, whenPilotSummarySettled } from '@/lib/pilot-summary-remote';
 import { createConfiguredSavedPlacesRemote } from '@/lib/saved-places-remote';
 
 type AuthStatus = 'checking' | 'signedOut' | 'signingIn' | 'signedIn' | 'signingOut' | 'deleting';
@@ -96,6 +97,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // leave the account's places on the server with the account itself gone.
         const placesCleared = await createConfiguredSavedPlacesRemote(googleAuthProvider.getIdToken).clear();
         if (placesCleared === 'failed') throw new Error('saved places were not deleted');
+        // The pilot aggregates the Plus screen sent are keyed to this account too, so they go with
+        // it. Same rule as the places: nothing to send is fine, a refusal is not. A send started as
+        // that screen closed may still be in the air, and it has to land first — arriving after the
+        // delete, it would write the account's row back onto a server it was just taken off.
+        await whenPilotSummarySettled().catch(() => undefined);
+        const summaryCleared = await createConfiguredPilotSummaryRemote(googleAuthProvider.getIdToken).clear();
+        if (summaryCleared === 'failed') throw new Error('pilot summary was not deleted');
         await googleAuthProvider.revokeAccess(user.email || user.id);
         await AsyncStorage.clear();
         setUser(null);

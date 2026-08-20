@@ -14,8 +14,7 @@ export type AnalyticsEventName =
   | 'schedule_completed'
   | 'plus_offer_viewed'
   | 'plus_interest_selected'
-  | 'plus_interest_withdrawn'
-  | 'pilot_summary_shared';
+  | 'plus_interest_withdrawn';
 
 export type AnalyticsEvent = {
   id: string;
@@ -46,7 +45,6 @@ export type AnalyticsSummary = {
   plusInterestSelections: number;
   plusInterestWithdrawals: number;
   plusInterestRate: number | null;
-  pilotSummaryShares: number;
 };
 
 type StorageLike = {
@@ -129,7 +127,6 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
   const plusOfferViews = byName('plus_offer_viewed').length;
   const plusInterestSelections = byName('plus_interest_selected').length;
   const plusInterestWithdrawals = byName('plus_interest_withdrawn').length;
-  const pilotSummaryShares = byName('pilot_summary_shared').length;
 
   return {
     eventCount: store.events.length,
@@ -148,7 +145,6 @@ export function summarizeAnalytics(store: AnalyticsStore): AnalyticsSummary {
     plusInterestSelections,
     plusInterestWithdrawals,
     plusInterestRate: rate(plusInterestSelections, plusOfferViews),
-    pilotSummaryShares,
   };
 }
 

@@ -1,9 +1,12 @@
 import { AnalyticsStore, createEmptyAnalyticsStore } from '../analytics';
 import { PlusInterestState } from '../monetization';
 import {
+  PILOT_SEGMENT_STORAGE_KEY,
   buildPilotSummary,
-  formatPilotSummaryText,
+  loadPilotSegment,
   pilotSegmentLabel,
+  pilotSummaryPayload,
+  savePilotSegment,
 } from '../pilot-summary';
 
 function fixtureAnalytics(): AnalyticsStore {
@@ -27,6 +30,15 @@ const interest: PlusInterestState = {
   updatedAt: 90_000,
 };
 
+function memoryStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: (key: string) => Promise.resolve(values.get(key) ?? null),
+    setItem: (key: string, value: string) => { values.set(key, value); return Promise.resolve(); },
+  };
+}
+
 describe('Phase 0 pilot summary', () => {
   it('builds only aggregate BM validation fields', () => {
     expect(buildPilotSummary(fixtureAnalytics(), interest, 'student')).toEqual(expect.objectContaining({
@@ -43,21 +55,34 @@ describe('Phase 0 pilot summary', () => {
     }));
   });
 
-  it('formats a transparent report without raw schedule, location, identifier, or timestamps', () => {
-    const text = formatPilotSummaryText(buildPilotSummary(fixtureAnalytics(), interest, 'student'));
+  it('sends counts and rates without a schedule, a place, an identifier, or a timestamp', () => {
+    // What leaves the device is read by an operator as pilot statistics, so this is the line that
+    // matters: the analytics store holds titles and destinations, and none of them may cross it.
+    const payload = pilotSummaryPayload(buildPilotSummary(fixtureAnalytics(), interest, 'student'));
 
-    expect(text).toContain('[TimeAgent Phase 0 테스트 결과]');
-    expect(text).toContain('사용자 유형: 학생');
-    expect(text).toContain('완료 일정: 3회');
-    expect(text).toContain('선택 가격안: 학생 연간');
-    expect(text).toContain('일정명·장소·위치·음성·연락처·기기 식별자는 포함하지 않았습니다.');
-    expect(text).not.toContain('비공개 면접');
-    expect(text).not.toContain('서울시청');
-    expect(text).not.toContain('집 주소');
-    expect(text).not.toContain('90000');
+    expect(payload).toEqual({
+      segment: 'student',
+      completedSchedules: 3,
+      scheduleCompletionRate: 100,
+      notificationStartRate: null,
+      delayApplyRate: null,
+      delayRejectRate: null,
+      averageStepErrorMinutes: null,
+      onTimeArrivalRate: 67,
+      plusOfferViews: 1,
+      plusInterestSelections: 1,
+      plusInterestWithdrawals: 0,
+      interested: true,
+      selectedPlan: '학생 연간',
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain('비공개 면접');
+    expect(serialized).not.toContain('서울시청');
+    expect(serialized).not.toContain('집 주소');
+    expect(serialized).not.toContain('90000');
   });
 
-  it('supports a prefer-not-to-answer segment and measurement-waiting values', () => {
+  it('reports a segment nobody answered as unanswered rather than guessing one', () => {
     const summary = buildPilotSummary(createEmptyAnalyticsStore(), {
       version: 1,
       status: 'none',
@@ -66,6 +91,27 @@ describe('Phase 0 pilot summary', () => {
     }, 'prefer-not-to-answer');
 
     expect(pilotSegmentLabel('prefer-not-to-answer')).toBe('응답하지 않음');
-    expect(formatPilotSummaryText(summary)).toContain('정시 도착률: 측정 대기');
+    expect(pilotSummaryPayload(summary)).toEqual(expect.objectContaining({
+      segment: 'prefer-not-to-answer',
+      interested: false,
+      selectedPlan: '미등록',
+      onTimeArrivalRate: null,
+    }));
+  });
+
+  it('remembers the segment so the question is asked once', async () => {
+    const storage = memoryStorage();
+    expect(await loadPilotSegment(storage)).toBeNull();
+
+    await savePilotSegment(storage, 'worker');
+
+    expect(storage.values.get(PILOT_SEGMENT_STORAGE_KEY)).toBe('worker');
+    expect(await loadPilotSegment(storage)).toBe('worker');
+  });
+
+  it('ignores a stored segment that is not one of the offered answers', async () => {
+    const storage = memoryStorage({ [PILOT_SEGMENT_STORAGE_KEY]: 'ceo' });
+
+    expect(await loadPilotSegment(storage)).toBeNull();
   });
 });

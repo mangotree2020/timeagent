@@ -8,6 +8,15 @@ import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@
 import { radius, space } from '@/constants/design';
 import { AppPalette, useThemedStyles } from '@/state/theme-context';
 import { loadAnalyticsStore, recordAnalyticsEvent } from '@/lib/analytics';
+import { googleAuthProvider } from '@/lib/google-auth-provider';
+import {
+  PILOT_SEGMENTS,
+  PilotSegment,
+  buildPilotSummary,
+  loadPilotSegment,
+  savePilotSegment,
+} from '@/lib/pilot-summary';
+import { createConfiguredPilotSummaryRemote, trackPilotSummarySend } from '@/lib/pilot-summary-remote';
 import {
   PLUS_PLAN_OPTIONS,
   PlusInterestState,
@@ -39,19 +48,28 @@ export default function PlusScreen() {
   const [interest, setInterest] = useState<PlusInterestState>(createEmptyPlusInterestState);
   const [selectedPlan, setSelectedPlan] = useState<PlusPlan>('annual');
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [segment, setSegment] = useState<PilotSegment | null>(null);
+  // What the screen would send if it closed right now. The cleanup below runs after the state it
+  // would read is already gone, so the answers are kept somewhere that outlives the render — and
+  // kept current, because registering interest during the visit is the very thing being reported.
+  const latest = useRef<{ interest: PlusInterestState; segment: PilotSegment | null } | null>(null);
+  /** The analytics writes this visit started, so what is sent includes the events it caused. */
+  const recorded = useRef<Promise<unknown>>(Promise.resolve());
 
   const loadState = useCallback(() => {
-    return Promise.all([loadAnalyticsStore(AsyncStorage), loadPlusInterest(AsyncStorage)])
-      .then(([analytics, savedInterest]) => {
+    return Promise.all([loadAnalyticsStore(AsyncStorage), loadPlusInterest(AsyncStorage), loadPilotSegment(AsyncStorage)])
+      .then(([analytics, savedInterest, savedSegment]) => {
         const nextEligibility = getPlusOfferEligibility(analytics);
         setEligibility(nextEligibility);
         setInterest(savedInterest);
+        setSegment(savedSegment);
+        latest.current = { interest: savedInterest, segment: savedSegment };
         if (savedInterest.plan) setSelectedPlan(savedInterest.plan);
         setHasLoaded(true);
         setStatus('ready');
         if (!viewed.current) {
           viewed.current = true;
-          void recordAnalyticsEvent(AsyncStorage, 'plus_offer_viewed', {
+          recorded.current = recordAnalyticsEvent(AsyncStorage, 'plus_offer_viewed', {
             eligible: nextEligibility.eligible,
             completedSchedules: nextEligibility.completedSchedules,
           });
@@ -67,15 +85,47 @@ export default function PlusScreen() {
     void loadState();
   }, [loadState]);
 
+  // Leaving the screen is what sends the aggregates. There is no button for it because there is
+  // nothing here for the person to decide: the numbers are counts and rates with no schedule, place
+  // or time in them, and they are read as pilot statistics rather than shown back to anyone.
+  useEffect(() => () => {
+    const answers = latest.current;
+    if (!answers) return;
+    // The counters are read back from storage here rather than reused from load time. Viewing this
+    // screen and registering interest on it are both events, and both belong to the visit being
+    // reported — sending the snapshot the screen opened with reports every registration as a
+    // non-registration and leaves every Plus counter a visit behind.
+    void trackPilotSummarySend(async () => {
+      // The interest event was recorded without waiting for it. Reading storage before that write
+      // lands sends the new interest state with the counter for it still missing.
+      await recorded.current.catch(() => undefined);
+      const analytics = await loadAnalyticsStore(AsyncStorage).catch(() => null);
+      if (!analytics) return;
+      const summary = buildPilotSummary(analytics, answers.interest, answers.segment ?? 'prefer-not-to-answer');
+      await createConfiguredPilotSummaryRemote(googleAuthProvider.getIdToken).save(summary).catch(() => undefined);
+    });
+  }, []);
+
+  const rememberInterest = (next: PlusInterestState) => {
+    setInterest(next);
+    if (latest.current) latest.current = { ...latest.current, interest: next };
+  };
+
+  const chooseSegment = (next: PilotSegment) => {
+    setSegment(next);
+    if (latest.current) latest.current = { ...latest.current, segment: next };
+    void savePilotSegment(AsyncStorage, next).catch(() => undefined);
+  };
+
   const registerInterest = async () => {
     if (!eligibility.eligible || status === 'saving') return;
     const previousPlan = interest.plan;
     setStatus('saving');
     try {
       const next = await savePlusInterest(AsyncStorage, selectedPlan);
-      setInterest(next);
+      rememberInterest(next);
       setStatus('saved');
-      void recordAnalyticsEvent(AsyncStorage, 'plus_interest_selected', {
+      recorded.current = recordAnalyticsEvent(AsyncStorage, 'plus_interest_selected', {
         plan: selectedPlan,
         previousPlan,
       });
@@ -90,10 +140,10 @@ export default function PlusScreen() {
     setStatus('saving');
     try {
       const next = await withdrawPlusInterest(AsyncStorage);
-      setInterest(next);
+      rememberInterest(next);
       setShowWithdrawConfirm(false);
       setStatus('saved');
-      void recordAnalyticsEvent(AsyncStorage, 'plus_interest_withdrawn', { previousPlan });
+      recorded.current = recordAnalyticsEvent(AsyncStorage, 'plus_interest_withdrawn', { previousPlan });
     } catch {
       setStatus('error');
     }
@@ -125,6 +175,33 @@ export default function PlusScreen() {
         </View>
         <Text style={type.caption}>{eligibility.eligible ? '핵심 흐름을 충분히 경험한 뒤 원하는 가격안을 선택할 수 있어요.' : '먼저 실제 일정에서 준비 시작과 완료를 경험한 뒤 Plus 의견을 받을게요.'}</Text>
       </Card>
+
+      <View style={styles.section}>
+        <Text accessibilityRole="header" style={type.heading}>나와 가까운 사용자 유형</Text>
+        <Text style={type.bodyMuted}>가격 의견을 어떤 생활 패턴에서 나온 것으로 읽을지 정할 때만 씁니다. 답하지 않아도 돼요.</Text>
+      </View>
+
+      <View accessibilityRole="radiogroup" style={styles.segmentList}>
+        {PILOT_SEGMENTS.map((option) => {
+          const selected = segment === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              accessibilityLabel={`${option.label}${selected ? ', 선택됨' : ''}`}
+              onPress={() => chooseSegment(option.id)}
+              style={({ pressed }) => [styles.segment, selected && styles.planSelected, pressed && styles.pressed]}
+            >
+              <View style={styles.radioOuter}>{selected ? <View style={styles.radioInner} /> : null}</View>
+              <View style={styles.flex}>
+                <View style={styles.planTitleRow}><Text style={styles.planName}>{option.label}</Text>{selected ? <Text style={styles.selectedText}>선택됨</Text> : null}</View>
+                <Text style={type.caption}>{option.detail}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <View style={styles.section}>
         <Text accessibilityRole="header" style={type.heading}>관심 있는 가격안</Text>
@@ -167,6 +244,7 @@ export default function PlusScreen() {
         <View style={styles.noticeRow}><AppIcon name="check" size={20} /><Text style={[type.body, styles.flex]}>지금은 결제와 자동 갱신이 없습니다.</Text></View>
         <View style={styles.noticeRow}><AppIcon name="check" size={20} /><Text style={[type.body, styles.flex]}>연락처·일정·위치 정보도 수집하지 않습니다.</Text></View>
         <Text style={type.caption}>관심 상품과 선택 시각만 이 기기에 저장하며 언제든 철회할 수 있어요.</Text>
+        <Text style={type.caption}>이 화면을 닫을 때 완료 횟수·정시 도착률 같은 집계값과 선택한 사용자 유형이 검증 통계로 전송돼요. 일정명·장소·위치·음성·연락처·기기 식별자·정확한 이벤트 시각은 포함하지 않습니다.</Text>
       </Card>
 
       {status === 'error' ? <Card style={styles.errorCard}><Text style={styles.errorTitle}>{hasLoaded ? '관심 상태를 저장하지 못했어요' : '관심 상태를 불러오지 못했어요'}</Text><Text style={type.bodyMuted}>{hasLoaded ? '현재 선택은 유지됩니다. 기기 저장 상태를 확인하고 다시 시도해 주세요.' : '기본 미등록 상태를 유지했습니다. 기기 저장 상태를 확인하고 다시 불러와 주세요.'}</Text>{!hasLoaded ? <Button label="다시 불러오기" variant="secondary" onPress={() => { setStatus('loading'); void loadState(); }} /> : null}</Card> : null}
@@ -229,6 +307,8 @@ const createStyles = (c: AppPalette) => {
   gateIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice },
   section: { gap: space.xs },
   planList: { gap: space.sm },
+  segmentList: { gap: space.sm },
+  segment: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
   plan: { minHeight: 116, flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
   planSelected: { borderWidth: 2, borderColor: c.deepBlue, backgroundColor: c.selectedSoft },
   radioOuter: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c.deepBlue, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
