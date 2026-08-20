@@ -140,6 +140,20 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-20 비공개 테스트 1.0.8 최종 제출본 (업로드 대기)
+
+앞의 8/19 빌드를 대체한다. 이후 커밋 `2dd22ef`~`a3f89fa`가 포함됐다: Phase 0 결과 화면 삭제와 서버 집계 전환(`pilot_summaries` 마이그레이션·`/v1/pilot-summary` 배포 완료), 설정 화면 정리(원터치 화면 모드·루틴 행 통합·지표 접기), 음성 흐름 보정(말하지 않은 장소 차단·중복 준비 행동 제거·지도 닫기), TMAP 실시간 이동 시간(`/v1/routes/estimates` 배포 완료), 홈 약속 카드 정리. 이동수단은 학습 대상에서 완전히 제외됐다.
+
+- 버전 `1.0.8 (8)`, 패키지 `com.timeagent.app`, targetSdk 36, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.8-versionCode8.aab` (68,495,987 bytes)
+- AAB SHA-256: `2c65e8017ab62dd987b7387639c8c62a5156d8e070796e941a65af6ca367d26e`
+- APK: `artifacts/TimeAgent-1.0.8-versionCode8.apk` (117,385,693 bytes)
+- APK SHA-256: `6b38610957ae151aa573c4019749e016fa9b1c4958b96468de7cafb1fd411244`
+- 서명 `CN=TimeAgent Upload` SHA-1 `05:0B:58:…:8E:B1` 일치, 금지 권한 0건
+- 검증: `npm run verify` 46스위트·473/473, 시각 회귀 228/228
+- 실기기(SM-N971N): 홈 카드가 제목으로 시작하고 시간·장소가 22px로 커졌다. 화면 모드는 카드 없는 버튼 하나에 언어 버튼은 없다. 학습 기록에 `자가용 이동` 등 이동 행이 없다. 같은 서면 약속이 지하철 41분·택시 36분으로 수단별 실시간 값을 보였다.
+- Play 데이터 안전 섹션에 `앱 활동` 전송 항목(집계값, `POST /v1/pilot-summary`)을 반영해야 한다. `docs/DATA_SAFETY.md` 초안 기준.
+
 ## 2026-08-19 비공개 테스트 1.0.8 빌드 (제출본, 업로드 대기)
 
 앞의 `1.0.6 (7)` 빌드와 앱 코드가 같고 `app.json`의 버전 값만 올린 것이다. 실기기에서 확인한 전국 검색 동작은 그 항목에 기록돼 있으며, 이 빌드가 실제로 제출할 산출물이다.
