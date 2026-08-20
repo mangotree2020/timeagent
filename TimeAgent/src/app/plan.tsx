@@ -9,6 +9,7 @@ import { Timeline } from '@/components/timeline';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { ExpoLocationProvider } from '@/lib/device-location-provider';
+
 import { createFallbackWalkingRoute, RoutePlan } from '@/lib/journey';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { createPlanPersonalization } from '@/lib/personalization';
@@ -24,7 +25,7 @@ export default function PlanScreen() {
   const type = useAppType();
   const params = useLocalSearchParams<{ e2eRoute?: string }>();
   const fixtureOrigin = __DEV__ && params.e2eRoute === 'ready' ? E2E_ROUTE_ORIGIN : null;
-  const { activeConfirmedPlanId, activePlan, activeSchedule, beginEditConfirmedPlan, confirmPendingPlan, confirmedPlansStatus, deleteConfirmedPlan, draft, editingConfirmedPlanId, pendingPlan, pendingSchedule, personalizationProfile, setDraftStep, useStandardPlan } = useSchedule();
+  const { activeConfirmedPlanId, activePlan, activeSchedule, beginEditConfirmedPlan, confirmPendingPlan, confirmedPlansStatus, deleteConfirmedPlan, draft, editingConfirmedPlanId, pendingPlan, pendingSchedule, personalizationProfile, setDraftStep, travelEstimateFor, useStandardPlan } = useSchedule();
   const [confirmError, setConfirmError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -33,12 +34,18 @@ export default function PlanScreen() {
   // A half-finished draft — say, an all-day event pulled from the calendar — has no time to plan
   // from, and planning it would throw during render and blank the screen.
   const plannable = isPlannableSchedule(schedule);
-  const plan = pendingPlan ?? activePlan ?? (plannable ? createSchedulePlan(schedule) : null);
+  // The same real journey time the rest of the app plans with. Computing it here without the
+  // estimates would print a different departure time from the one that gets confirmed.
+  const travelMinutes = travelEstimateFor(schedule)?.minutes;
+  const plan = pendingPlan ?? activePlan ?? (plannable ? createSchedulePlan(schedule, { travelMinutes }) : null);
   const isPending = !!pendingPlan && !!pendingSchedule;
-  // Same personalization the plan itself used, or the hint would quote a different arithmetic.
+  // Same personalization and the same journey the plan itself used, or the hint quotes a different
+  // arithmetic: a plan timed with a 19-minute taxi ride, told it should have started for a 43-minute
+  // one, contradicts itself on the same screen.
   const targetPrepStart = plannable ? targetPrepStartClock(schedule, {
     now: currentClock(),
     personalization: createPlanPersonalization(personalizationProfile, schedule),
+    travelMinutes: plan?.travelMinutes ?? travelMinutes,
   }) : '';
   const isEditing = isPending && !!editingConfirmedPlanId;
   const destinationLatitude = schedule.destinationCoordinate?.latitude;

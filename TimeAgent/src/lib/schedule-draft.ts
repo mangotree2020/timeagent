@@ -43,6 +43,12 @@ export type ScheduleDraft = {
   destination: string;
   destinationAddress: string;
   destinationCoordinate: { latitude: number; longitude: number } | null;
+  /**
+   * How far the destination actually is from where the person was when they picked it. The journey
+   * is timed from this, so a stop away and a city away stop getting the same answer. Null while
+   * nothing has been located, or when the device could not say where it was.
+   */
+  destinationDistanceMeters?: number | null;
   transport: TransportMode;
   priority: 'on-time' | 'cost';
   routines: RoutineDraft[];
@@ -72,6 +78,7 @@ export function createDefaultScheduleDraft(
     destination: '서면 볼링장',
     destinationAddress: '부산진구 중앙대로 672',
     destinationCoordinate: { latitude: 35.1531, longitude: 129.0597 },
+    destinationDistanceMeters: null,
     transport: 'AI 추천',
     priority: 'on-time',
     routines: defaultRoutinesForGender(preparationGender),
@@ -158,6 +165,9 @@ function isScheduleDraft(value: unknown): value is ScheduleDraft {
     && draft.routines.every(isRoutineDraft)
     && (draft.durationMinutes === undefined
       || (Number.isInteger(draft.durationMinutes) && draft.durationMinutes >= 5 && draft.durationMinutes <= 1440))
+    && (draft.destinationDistanceMeters === undefined
+      || draft.destinationDistanceMeters === null
+      || (Number.isFinite(draft.destinationDistanceMeters) && draft.destinationDistanceMeters >= 0))
     && (draft.recurrence === undefined || typeof draft.recurrence === 'string');
 }
 

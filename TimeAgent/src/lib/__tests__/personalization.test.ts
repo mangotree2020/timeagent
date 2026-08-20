@@ -21,32 +21,45 @@ function completedSession() {
 }
 
 describe('actual duration personalization', () => {
-  test('learns routine and transport averages once per completed session', () => {
-    const initial = createDefaultPersonalizationProfile();
+  test('learns preparation averages once per completed session, and journeys not at all', () => {
+    // The journey is answered by a live route to this appointment's own destination, so the depart
+    // step is not a lesson — and rows learned by older builds are shed rather than shown forever.
+    const initial = { ...createDefaultPersonalizationProfile(), transports: [
+      { key: '자가용', label: '자가용 이동', averageMinutes: 31, lastActualMinutes: 31, lastPlannedMinutes: 20, sampleCount: 2, updatedAt: 1 },
+    ] };
     const session = completedSession();
 
     const learned = learnFromCompletedSession(initial, session);
     const duplicate = learnFromCompletedSession(learned.profile, session);
 
-    expect(learned.learnedCount).toBe(2);
+    expect(learned.learnedCount).toBe(1);
     expect(learned.profile.routines[0]).toMatchObject({ key: 'shower', averageMinutes: 22, sampleCount: 1 });
-    expect(learned.profile.transports[0]).toMatchObject({ key: 'AI 추천', averageMinutes: 27, sampleCount: 1 });
+    expect(learned.profile.transports).toEqual([]);
     expect(duplicate.learnedCount).toBe(0);
     expect(duplicate.profile).toBe(learned.profile);
   });
 
-  test('uses learned averages in the next plan and exposes the reason', () => {
+  test('uses learned averages for preparation, and never for the journey', () => {
+    // A trip that took 27 minutes last time was a trip to somewhere else. Averaging it into the next
+    // plan moved the departure time for a reason nobody could see on screen, so travel is left to
+    // the distance to this appointment's own destination.
     const schedule = createDefaultScheduleDraft();
     const learned = learnFromCompletedSession(createDefaultPersonalizationProfile(), completedSession()).profile;
 
     const plan = createSchedulePlan(schedule, { personalization: createPlanPersonalization(learned, schedule) });
 
     expect(plan.timeline.find((step) => step.id === 'shower')?.duration).toBe(22);
-    expect(plan.travelMinutes).toBe(27);
-    expect(plan.personalizationAdjustments).toEqual(expect.arrayContaining([
+    expect(plan.travelMinutes).toBe(24);
+    expect(plan.personalizationAdjustments).toEqual([
       expect.objectContaining({ id: 'shower', beforeMinutes: 18, afterMinutes: 22, samples: 1 }),
-      expect.objectContaining({ id: 'transport-AI 추천', beforeMinutes: 24, afterMinutes: 27, samples: 1 }),
-    ]));
+    ]);
+  });
+
+  test('offers nothing at all when only a journey was learned', () => {
+    const schedule = { ...createDefaultScheduleDraft(), routines: [] };
+    const learned = learnFromCompletedSession(createDefaultPersonalizationProfile(), completedSession()).profile;
+
+    expect(createPlanPersonalization(learned, schedule)).toBeUndefined();
   });
 
   test('does not apply suggestions after the user disables learning', () => {

@@ -44,33 +44,23 @@ export function learnFromCompletedSession(
 
   const routineById = new Map(session.schedule.routines.map((routine) => [routine.id, routine]));
   let routines = profile.routines;
-  let transports = profile.transports;
   let learnedCount = 0;
 
+  // Only preparation steps are learned. The journey is not: it now comes from a live route to the
+  // appointment's own destination, and an average over trips to different places taught the plan
+  // nothing anyone could act on.
   for (const step of session.timeline) {
     if (!step.actualDurationMinutes) continue;
     const routine = routineById.get(step.id);
-    if (routine) {
-      routines = upsertStat(routines, {
-        key: routine.id,
-        label: routine.label,
-        actualMinutes: step.actualDurationMinutes,
-        plannedMinutes: step.duration,
-        updatedAt: session.updatedAt,
-      });
-      learnedCount += 1;
-      continue;
-    }
-    if (step.id === 'depart') {
-      transports = upsertStat(transports, {
-        key: session.route,
-        label: `${session.route} 이동`,
-        actualMinutes: step.actualDurationMinutes,
-        plannedMinutes: step.duration,
-        updatedAt: session.updatedAt,
-      });
-      learnedCount += 1;
-    }
+    if (!routine) continue;
+    routines = upsertStat(routines, {
+      key: routine.id,
+      label: routine.label,
+      actualMinutes: step.actualDurationMinutes,
+      plannedMinutes: step.duration,
+      updatedAt: session.updatedAt,
+    });
+    learnedCount += 1;
   }
 
   return {
@@ -78,7 +68,9 @@ export function learnFromCompletedSession(
     profile: {
       ...profile,
       routines,
-      transports,
+      // Emptied rather than carried: rows learned before this change would otherwise sit in the
+      // settings list forever, describing journeys the planner no longer listens to.
+      transports: [],
       appliedSessionIds: [...profile.appliedSessionIds, session.sessionId].slice(-MAX_APPLIED_SESSIONS),
     },
   };
@@ -93,14 +85,8 @@ export function createPlanPersonalization(
   const routineMinutes = Object.fromEntries(profile.routines
     .filter((stat) => routineKeys.has(stat.key))
     .map((stat) => [stat.key, { minutes: recommendedMinutes(stat.averageMinutes), samples: stat.sampleCount }]));
-  const transport = profile.transports.find((stat) => stat.key === draft.transport);
-  if (Object.keys(routineMinutes).length === 0 && !transport) return undefined;
-  return {
-    routineMinutes,
-    travelMinutes: transport
-      ? { minutes: recommendedMinutes(transport.averageMinutes), samples: transport.sampleCount }
-      : undefined,
-  };
+  if (Object.keys(routineMinutes).length === 0) return undefined;
+  return { routineMinutes };
 }
 
 export async function loadPersonalizationProfile(storage: StorageLike): Promise<PersonalizationProfile> {
@@ -108,7 +94,9 @@ export async function loadPersonalizationProfile(storage: StorageLike): Promise<
   if (!raw) return createDefaultPersonalizationProfile();
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isProfile(parsed) ? parsed : createDefaultPersonalizationProfile();
+    // Journeys recorded by older builds are shed on load: the settings list must not keep showing
+    // `자가용 이동` rows for a thing the planner no longer learns.
+    return isProfile(parsed) ? { ...parsed, transports: [] } : createDefaultPersonalizationProfile();
   } catch {
     return createDefaultPersonalizationProfile();
   }

@@ -31,6 +31,9 @@ import {
   ScheduleDraftStep,
 } from '@/lib/schedule-draft';
 import { createSchedulePlan, currentClock, SchedulePlan } from '@/lib/planning';
+import { readCurrentCoordinate } from '@/lib/current-position';
+import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
+import { ROUTED_TRANSPORT_MODES, TravelEstimate, TravelEstimates, travelMinutesForMode } from '@/lib/travel-estimate';
 import {
   clearPersonalizationProfile,
   createDefaultPersonalizationProfile,
@@ -64,6 +67,11 @@ import {
   updateProgressRoute,
 } from '@/lib/progress-session';
 
+/** One destination, one set of measurements. The coordinate names it; the typed name does not. */
+function placeKey(coordinate: { latitude: number; longitude: number } | null | undefined) {
+  return coordinate ? `${coordinate.latitude},${coordinate.longitude}` : null;
+}
+
 type ScheduleContextValue = {
   timeline: TimelineStep[];
   delayMinutes: number;
@@ -82,6 +90,11 @@ type ScheduleContextValue = {
   pendingDelayProposal: ProgressDelayProposal | null;
   progressStatus: 'loading' | 'saving' | 'saved' | 'error';
   notificationStatus: ProgressNotificationStatus;
+  /**
+   * What the journey to this schedule's destination actually takes, or null while nothing has been
+   * measured and nothing located. Null is normal; every caller can plan without it.
+   */
+  travelEstimateFor: (schedule: ScheduleDraft) => TravelEstimate | null;
   personalizationProfile: PersonalizationProfile;
   personalizationStatus: 'loading' | 'saving' | 'saved' | 'error';
   lastPersonalizationLearnedCount: number;
@@ -124,6 +137,8 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   const [activeConfirmedPlanId, setActiveConfirmedPlanId] = useState<string | null>(null);
   const [editingConfirmedPlanId, setEditingConfirmedPlanId] = useState<string | null>(null);
   const [pendingSchedule, setPendingSchedule] = useState<ScheduleDraft | null>(null);
+  /** The pending schedule as it stands when a lookup lands, which is not during any render. */
+  const pendingScheduleRef = useRef<ScheduleDraft | null>(null);
   const [pendingPlan, setPendingPlan] = useState<SchedulePlan | null>(null);
   const [confirmedPlans, setConfirmedPlans] = useState<ConfirmedSchedulePlan[]>([]);
   const [confirmedPlansStatus, setConfirmedPlansStatus] = useState<ScheduleContextValue['confirmedPlansStatus']>('loading');
@@ -153,6 +168,29 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     status: 'error' as const,
   }));
   const notificationGeneration = useRef(0);
+  /**
+   * Real journey times, keyed by mode so switching between 지하철 and 택시 answers from the same
+   * lookup instead of asking again — and stamped with the place they were measured to. A lookup
+   * takes a moment, and a plan confirmed during that moment must not be timed with the previous
+   * destination's journey, so the stamp is checked before the numbers are used at all.
+   */
+  const travelEstimatesRef = useRef<{ place: string | null; estimates: TravelEstimates }>({ place: null, estimates: {} });
+  const applyTravelEstimates = useCallback((place: string | null, estimates: TravelEstimates) => {
+    travelEstimatesRef.current = { place, estimates };
+  }, []);
+  const travelEstimateFor = useCallback((schedule: ScheduleDraft) => {
+    const place = placeKey(schedule.destinationCoordinate);
+    const measured = travelEstimatesRef.current;
+    return travelMinutesForMode(
+      schedule.transport,
+      place && measured.place === place ? measured.estimates : {},
+      schedule.destinationDistanceMeters,
+    );
+  }, []);
+
+  // One lookup per destination, covering every mode, so choosing 지하철 over 택시 is answered from
+  // what the road and the timetables already said rather than by asking again. It runs on the
+  // coordinate, not the name: the same place renamed is the same journey.
   const applyPersonalizationProfile = useCallback((profile: PersonalizationProfile) => {
     personalizationRef.current = profile;
     setPersonalizationProfile(profile);
@@ -160,7 +198,53 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   const createCurrentPlan = useCallback((schedule: ScheduleDraft) => createSchedulePlan(schedule, {
     now: currentClock(),
     personalization: createPlanPersonalization(personalizationRef.current, schedule),
-  }), []);
+    // How long the journey takes, asked of the road and the timetables rather than assumed. Absent
+    // until the lookup lands, and absent for good if the providers cannot answer; the planner then
+    // measures the distance itself.
+    travelMinutes: travelEstimateFor(schedule)?.minutes,
+  }), [travelEstimateFor]);
+  useEffect(() => { pendingScheduleRef.current = pendingSchedule; }, [pendingSchedule]);
+
+  const destinationKey = placeKey(draft.destinationCoordinate);
+  useEffect(() => {
+    let active = true;
+    const destination = draft.destinationCoordinate;
+    void (async () => {
+      // Estimates belong to one destination. Clearing them here rather than on the way in keeps the
+      // previous journey's times from being read against a place they were never measured for.
+      if (!destinationKey || !destination) {
+        if (active) applyTravelEstimates(null, {});
+        return;
+      }
+      const origin = await readCurrentCoordinate();
+      if (!active) return;
+      if (!origin) {
+        applyTravelEstimates(destinationKey, {});
+        return;
+      }
+      try {
+        const estimates = await createConfiguredMobilityProvider()
+          .getTravelEstimates({ origin, destination, modes: ROUTED_TRANSPORT_MODES });
+        if (!active) return;
+        applyTravelEstimates(destinationKey, estimates);
+        // A plan made before this landed was timed by distance arithmetic. It is made again now,
+        // for the place it is actually to — otherwise the screen keeps the guess until someone
+        // edits the schedule, which is exactly what nobody would think to do.
+        setPendingPlan((current) => {
+          const schedule = pendingScheduleRef.current;
+          if (!current || !schedule || placeKey(schedule.destinationCoordinate) !== destinationKey) return current;
+          const next = createCurrentPlan(schedule);
+          return next.travelMinutes === current.travelMinutes ? current : next;
+        });
+      } catch {
+        // Nothing to tell anyone: the planner measures the distance itself when this is empty.
+        if (active) applyTravelEstimates(destinationKey, {});
+      }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyTravelEstimates, createCurrentPlan, destinationKey]);
+
   const startNewDraft = useCallback((values: Partial<ScheduleDraft> = {}) => {
     const generation = ++draftRequestGeneration.current;
     const commonDraft = createDefaultScheduleDraft();
@@ -674,6 +758,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     pendingDelayProposal,
     progressStatus,
     notificationStatus,
+    travelEstimateFor,
     personalizationProfile,
     personalizationStatus,
     lastPersonalizationLearnedCount,
@@ -746,7 +831,10 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     deleteConfirmedPlan,
     useStandardPlan() {
       const schedule = pendingSchedule ?? activeSchedule ?? draft;
-      const nextPlan = createSchedulePlan(schedule, { now: currentClock() });
+      const nextPlan = createSchedulePlan(schedule, {
+        now: currentClock(),
+        travelMinutes: travelEstimateFor(schedule)?.minutes,
+      });
       if (pendingSchedule) setPendingPlan(nextPlan);
       else setActivePlan(nextPlan);
       setTimeline(nextPlan.timeline);
@@ -794,7 +882,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setProgressStatus('saved');
       await removePersistedProgress();
     },
-  }), [activeConfirmedPlanId, activePlan, activeSchedule, answerStepAlarm, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline]);
+  }), [activeConfirmedPlanId, activePlan, activeSchedule, answerStepAlarm, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline, travelEstimateFor]);
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;
 }

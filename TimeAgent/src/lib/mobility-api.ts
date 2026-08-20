@@ -8,6 +8,12 @@ import {
   RouteProvider,
   WalkingRouteRequest,
 } from '@/lib/journey';
+import {
+  isRoutedTransportMode,
+  TravelEstimate,
+  TravelEstimateRequest,
+  TravelEstimates,
+} from '@/lib/travel-estimate';
 
 type MobilityResponse = Pick<Response, 'ok' | 'status' | 'json'>;
 type MobilityFetcher = (input: string, init: RequestInit) => Promise<MobilityResponse>;
@@ -134,6 +140,24 @@ export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchP
     return payload;
   }
 
+  /**
+   * How long the journey takes by each way of making it. Modes the providers could not answer for
+   * are simply absent, which the caller reads as "use the distance arithmetic for that one" rather
+   * than as a failure worth showing anyone.
+   */
+  async getTravelEstimates(request: TravelEstimateRequest): Promise<TravelEstimates> {
+    const payload = await this.requestJson('/v1/routes/estimates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origin: request.origin,
+        destination: request.destination,
+        modes: request.modes,
+      }),
+    }, request.signal);
+    return parseTravelEstimates(payload);
+  }
+
   private async requestJson(path: string, init: RequestInit, externalSignal?: AbortSignal) {
     const controller = new AbortController();
     let timedOut = false;
@@ -214,6 +238,38 @@ function isGeocodedPlace(place: unknown): place is GeocodedPlace {
     && typeof place.roadAddress === 'string'
     && typeof place.jibunAddress === 'string'
     && isCoordinate(place.coordinate);
+}
+
+/**
+ * Reads back only what the providers actually answered. A mode with a nonsensical time is dropped
+ * rather than repaired: the caller has honest arithmetic to fall back on, and a plan built on a
+ * mangled number is worse than one built on an estimate that says it is an estimate.
+ */
+function parseTravelEstimates(value: unknown): TravelEstimates {
+  const source = (value as { estimates?: unknown })?.estimates;
+  if (!source || typeof source !== 'object') return {};
+  const estimates: TravelEstimates = {};
+  for (const [mode, raw] of Object.entries(source as Record<string, unknown>)) {
+    if (!isRoutedTransportMode(mode) || !raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const minutes = Number(entry.minutes);
+    const distanceMeters = Number(entry.distanceMeters);
+    if (!Number.isFinite(minutes) || minutes <= 0) continue;
+    const estimate: TravelEstimate = {
+      mode,
+      minutes: Math.round(minutes),
+      distanceMeters: Number.isFinite(distanceMeters) && distanceMeters >= 0 ? Math.round(distanceMeters) : 0,
+      source: 'route',
+      provider: typeof entry.provider === 'string' ? entry.provider : undefined,
+      calculatedAt: typeof entry.calculatedAt === 'string' ? entry.calculatedAt : undefined,
+    };
+    const fareWon = Number(entry.fareWon);
+    if (Number.isFinite(fareWon) && fareWon > 0) estimate.fareWon = Math.round(fareWon);
+    const transferCount = Number(entry.transferCount);
+    if (Number.isInteger(transferCount) && transferCount >= 0) estimate.transferCount = transferCount;
+    estimates[mode] = estimate;
+  }
+  return estimates;
 }
 
 function isRoutePlan(value: unknown): value is RoutePlan {

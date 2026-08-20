@@ -1,6 +1,11 @@
 import { TimelineStep } from '@/data/demo';
 import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 
+/**
+ * What each mode is worth in time before anything is known about the trip. These are the answers
+ * for a destination that has never been located — a draft restored without coordinates, or a device
+ * that could not say where it was.
+ */
 const defaultTravelMinutes: Record<TransportMode, number> = {
   'AI 추천': 24,
   '도보': 35,
@@ -9,6 +14,29 @@ const defaultTravelMinutes: Record<TransportMode, number> = {
   '자가용': 20,
   '택시': 18,
 };
+
+/**
+ * Door-to-door speeds for Korean cities, and the minutes each mode costs before it moves at all:
+ * walking to the stop and waiting for the bus, finding the car and parking it again.
+ */
+const travelSpeeds: Record<TransportMode, { kmPerHour: number; accessMinutes: number }> = {
+  'AI 추천': { kmPerHour: 24, accessMinutes: 8 },
+  '도보': { kmPerHour: 4.5, accessMinutes: 0 },
+  '버스': { kmPerHour: 18, accessMinutes: 10 },
+  '지하철': { kmPerHour: 32, accessMinutes: 9 },
+  '자가용': { kmPerHour: 28, accessMinutes: 6 },
+  '택시': { kmPerHour: 26, accessMinutes: 4 },
+};
+
+/**
+ * How long the journey takes, from how far it actually is. The table above answered 24 minutes for
+ * 지하철 whether the appointment was two stops away or in another city, and that number is what the
+ * departure time — and every preparation step before it — is counted back from.
+ */
+export function estimateTravelMinutes(transport: TransportMode, distanceMeters: number) {
+  const speed = travelSpeeds[transport] ?? travelSpeeds['AI 추천'];
+  return Math.max(1, Math.round(distanceMeters / 1_000 / speed.kmPerHour * 60 + speed.accessMinutes));
+}
 
 /**
  * A draft restored from an older build — or one whose transport was set from a route label — can
@@ -25,8 +53,12 @@ export function isPlannableSchedule(draft: ScheduleDraft) {
   return Boolean(match) && Number(match![1]) <= 23 && Number(match![2]) <= 59;
 }
 
-function travelMinutesFor(transport: TransportMode) {
-  return defaultTravelMinutes[transport] ?? defaultTravelMinutes['AI 추천'];
+function travelMinutesFor(draft: ScheduleDraft) {
+  const distance = draft.destinationDistanceMeters;
+  if (typeof distance === 'number' && Number.isFinite(distance) && distance >= 0) {
+    return estimateTravelMinutes(draft.transport, distance);
+  }
+  return defaultTravelMinutes[draft.transport] ?? defaultTravelMinutes['AI 추천'];
 }
 
 export type PlanStatus = {
@@ -53,9 +85,14 @@ export type DurationSuggestion = {
   samples: number;
 };
 
+/**
+ * Learned times, and only for preparation. Travel is deliberately absent: how long 지하철 took last
+ * Tuesday says nothing about how long it takes to a place across town, and averaging one trip into
+ * the next was moving departure times for reasons nobody could see. Travel comes from the distance
+ * to this appointment's own destination instead.
+ */
 export type PlanPersonalization = {
   routineMinutes: Record<string, DurationSuggestion>;
-  travelMinutes?: DurationSuggestion;
 };
 
 export type PlanPersonalizationAdjustment = {
@@ -92,9 +129,7 @@ export function targetPrepStartClock(draft: ScheduleDraft, options: PlanningOpti
     (total, routine) => total + effectiveRoutineMinutes(routine, options.personalization),
     0,
   );
-  const travelMinutes = options.personalization?.travelMinutes?.minutes
-    ?? options.travelMinutes
-    ?? travelMinutesFor(draft.transport);
+  const travelMinutes = options.travelMinutes ?? travelMinutesFor(draft);
   const bufferMinutes = draft.priority === 'on-time' ? 10 : 5;
   const appointmentMinutes = resolveAppointmentMinutes(clockToMinutes(draft.appointmentTime), options.now);
   return minutesToClock(appointmentMinutes - bufferMinutes - travelMinutes - preparationMinutes);
@@ -106,8 +141,7 @@ export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOption
     minutes: effectiveRoutineMinutes(routine, options.personalization),
   }));
   const preparationMinutes = routineMinutes.reduce((total, routine) => total + routine.minutes, 0);
-  const baseTravelMinutes = options.travelMinutes ?? travelMinutesFor(draft.transport);
-  const travelMinutes = options.personalization?.travelMinutes?.minutes ?? baseTravelMinutes;
+  const travelMinutes = options.travelMinutes ?? travelMinutesFor(draft);
   const bufferMinutes = draft.priority === 'on-time' ? 10 : 5;
   const appointmentClockMinutes = clockToMinutes(draft.appointmentTime);
   const appointmentMinutes = resolveAppointmentMinutes(appointmentClockMinutes, options.now);
@@ -174,17 +208,6 @@ export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOption
       samples: suggestion.samples,
     }];
   });
-  const travelSuggestion = options.personalization?.travelMinutes;
-  if (travelSuggestion && travelSuggestion.minutes !== baseTravelMinutes) {
-    personalizationAdjustments.push({
-      id: `transport-${draft.transport}`,
-      label: `${draft.transport} 이동`,
-      kind: 'travel',
-      beforeMinutes: baseTravelMinutes,
-      afterMinutes: travelSuggestion.minutes,
-      samples: travelSuggestion.samples,
-    });
-  }
 
   return {
     preparationMinutes,

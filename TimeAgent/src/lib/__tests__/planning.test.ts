@@ -1,5 +1,5 @@
 import { createDefaultScheduleDraft } from '../schedule-draft';
-import { createSchedulePlan, isPlannableSchedule, targetPrepStartClock } from '../planning';
+import { createSchedulePlan, estimateTravelMinutes, isPlannableSchedule, targetPrepStartClock } from '../planning';
 
 describe('schedule planning engine', () => {
   test('keeps walking as a first-class transport mode', () => {
@@ -164,5 +164,38 @@ describe('preparation durations someone set themselves', () => {
     expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '오후 3시' })).toBe(false);
     expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '25:00' })).toBe(false);
     expect(isPlannableSchedule({ ...createDefaultScheduleDraft(), appointmentTime: '9:05' })).toBe(true);
+  });
+});
+
+describe('how long the journey is given', () => {
+  it('times the trip from how far the destination actually is', () => {
+    // The old table said 지하철 was 24 minutes to anywhere. Two stops away and a city away are not
+    // the same trip, and this number is what the departure time is counted back from.
+    const near = { ...createDefaultScheduleDraft(), transport: '지하철' as const, destinationDistanceMeters: 2_000 };
+    const far = { ...near, destinationDistanceMeters: 30_000 };
+
+    expect(createSchedulePlan(near).travelMinutes).toBeLessThan(createSchedulePlan(far).travelMinutes);
+    expect(createSchedulePlan(near).travelMinutes).toBe(estimateTravelMinutes('지하철', 2_000));
+  });
+
+  it('answers the same distance differently for each way of covering it', () => {
+    const walking = estimateTravelMinutes('도보', 5_000);
+    const bus = estimateTravelMinutes('버스', 5_000);
+    const taxi = estimateTravelMinutes('택시', 5_000);
+
+    expect(walking).toBeGreaterThan(bus);
+    expect(bus).toBeGreaterThan(taxi);
+  });
+
+  it('counts what a mode costs before it moves, so a short trip is not free', () => {
+    // Waiting for a bus is most of a two-stop journey, and a plan that ignores it leaves too late.
+    expect(estimateTravelMinutes('버스', 300)).toBeGreaterThanOrEqual(10);
+    expect(estimateTravelMinutes('도보', 300)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('falls back to the per-mode default when nothing has been located', () => {
+    const unlocated = { ...createDefaultScheduleDraft(), transport: '지하철' as const, destinationDistanceMeters: null };
+
+    expect(createSchedulePlan(unlocated).travelMinutes).toBe(24);
   });
 });
