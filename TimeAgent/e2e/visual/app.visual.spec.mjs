@@ -624,7 +624,8 @@ test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 �
 
 test('홈 다음 약속은 남은 시간과 지금 시작을 함께 보여주고 카드 터치로 상세 일정에 진입함', async ({ page }) => {
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  const nextAppointment = page.getByRole('button', { name: '다음 약속, 서면 볼링장 친구 약속, 14:00, 서면 볼링장', exact: true });
+  // 카드 안에 '다음 약속' 라벨은 없다. 섹션 제목이 이미 말한 것을 카드가 반복하지 않는다.
+  const nextAppointment = page.getByRole('button', { name: '서면 볼링장 친구 약속, 14:00, 서면 볼링장', exact: true });
   await expect(nextAppointment).toBeVisible();
   await expect(nextAppointment.getByText('서면 볼링장 친구 약속', { exact: true })).toBeVisible();
   await expect(nextAppointment.getByText('14:00', { exact: true })).toBeVisible();
@@ -850,6 +851,10 @@ test('mvp-metrics 화면', async ({ page }) => {
     window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
   }, analyticsStore);
   await page.goto('/settings');
+  await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
+  // 지표는 접힌 채로 시작한다. 펼치기 전에는 값이 화면에 없어야 한다.
+  await expect(page.getByText('첫 일정 생성 완료율', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /제품 경험 측정/ }).click();
   await page.getByText('100%', { exact: true }).first().waitFor({ state: 'visible' });
   await page.evaluate(() => {
     const metric = [...document.querySelectorAll('*')].find((element) => element.textContent === '첫 일정 생성 완료율');
@@ -916,44 +921,16 @@ test('Plus 불러오기 오류는 기본 상태와 다시 불러오기 행동을
   await expect(page.getByText('일정 3회 더 완료해 주세요', { exact: true })).toBeVisible();
 });
 
-test('pilot-summary 화면은 유형과 공유 동의를 명시적으로 요구함', async ({ page }) => {
+test('Plus 미리보기는 가격안과 함께 사용자 유형을 묻고, 전송 시점을 밝힘', async ({ page }) => {
+  // 유형 질문은 Phase 0 화면이 아니라 이 화면에 있고, 집계는 화면을 닫을 때 전송된다.
   await page.addInitScript(({ analytics, interest }) => {
     window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
     window.localStorage.setItem('@on-time/plus-interest', JSON.stringify(interest));
   }, { analytics: plusEligibleAnalyticsStore, interest: plusInterestFixture });
-  await page.goto('/pilot-summary');
-  const share = page.getByRole('button', { name: '검증 결과 공유하기' });
-  await expect(share).toBeDisabled();
+  await page.goto('/plus');
   await page.getByRole('radio', { name: '직장인·프리랜서' }).click();
-  await expect(share).toBeDisabled();
-  await page.getByRole('checkbox', { name: '공유할 집계값과 제외 정보를 확인했습니다' }).click();
-  await expect(share).toBeEnabled();
-  await expect(page.getByText('일정명 · 장소 · 위치 · 음성 · 연락처 · 기기 식별자 · 정확한 이벤트 시각', { exact: true })).toBeVisible();
-  await expectVisual(page, 'pilot-summary');
-});
-
-test('pilot-summary 상단 정보 위계', async ({ page }) => {
-  await page.addInitScript(({ analytics, interest }) => {
-    window.localStorage.setItem('@on-time/analytics', JSON.stringify(analytics));
-    window.localStorage.setItem('@on-time/plus-interest', JSON.stringify(interest));
-  }, { analytics: plusEligibleAnalyticsStore, interest: plusInterestFixture });
-  await page.goto('/pilot-summary');
-  await page.getByText('수익화 검증에 필요한 수치만', { exact: true }).waitFor({ state: 'visible' });
-  await expectVisual(page, 'pilot-summary-top');
-});
-
-test('pilot-summary 불러오기 오류는 빈 집계와 재시도를 제공함', async ({ page }) => {
-  await page.addInitScript(() => {
-    const originalGetItem = Storage.prototype.getItem;
-    Storage.prototype.getItem = function (key) {
-      if (key === '@on-time/plus-interest') throw new Error('fixture load failure');
-      return originalGetItem.call(this, key);
-    };
-  });
-  await page.goto('/pilot-summary');
-  await expect(page.getByText('테스트 결과를 불러오지 못했어요', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '다시 불러오기' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '검증 결과 공유하기' })).toBeDisabled();
+  await expect(page.getByRole('radio', { name: '직장인·프리랜서, 선택됨' })).toBeVisible();
+  await expect(page.getByText('이 화면을 닫을 때 완료 횟수·정시 도착률 같은 집계값과 선택한 사용자 유형이 검증 통계로 전송돼요. 일정명·장소·위치·음성·연락처·기기 식별자·정확한 이벤트 시각은 포함하지 않습니다.', { exact: true })).toBeVisible();
 });
 
 test('온보딩 키보드 포커스와 실행', async ({ page }) => {
@@ -1120,8 +1097,8 @@ test('음성 할 일을 작은 행동으로 수정·저장하고 5분만 시작�
 test('설정한 다크 모드를 음성 일정 화면에 저장·적용함', async ({ page }) => {
   await page.goto('/settings');
   await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /화면 스타일/ }).click();
-  await page.getByRole('radio', { name: '다크 모드', exact: true }).click();
+  // 한 번 누르면 바로 바뀐다. 목록을 여는 단계는 없다.
+  await page.getByRole('switch', { name: '다크 모드', exact: true }).click();
   await page.waitForFunction(() => JSON.parse(window.localStorage.getItem('@on-time/app-settings') ?? '{}').colorMode === 'dark');
   await page.getByRole('tab', { name: '홈', exact: true }).click();
   await page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true }).click();

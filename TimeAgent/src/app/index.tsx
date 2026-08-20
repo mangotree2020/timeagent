@@ -142,16 +142,17 @@ export default function HomeScreen() {
               button in another is invalid on web and swallows the outer press. */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`다음 약속, ${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
+            accessibilityLabel={`${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
             accessibilityHint="상세 일정과 준비 계획을 확인합니다"
             onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
             style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
           >
+            {/* The section heading above already says these are appointments; a label inside the
+                card said it a third time. The title leads, with the chevron beside it. */}
             <View style={styles.heroTop}>
-              <Text style={styles.nextLabel}>다음 약속</Text>
+              <Text numberOfLines={2} style={[styles.heroTitle, styles.heroTitleLead]}>{schedule.title}</Text>
               <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
             </View>
-            <Text numberOfLines={2} style={styles.heroTitle}>{schedule.title}</Text>
             {/* People check the home card to answer "when do I have to move?", so the countdown to
                 preparation sits above the appointment details and carries its own colour. */}
             {countdown ? <View accessibilityLabel={countdown.accessibilityLabel} accessibilityLiveRegion="polite" style={[styles.countdown, styles[`countdown_${countdown.tone}`]]}>
@@ -160,8 +161,8 @@ export default function HomeScreen() {
               <Text style={styles.countdownAt}>{nextHomePlan?.plan.prepStart} 준비 시작</Text>
             </View> : null}
             <View style={styles.appointmentMeta}>
-              <View style={styles.appointmentDetail}><AppIcon name="time" size={17} iconColor={c.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
-              <View style={styles.appointmentDetail}><AppIcon name="location" size={17} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
+              <View style={styles.appointmentDetail}><AppIcon name="time" size={22} iconColor={c.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
+              <View style={styles.appointmentDetail}><AppIcon name="location" size={22} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
             </View>
           </Pressable>
           {/* Being ready sooner than planned is common, and waiting for the scheduled start is
@@ -326,7 +327,7 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   hero: { minHeight: 148, gap: space.md, padding: space.xl, borderColor: 'transparent', boxShadow: '0 10px 28px rgba(15,23,42,0.055)', elevation: 2 },
   emptyPlan: { minHeight: 132, flexDirection: 'row', alignItems: 'center', gap: space.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
-  nextLabel: { color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  heroTitleLead: { flex: 1 },
   countdown: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md },
   countdown_info: { backgroundColor: c.infoSoft },
   countdown_warning: { backgroundColor: c.warningSoft },
@@ -336,8 +337,8 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   heroTitle: { color: c.navy, fontSize: 22, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
   appointmentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg },
   appointmentDetail: { minHeight: 24, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7 },
-  appointmentDetailText: { color: c.deepBlue, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  heroLocation: { flexShrink: 1, color: c.textMuted, fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  appointmentDetailText: { color: c.deepBlue, fontSize: 22, lineHeight: 30, fontWeight: '900' },
+  heroLocation: { flexShrink: 1, color: c.textMuted, fontSize: 22, lineHeight: 30, fontWeight: '700' },
   buttonPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   registeredList: { gap: space.sm },
   registeredPressable: { minHeight: 44, borderRadius: radius.lg },
