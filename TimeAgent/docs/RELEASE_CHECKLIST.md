@@ -140,6 +140,21 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-22 비공개 테스트 1.0.9 제출본 (업로드 대기)
+
+앞의 8/20 `1.0.8 (8)` 빌드를 대체한다. 커밋 `c098800`이 포함됐다: 준비 단계 종료 알람(끌 때까지 울리고 끄면 완료)·1분 전 예고·자동 시작 시 진행 화면 열림·음성 이동수단 탭 후 안내, 그리고 정확한 시각 알람(`SCHEDULE_EXACT_ALARM`)과 배터리 최적화 예외(`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) 상태를 보여 주는 `준비 알람 정확도` 카드, 종료 알람이 다음 단계 안내보다 4초 먼저 울리는 예약 순서다.
+
+- 버전 `1.0.9 (9)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.9-versionCode9.aab` (68,518,986 bytes)
+- AAB SHA-256: `e421ffa7082b56497e6e6b4e4aeaf899d1e32bb7dfd5458426a82d370c3b2b6c`
+- APK: `artifacts/TimeAgent-1.0.9-versionCode9.apk` (117,490,273 bytes)
+- APK SHA-256: `a8336982dc41a42880b76b51161ddfdeb8575164002febba6ebdb497e0baade2`
+- 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB·APK 동일, APK Signature Scheme v2
+- 권한: `READ_CALENDAR` 유지, 새로 `SCHEDULE_EXACT_ALARM`·`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 추가(AAB manifest에서 확인), `WRITE_CALENDAR`·외부 저장소·화면 오버레이 없음. 근거와 앱 내 고지 흐름은 `docs/PLAY_DECLARATIONS.md`의 "정확한 시각 알람·배터리 최적화 예외" 항목이며, Play Console의 별도 선언 양식은 `USE_EXACT_ALARM`에만 있어 이 빌드에는 해당하지 않는다. 심사에서 배터리 최적화 예외 요청 근거를 물으면 같은 문안을 쓴다.
+- 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL`(9분 13초), `npm run verify` 47스위트·486/486
+- 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK로 백그라운드 동결 상태에서 단계 종료 알람이 예정 시각 ±0.2초에 알람 소리·진동과 함께 도착하는 것을 확인했다(`docs/EXECUTION_PLAN.md` 2026-08-21 항목). 이 2-ABI AAB/APK 자체의 기기 설치는 하지 않았다.
+- Play 데이터 안전 섹션 변경 없음(두 권한은 데이터를 다루지 않는다). 8/20 항목의 `앱 활동` 전송 반영은 여전히 남아 있다.
+
 ## 2026-08-20 비공개 테스트 1.0.8 최종 제출본 (업로드 대기)
 
 앞의 8/19 빌드를 대체한다. 이후 커밋 `2dd22ef`~`a3f89fa`가 포함됐다: Phase 0 결과 화면 삭제와 서버 집계 전환(`pilot_summaries` 마이그레이션·`/v1/pilot-summary` 배포 완료), 설정 화면 정리(원터치 화면 모드·루틴 행 통합·지표 접기), 음성 흐름 보정(말하지 않은 장소 차단·중복 준비 행동 제거·지도 닫기), TMAP 실시간 이동 시간(`/v1/routes/estimates` 배포 완료), 홈 약속 카드 정리. 이동수단은 학습 대상에서 완전히 제외됐다.
