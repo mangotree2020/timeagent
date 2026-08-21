@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { loadAppSettings } from './app-settings';
 import { ConfirmedSchedulePlan } from './confirmed-plans';
-import { PROGRESS_NOTIFICATION_CHANNEL_ID, ProgressNotificationStatus } from './notification-service';
+import { ensureProgressNotificationChannels, PROGRESS_ALARM_CHANNEL_ID, ProgressNotificationStatus } from './notification-service';
 
 export async function scheduleConfirmedPlanStart(
   plan: ConfirmedSchedulePlan,
@@ -17,12 +17,7 @@ export async function scheduleConfirmedPlanStart(
       Notifications.getPermissionsAsync(),
     ]);
     if (!settings.notifications || !permission.granted) return { status: 'disabled' };
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(PROGRESS_NOTIFICATION_CHANNEL_ID, {
-        name: 'TimeAgent 일정 알림',
-        importance: Notifications.AndroidImportance.HIGH,
-      });
-    }
+    await ensureProgressNotificationChannels();
     const identifier = await Notifications.scheduleNotificationAsync({
       content: {
         title: '준비 계획이 자동으로 시작됐어요',
@@ -33,7 +28,7 @@ export async function scheduleConfirmedPlanStart(
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: new Date(plan.prepStartAt),
-        channelId: PROGRESS_NOTIFICATION_CHANNEL_ID,
+        channelId: PROGRESS_ALARM_CHANNEL_ID,
       },
     });
     return { identifier, status: 'scheduled' };

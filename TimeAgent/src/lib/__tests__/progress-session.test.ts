@@ -120,6 +120,23 @@ describe('progress session', () => {
     expect(loaded?.plan.personalizationAdjustments).toEqual([]);
   });
 
+  test('remembers every scheduled alarm kind across a reload so each can still be cancelled', async () => {
+    const { session } = createFixture();
+    const kinds = ['prep-start', 'step-start', 'transition-preview', 'transition-wrap', 'one-minute-left', 'step-end', 'departure'] as const;
+    const scheduled = kinds.map((kind, index) => ({
+      identifier: `id-${index}`,
+      key: `${kind}:step-${index}`,
+      kind,
+      stepId: `step-${index}`,
+      fireAt: 1_000_000 + index,
+    }));
+    const storage = createMemoryStorage(JSON.stringify({ ...session, scheduledNotifications: scheduled }));
+
+    const loaded = await loadProgressSession(storage);
+
+    expect(loaded?.scheduledNotifications).toEqual(scheduled);
+  });
+
   test('round-trips the session and clears it when the schedule completes', async () => {
     const storage = createMemoryStorage();
     const { session } = createFixture();

@@ -1,6 +1,9 @@
 import {
   applyProgressNotificationAction,
   buildProgressNotificationRequests,
+  FOLLOW_UP_CUE_DELAY_MS,
+  ONE_MINUTE_WARNING_MIN_STEP_MINUTES,
+  PROGRESS_ONE_MINUTE_MESSAGE,
   PROGRESS_ADVANCE_ACTION,
   PROGRESS_EXTEND_ACTION,
   PROGRESS_EXTEND_MINUTES,
@@ -86,6 +89,30 @@ describe('local notification plan', () => {
     expect(withDirectionParticle('버스')).toBe('버스로');
     expect(withDirectionParticle('')).toBe('');
     expect(withDirectionParticle('bus')).toBe('bus로');
+  });
+
+  test('says one minute is left, one minute before each step that has one to give', () => {
+    const session = createFixture();
+    const requests = buildProgressNotificationRequests(session, 1_000_000);
+
+    const warnings = requests.filter((request) => request.kind === 'one-minute-left');
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings.every((request) => request.title === PROGRESS_ONE_MINUTE_MESSAGE)).toBe(true);
+    for (const warning of warnings) {
+      const end = requests.find((request) => request.key === `step-end:${warning.stepId}`)!;
+      expect(end.fireAt - warning.fireAt).toBe(60_000);
+    }
+    // A step too short for a last minute would hear the warning at its own start.
+    const short = session.timeline.filter((step) => step.duration < ONE_MINUTE_WARNING_MIN_STEP_MINUTES);
+    expect(short.every((step) => !warnings.some((warning) => warning.stepId === step.id))).toBe(true);
+  });
+
+  test('tells the person that turning the ending alarm off completes the step', () => {
+    const requests = buildProgressNotificationRequests(createFixture(), 1_000_000);
+    const endings = requests.filter((request) => request.kind === 'step-end');
+
+    expect(endings.length).toBeGreaterThan(0);
+    expect(endings.every((request) => request.body.includes('알람을 끄면 완료'))).toBe(true);
   });
 
   test('reads the step alarm body without a broken particle', () => {
@@ -174,6 +201,21 @@ describe('local notification plan', () => {
     // The running step and the departure already have their own cue.
     expect(requests.some((request) => request.key === `step-start:${session.currentStepId}`)).toBe(false);
     expect(requests.some((request) => request.key === 'step-start:depart')).toBe(false);
+  });
+
+  test('lets the end alarm sound alone before the next start or departure cue follows', () => {
+    const session = createFixture();
+    const requests = buildProgressNotificationRequests(session, 1_000_000, { stepCoaching: true });
+
+    for (let index = 1; index < session.timeline.length; index += 1) {
+      const previous = session.timeline[index - 1];
+      const step = session.timeline[index];
+      const end = requests.find((request) => request.key === `step-end:${previous.id}`);
+      const cue = requests.find((request) => request.key === (step.id === 'depart' ? 'departure:depart' : `step-start:${step.id}`));
+      if (!end || !cue) continue;
+      expect(cue.fireAt - end.fireAt).toBe(FOLLOW_UP_CUE_DELAY_MS);
+    }
+    expect(requests.filter((request) => request.kind === 'departure' || request.kind === 'step-start').length).toBeGreaterThan(1);
   });
 
   test('leaves out the per-step start alarms when the step coach is off', () => {

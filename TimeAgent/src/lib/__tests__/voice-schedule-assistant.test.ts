@@ -30,6 +30,7 @@ import {
   nextRequiredVoiceClarification,
   nextVoiceClarification,
   resolveVoiceClarificationChoice,
+  voiceGuidanceAfterTransportChoice,
   voiceScheduleMissingFields,
   voiceListeningOptions,
 } from '@/lib/voice-schedule-assistant';
@@ -615,6 +616,36 @@ describe('a field the microphone keeps missing', () => {
     expect(shouldOfferChoiceInsteadOfListening({ field: 'destination', prompt: '어디로 가시나요?', options: ['직접 입력'] })).toBe(false);
     expect(shouldOfferChoiceInsteadOfListening({ field: 'time', prompt: '몇 시인가요?', options: ['직접 입력'] })).toBe(false);
     expect(shouldOfferChoiceInsteadOfListening(null)).toBe(false);
+  });
+});
+
+describe('speaking on after a tapped way to get there', () => {
+  const pinned = {
+    ...createDefaultScheduleDraft(),
+    destination: '역삼역',
+    destinationCoordinate: { latitude: 37.5006, longitude: 127.0364 },
+  };
+  const unpinned = { ...pinned, destinationCoordinate: null };
+
+  it('guides to the map while the spoken place has no pinned location', () => {
+    // A tapped choice is resolved on the device, so no assistant reply is read aloud — without this
+    // guide the schedule sounded finished while the place was still only a name.
+    expect(voiceGuidanceAfterTransportChoice(unpinned, null)).toEqual({
+      guide: '장소 검색 결과나 지도에서 정확한 위치를 확인해 주세요.',
+      awaitsSpeech: false,
+    });
+  });
+
+  it('asks the still-open question aloud and listens for the answer', () => {
+    const asked = { field: 'destination' as const, prompt: '어디에서 만나나요?', options: ['직접 입력'] };
+    expect(voiceGuidanceAfterTransportChoice(pinned, asked)).toEqual({
+      guide: '어디에서 만나나요?',
+      awaitsSpeech: true,
+    });
+  });
+
+  it('stays silent once nothing is left to confirm', () => {
+    expect(voiceGuidanceAfterTransportChoice(pinned, null)).toBeNull();
   });
 });
 

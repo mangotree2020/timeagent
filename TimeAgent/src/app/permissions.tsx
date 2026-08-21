@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Linking, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName, IconButton } from '@/components/app-icon';
@@ -13,10 +13,19 @@ import {
   requestLocationPermission,
   requestNotificationPermission,
 } from '@/lib/device-permissions';
+import {
+  AlarmReliabilitySnapshot,
+  batteryOptimizationStatusLabel,
+  exactAlarmStatusLabel,
+  getAlarmReliabilitySnapshot,
+  openBatteryOptimizationSettings,
+  openExactAlarmSettings,
+  UNSUPPORTED_ALARM_RELIABILITY,
+} from '@/lib/alarm-reliability';
 import { withObjectParticle } from '@/lib/local-notifications';
 import { PermissionState, permissionStatusLabel } from '@/lib/permission-state';
 
-type PermissionKind = 'location' | 'notifications';
+type PermissionKind = 'location' | 'notifications' | 'alarms';
 
 export default function PermissionsScreen() {
   const styles = useThemedStyles(createStyles);
@@ -30,6 +39,18 @@ export default function PermissionsScreen() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [manualLocation, setManualLocation] = useState(settings.defaultLocation);
   const [message, setMessage] = useState('');
+  const [alarmReliability, setAlarmReliability] = useState<AlarmReliabilitySnapshot>(UNSUPPORTED_ALARM_RELIABILITY);
+  // Both alarm switches live on system screens, so the answer is read again each time the app comes
+  // back from one — and once on open, so the card never shows a stale promise.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const refresh = () => setAlarmReliability(getAlarmReliabilitySnapshot());
+    refresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -96,7 +117,7 @@ export default function PermissionsScreen() {
     <Screen>
       <Header
         title="권한 설정"
-        eyebrow={params.focus === 'notifications' ? '준비·출발 알림 설정' : params.focus === 'location' ? '출발 위치 설정' : '필요한 기능만 선택하세요'}
+        eyebrow={params.focus === 'notifications' ? '준비·출발 알림 설정' : params.focus === 'location' ? '출발 위치 설정' : params.focus === 'alarms' ? '준비 알람 정확도 설정' : '필요한 기능만 선택하세요'}
         right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />}
       />
 
@@ -160,6 +181,31 @@ export default function PermissionsScreen() {
         ) : null}
       </PermissionCard>
 
+      {Platform.OS === 'android' ? (
+        <Card style={[styles.permissionCard, params.focus === 'alarms' && styles.emphasized]}>
+          <View style={styles.permissionHeader}>
+            <View style={styles.icon}><AppIcon name="time" size={21} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={type.heading}>준비 알람 정확도</Text>
+              <Text style={type.bodyMuted}>앱을 닫아둔 동안에도 준비 단계가 끝나는 순간에 알람이 울리려면 Android가 정확한 시각 알람을 허용하고 앱을 절전으로 멈추지 않아야 해요. 두 설정 모두 기기 설정 화면에서 직접 켜고 끌 수 있으며, 위치나 일정 정보는 쓰지 않아요.</Text>
+            </View>
+          </View>
+          <View style={styles.reliabilityRow}>
+            <StatusPill label={exactAlarmStatusLabel(alarmReliability.exactAlarms)} tone={alarmReliability.exactAlarms === 'needs-permission' ? 'warning' : alarmReliability.exactAlarms === 'allowed' ? 'success' : 'info'} />
+            {alarmReliability.exactAlarms === 'needs-permission' ? (
+              <Button label="정확한 시각 알람 허용" onPress={() => { if (!openExactAlarmSettings()) setMessage('이 기기에서는 알람 설정 화면을 열 수 없어요. 설정 앱의 알람 및 리마인더에서 TimeAgent를 허용해 주세요.'); }} />
+            ) : null}
+          </View>
+          <View style={styles.reliabilityRow}>
+            <StatusPill label={batteryOptimizationStatusLabel(alarmReliability.batteryOptimization)} tone={alarmReliability.batteryOptimization === 'optimizing' ? 'warning' : alarmReliability.batteryOptimization === 'exempt' ? 'success' : 'info'} />
+            {alarmReliability.batteryOptimization === 'optimizing' ? (
+              <Button label="배터리 최적화 예외 설정" variant="secondary" onPress={() => { if (!openBatteryOptimizationSettings()) setMessage('이 기기에서는 배터리 설정 화면을 열 수 없어요. 설정 앱의 배터리에서 TimeAgent를 최적화 예외로 지정해 주세요.'); }} />
+            ) : null}
+          </View>
+          <Text style={type.caption}>설정 없이도 앱을 열어 두면 알람과 남은 시간이 그대로 안내돼요.</Text>
+        </Card>
+      ) : null}
+
       {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : null}
       <Button label="돌아가기" variant="ghost" onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))} />
     </Screen>
@@ -210,6 +256,7 @@ const createStyles = (c: AppPalette) => {
   permissionCard: { gap: space.md },
   emphasized: { borderWidth: 2, borderColor: c.cyan },
   permissionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  reliabilityRow: { gap: space.sm },
   icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted },
   fallback: { gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: c.surfaceMuted },
   fallbackTitle: { color: c.navy, fontSize: 14, fontWeight: '900' },

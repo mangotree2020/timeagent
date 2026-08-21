@@ -17,6 +17,13 @@ export type ProgressNotificationRequest = {
 };
 
 const MINIMUM_FUTURE_DELAY_MS = 1_000;
+/**
+ * A step's start cue and the previous step's end alarm fall on the same instant. Posted together,
+ * Android lets only the first of them sound — and on the device the quiet start cue kept winning,
+ * so the alarm arrived as a plain ding with no vibration (2026-08-21, Samsung Android 12). The cue
+ * therefore follows the alarm by a few seconds, long enough for the alarm to alert on its own.
+ */
+export const FOLLOW_UP_CUE_DELAY_MS = 4_000;
 
 const HANGUL_START = 0xAC00;
 const HANGUL_END = 0xD7A3;
@@ -97,6 +104,10 @@ export function applyProgressNotificationAction(
   return { applied: true, session: session_, action: actionIdentifier };
 }
 
+export const PROGRESS_ONE_MINUTE_MESSAGE = '1분 남았습니다.';
+/** A one-minute warning inside a shorter step would arrive at or before the step began. */
+export const ONE_MINUTE_WARNING_MIN_STEP_MINUTES = 2;
+
 /** What the coach says when a step becomes the current one. */
 export function buildStepCoachMessage(
   step: { title: string; duration: number },
@@ -136,6 +147,8 @@ export function buildProgressNotificationRequests(
     const startAt = index === currentIndex ? session.stepStartedAt : cursor;
     const durationSeconds = index === currentIndex ? session.stepDurationSeconds : step.duration * 60;
     const endAt = startAt + durationSeconds * 1_000;
+    // Later steps begin the instant the one before ends, where its alarm must be the one heard.
+    const cueAt = index === currentIndex ? startAt : startAt + FOLLOW_UP_CUE_DELAY_MS;
 
     // The running step and the departure already have their own cue, so a start alarm here would
     // repeat one the user just heard.
@@ -144,7 +157,7 @@ export function buildProgressNotificationRequests(
         key: `step-start:${step.id}`,
         kind: 'step-start',
         stepId: step.id,
-        fireAt: startAt,
+        fireAt: cueAt,
         title: `${step.title} 시작할 시간이에요`,
         body: buildStepCoachMessage(step, session.timeline[index + 1] ?? null),
         actionCategory: null,
@@ -156,7 +169,7 @@ export function buildProgressNotificationRequests(
         key: `departure:${step.id}`,
         kind: 'departure',
         stepId: step.id,
-        fireAt: startAt,
+        fireAt: cueAt,
         title: '이제 출발할 시간이에요',
         body: `${withDirectionParticle(session.route)} ${session.schedule.destination}까지 이동을 시작해 주세요.`,
         actionCategory: null,
@@ -190,6 +203,19 @@ export function buildProgressNotificationRequests(
       });
     }
 
+    const warnAt = endAt - 60_000;
+    if (step.duration >= ONE_MINUTE_WARNING_MIN_STEP_MINUTES && warnAt > now) {
+      requests.push({
+        key: `one-minute-left:${step.id}`,
+        kind: 'one-minute-left',
+        stepId: step.id,
+        fireAt: warnAt,
+        title: PROGRESS_ONE_MINUTE_MESSAGE,
+        body: `${withObjectParticle(step.title)} 마무리해 주세요. 시간이 끝나면 알람이 울려요.`,
+        actionCategory: null,
+      });
+    }
+
     if (step.duration > 0 && endAt > now) {
       requests.push({
         key: `step-end:${step.id}`,
@@ -198,8 +224,8 @@ export function buildProgressNotificationRequests(
         fireAt: endAt,
         title: `${step.title} 예정 시간이 끝났어요`,
         body: next
-          ? `알림에서 바로 다음 행동 ${withDirectionParticle(next.title)} 넘어가거나 ${PROGRESS_EXTEND_MINUTES}분 더 할 수 있어요.`
-          : `알림에서 바로 완료하거나 ${PROGRESS_EXTEND_MINUTES}분 더 할 수 있어요.`,
+          ? `알람을 끄면 완료되고 ${withDirectionParticle(next.title)} 넘어가요. ${PROGRESS_EXTEND_MINUTES}분 더 할 수도 있어요.`
+          : `알람을 끄면 완료돼요. ${PROGRESS_EXTEND_MINUTES}분 더 할 수도 있어요.`,
         actionCategory: PROGRESS_STEP_ACTION_CATEGORY,
       });
     }

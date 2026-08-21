@@ -84,7 +84,8 @@
       "reactNativeDirectoryCheck": {
         "exclude": [
           "react-native-nitro-google-signin",
-          "on-time-accessibility"
+          "on-time-accessibility",
+          "on-time-alarm-access"
         ]
       }
     }

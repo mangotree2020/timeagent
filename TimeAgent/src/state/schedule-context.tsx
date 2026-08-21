@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -45,6 +46,7 @@ import {
 } from '@/lib/personalization';
 import {
   applyProgressNotificationAction,
+  PROGRESS_ADVANCE_ACTION,
   PROGRESS_EXTEND_ACTION,
   PROGRESS_EXTEND_MINUTES,
 } from '@/lib/local-notifications';
@@ -541,6 +543,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       source,
       scheduledNotifications: progressSessionRef.current?.scheduledNotifications.length ?? 0,
     });
+    // Preparation that begins on its own has to be seen beginning, so the phone opens the screen
+    // by itself. The session is created exactly once, so this cannot stack a second progress
+    // screen on later auto checks. The web build stays put: there the page being looked at is the
+    // one that was navigated to, and being yanked away mid-form is worse than a missed cue.
+    if (source === 'auto' && Platform.OS !== 'web') router.push({ pathname: '/progress', params: { source: 'auto' } });
   }, [commitConfirmedPlans, commitProgress, progressStatus]);
 
   useEffect(() => {
@@ -626,7 +633,12 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       const data = response.notification.request.content.data;
       if (data?.source !== 'progress-session') return;
       const stepId = typeof data.stepId === 'string' ? data.stepId : null;
-      void answerStepAlarm(response.actionIdentifier, stepId);
+      // Turning the step-end alarm off is the answer: the step is done. Opening it therefore
+      // completes the step it rang for; a stale alarm is still dropped inside answerStepAlarm.
+      const action = response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER && data.kind === 'step-end'
+        ? PROGRESS_ADVANCE_ACTION
+        : response.actionIdentifier;
+      void answerStepAlarm(action, stepId);
     });
     return () => subscription.remove();
   }, [answerStepAlarm]);

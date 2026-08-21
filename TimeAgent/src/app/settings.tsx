@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import { PropsWithChildren, useCallback, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { PropsWithChildren, useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Image, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Header, Screen, appType, useAppType } from '@/components/app-ui';
@@ -26,6 +26,7 @@ import {
   RoutinePreset,
   saveAppSettings,
 } from '@/lib/app-settings';
+import { alarmReliabilitySummary, AlarmReliabilitySnapshot, getAlarmReliabilitySnapshot, UNSUPPORTED_ALARM_RELIABILITY } from '@/lib/alarm-reliability';
 import { getDevicePermissionSnapshot } from '@/lib/device-permissions';
 import {
   PlusInterestState,
@@ -81,6 +82,16 @@ export default function SettingsScreen() {
   const [locationError, setLocationError] = useState('');
   const [locationPermission, setLocationPermission] = useState<PermissionState>('loading');
   const [notificationPermission, setNotificationPermission] = useState<PermissionState>('loading');
+  const [alarmReliability, setAlarmReliability] = useState<AlarmReliabilitySnapshot>(UNSUPPORTED_ALARM_RELIABILITY);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const refresh = () => setAlarmReliability(getAlarmReliabilitySnapshot());
+    refresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => subscription.remove();
+  }, []);
   const [showLearningReset, setShowLearningReset] = useState(false);
   const [showAnalyticsReset, setShowAnalyticsReset] = useState(false);
   const [showAccountDeletion, setShowAccountDeletion] = useState(false);
@@ -316,6 +327,7 @@ export default function SettingsScreen() {
         <Section label="알림 및 권한">
           <Setting icon="alert" title="준비·출발 알림" detail={`${permissionStatusLabel(notificationPermission)} · ${settings.notifications ? '앱 알림 켬' : '앱 내 안내 사용'}`} onPress={() => router.push({ pathname: '/permissions', params: { focus: 'notifications' } })} />
           <Setting icon="location" title="위치 권한" detail={`${permissionStatusLabel(locationPermission)} · 거부 시 수동 출발지 사용`} onPress={() => router.push({ pathname: '/permissions', params: { focus: 'location' } })} />
+          {Platform.OS === 'android' ? <Setting icon="time" title="준비 알람 정확도" detail={alarmReliabilitySummary(alarmReliability)} onPress={() => router.push({ pathname: '/permissions', params: { focus: 'alarms' } })} /> : null}
         </Section>
 
         <Section label="서비스 정보">

@@ -33,6 +33,7 @@ import {
   shouldSubmitVoiceRecording,
   shouldUseCompactClarificationOptions,
   updateVoiceActivity,
+  voiceGuidanceAfterTransportChoice,
   VOICE_MAP_CONFIRMATION_GUIDE,
   VOICE_TRANSPORT_CHOICE_GUIDE,
   voiceListeningOptions,
@@ -481,6 +482,13 @@ export default function VoiceScheduleScreen() {
     setProposal(next);
     setClarification(nextClarification);
     setAssistantReady(voiceScheduleMissingFields(next).length === 0 && nextClarification === null);
+    // A tapped transport never comes back as a spoken reply, so anyone listening instead of reading
+    // heard the schedule as finished while a place still had no pinned location. While the
+    // microphone is open the guidance would only talk into its own recording, so it waits.
+    if (resolvedField === 'transport' && patch.transport && status !== 'recording' && status !== 'processing') {
+      const followUp = voiceGuidanceAfterTransportChoice(next, nextClarification);
+      if (followUp) void (followUp.awaitsSpeech ? speakThenListen(followUp.guide) : speakThenWait(followUp.guide));
+    }
   };
 
   /**

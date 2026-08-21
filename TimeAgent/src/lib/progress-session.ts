@@ -6,7 +6,9 @@ import { shiftClock } from '@/lib/schedule';
 export const PROGRESS_SESSION_STORAGE_KEY = '@on-time/progress-session';
 const PROGRESS_SESSION_VERSION = 1;
 
-export type ProgressNotificationKind = 'prep-start' | 'step-start' | 'transition-preview' | 'transition-wrap' | 'step-end' | 'departure';
+export type ProgressNotificationKind = 'prep-start' | 'step-start' | 'transition-preview' | 'transition-wrap' | 'one-minute-left' | 'step-end' | 'departure';
+
+const PROGRESS_NOTIFICATION_KINDS: readonly ProgressNotificationKind[] = ['prep-start', 'step-start', 'transition-preview', 'transition-wrap', 'one-minute-left', 'step-end', 'departure'];
 
 export type ScheduledProgressNotification = {
   identifier: string;
@@ -275,7 +277,9 @@ function isScheduledProgressNotification(value: unknown): value is ScheduledProg
   const notification = value as Partial<ScheduledProgressNotification>;
   return typeof notification.identifier === 'string'
     && typeof notification.key === 'string'
-    && (notification.kind === 'prep-start' || notification.kind === 'step-end' || notification.kind === 'departure')
+    // Every scheduled kind has to survive the reload, or its OS alarm is forgotten here while it
+    // still fires there — and forgotten alarms are exactly the ones replace can no longer cancel.
+    && PROGRESS_NOTIFICATION_KINDS.includes(notification.kind as ProgressNotificationKind)
     && (typeof notification.stepId === 'string' || notification.stepId === null)
     && isFiniteNumber(notification.fireAt);
 }

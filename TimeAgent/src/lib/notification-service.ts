@@ -15,6 +15,31 @@ import {
 } from './progress-session';
 
 export const PROGRESS_NOTIFICATION_CHANNEL_ID = 'on-time-schedule';
+/**
+ * The end of a step and the start of preparation are alarms to be turned off, not guides to be
+ * read, so they get their own channel at the loudest importance Android offers. A channel keeps
+ * the settings it was created with, which is why they cannot simply be raised on the guide channel.
+ */
+export const PROGRESS_ALARM_CHANNEL_ID = 'on-time-alarm';
+
+export function progressChannelForKind(kind: string) {
+  return kind === 'step-end' || kind === 'prep-start' ? PROGRESS_ALARM_CHANNEL_ID : PROGRESS_NOTIFICATION_CHANNEL_ID;
+}
+
+export async function ensureProgressNotificationChannels() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(PROGRESS_NOTIFICATION_CHANNEL_ID, {
+    name: 'TimeAgent 일정 알림',
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+  await Notifications.setNotificationChannelAsync(PROGRESS_ALARM_CHANNEL_ID, {
+    name: 'TimeAgent 준비 알람',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 400, 200, 400, 200, 400],
+    enableVibrate: true,
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.ALARM },
+  });
+}
 
 export type ProgressNotificationStatus = 'idle' | 'scheduled' | 'disabled' | 'error';
 
@@ -54,12 +79,7 @@ export async function replaceProgressNotifications(
       return { session: cleared, status: 'disabled' };
     }
 
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(PROGRESS_NOTIFICATION_CHANNEL_ID, {
-        name: 'TimeAgent 일정 알림',
-        importance: Notifications.AndroidImportance.HIGH,
-      });
-    }
+    await ensureProgressNotificationChannels();
     await registerProgressStepActions();
 
     const scheduled: ScheduledProgressNotification[] = [];
@@ -80,7 +100,7 @@ export async function replaceProgressNotifications(
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: new Date(request.fireAt),
-          channelId: PROGRESS_NOTIFICATION_CHANNEL_ID,
+          channelId: progressChannelForKind(request.kind),
         },
       });
       scheduled.push({

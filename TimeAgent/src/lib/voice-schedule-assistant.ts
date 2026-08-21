@@ -237,6 +237,23 @@ export function shouldOfferChoiceInsteadOfListening(clarification: VoiceSchedule
 
 export const VOICE_TRANSPORT_CHOICE_GUIDE = '아래 예시에서 골라 주세요.';
 
+/**
+ * What to say once a way to get there has been tapped. A tapped choice is resolved on the device,
+ * so no assistant reply arrives to be read aloud — and to anyone not reading the screen the
+ * schedule sounded finished while a question was still open or the place had no pinned location.
+ * The voice keeps guiding until nothing is left to confirm; only then is silence honest.
+ */
+export function voiceGuidanceAfterTransportChoice(
+  draft: Pick<ScheduleDraft, 'destination' | 'destinationCoordinate'>,
+  clarification: VoiceScheduleClarification | null,
+): { guide: string; awaitsSpeech: boolean } | null {
+  if (clarification) {
+    return { guide: clarification.prompt, awaitsSpeech: !shouldOfferChoiceInsteadOfListening(clarification) };
+  }
+  if (needsVoiceMapConfirmation(draft)) return { guide: VOICE_MAP_CONFIRMATION_GUIDE, awaitsSpeech: false };
+  return null;
+}
+
 export function canConfirmVoiceSchedule(
   draft: ScheduleDraft,
   assistantReady: boolean,
