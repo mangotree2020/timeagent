@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
+import { describeRepeatWeekdays, normalizeRepeatWeekdays } from '@/lib/appointment-recurrence';
 import { ConfirmedSchedulePlan, formatConfirmedPlanDate } from '@/lib/confirmed-plans';
 import {
   CalendarProviderKind,
@@ -167,7 +168,7 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
           could still be sitting there as a raw `2026-08-17`. */}
       <Text style={styles.date}>{formatConfirmedPlanDate(item.appointmentAt)}</Text>
       <Pressable accessibilityRole="button" accessibilityHint="저장된 준비 계획을 엽니다" onPress={() => onSelect(item.id)}>
-        <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View><Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.textMuted} style={styles.arrow} /></Card>
+        <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>{normalizeRepeatWeekdays(item.schedule.repeatWeekdays).length ? <View style={styles.locationRow}><AppIcon name="routine" size={16} /><Text style={type.bodyMuted}>{describeRepeatWeekdays(item.schedule.repeatWeekdays ?? [])} 반복</Text></View> : null}<Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.textMuted} style={styles.arrow} /></Card>
       </Pressable>
     </View>)}
     <Button label="말로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} />

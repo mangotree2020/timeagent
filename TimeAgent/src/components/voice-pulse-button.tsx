@@ -3,6 +3,9 @@ import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleProp, St
 
 import { AppIcon } from '@/components/app-icon';
 
+/** The pulse ring box extends this much beyond the button, split evenly on every side. */
+export const VOICE_PULSE_RING = 18;
+
 export function VoicePulseButton({
   onPress,
   label,
@@ -31,7 +34,7 @@ export function VoicePulseButton({
     animation.start();
     return () => animation.stop();
   }, [active, animate, pulse]);
-  const ringSize = size + 18;
+  const ringSize = size + VOICE_PULSE_RING;
   return (
     <Animated.View style={[styles.wrap, { width: ringSize, height: ringSize }, style]}>
       {animate ? <Animated.View style={[styles.ring, {

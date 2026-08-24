@@ -4,9 +4,15 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Header, Screen, SectionTitle, useAppType } from '@/components/app-ui';
 import { AppIcon, AppIconName, IconButton, iconForRoutine, iconForTransport } from '@/components/app-icon';
+import { AppointmentDatePicker } from '@/components/appointment-date-picker';
 import { DestinationPicker } from '@/components/destination-picker';
+import { TimeWheelPicker } from '@/components/wheel-picker';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
+import { formatAppointmentDateValue, resolveAppointmentDate } from '@/lib/appointment-date';
+import { nextRepeatDate, normalizeRepeatWeekdays, parseRepeatWeekdaysText } from '@/lib/appointment-recurrence';
+import { resolveScheduleDateTime } from '@/lib/confirmed-plans';
+import { applyOncePerDayRule, describeOncePerDaySkip, OncePerDaySkip, restoreOncePerDayRoutine } from '@/lib/daily-routines';
 import { isGeneratedScheduleTitle, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import { createPlanPersonalization } from '@/lib/personalization';
 import { effectiveRoutineMinutes } from '@/lib/planning';
@@ -20,10 +26,12 @@ const transports: TransportMode[] = ['AI 추천', '도보', '버스', '지하철
 export default function CreateScreen() {
   const styles = useThemedStyles(createStyles);
   const type = useAppType();
-  const { beginDraft, draft, draftStatus, editingConfirmedPlanId, finalizeDraft, setDraftStep, updateDraft } = useSchedule();
+  const { beginDraft, confirmedPlans, draft, draftStatus, editingConfirmedPlanId, finalizeDraft, setDraftStep, updateDraft } = useSchedule();
   const params = useLocalSearchParams<{ new?: string; calendarImport?: string }>();
   const { step } = draft;
   const [planError, setPlanError] = useState('');
+  // Once-a-day steps taken out because an earlier appointment the same day already covers them.
+  const [dailySkip, setDailySkip] = useState<OncePerDaySkip | null>(null);
 
   useEffect(() => {
     beginDraft(params.new === '1');
@@ -39,9 +47,27 @@ export default function CreateScreen() {
     }
   };
 
+  const goToRoutines = () => {
+    const { schedule, skip } = applyOncePerDayRule(draft, confirmedPlans, { excludeId: editingConfirmedPlanId });
+    if (skip && !dailySkip) updateDraft({ routines: schedule.routines });
+    if (skip ? !dailySkip : true) setDailySkip(skip);
+    setDraftStep(2);
+  };
+  const restoreDaily = (entry: OncePerDaySkip['removed'][number]) => {
+    if (!dailySkip) return;
+    updateDraft({ routines: restoreOncePerDayRoutine(draft.routines, entry) });
+    const removed = dailySkip.removed.filter((item) => item !== entry);
+    setDailySkip(removed.length ? { ...dailySkip, removed } : null);
+  };
+
   const nextFromAppointment = () => {
     if (!draft.title.trim() || !draft.date.trim() || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.appointmentTime)) {
       setPlanError('일정 이름·날짜와 약속 시간을 확인해 주세요. 시간은 00:00부터 23:59 사이로 입력합니다.');
+      return;
+    }
+    // A draft left open for a few days can point at a day that is already gone.
+    if (resolveScheduleDateTime(draft.date, draft.appointmentTime) <= Date.now()) {
+      setPlanError('약속 시각이 이미 지났어요. 날짜나 시간을 다시 골라 주세요.');
       return;
     }
     if (!draft.destination.trim() || !draft.destinationCoordinate) {
@@ -57,15 +83,15 @@ export default function CreateScreen() {
       <Header title={editingConfirmedPlanId ? '약속 수정' : '새 일정 만들기'} eyebrow={editingConfirmedPlanId ? '저장하기 전까지 기존 약속은 유지돼요' : '1분 안에 등록할 수 있어요'} right={<IconButton name="close" label="닫기" variant="plain" onPress={() => router.back()} />} />
       <View style={styles.steps}>{steps.map((label, index) => <View key={label} style={styles.stepItem}><View style={[styles.stepDot, index <= step && styles.stepDotActive]}><Text style={[styles.stepNumber, index <= step && styles.stepNumberActive]}>{index + 1}</Text></View><Text style={[styles.stepLabel, index === step && styles.stepLabelActive]}>{label}</Text></View>)}</View>
 
-      {step === 0 && params.calendarImport ? <Card style={styles.importNotice} accessibilityLabel="캘린더 일정 가져오기 안내"><View style={styles.importNoticeTitle}><AppIcon name="calendar" size={20} /><Text style={styles.importNoticeHeading}>캘린더에서 가져왔어요</Text></View><Text style={type.bodyMuted}>{params.calendarImport === 'all-day' ? '종일 일정에는 약속 시간이 없습니다. 다음으로 가기 전에 시간을 입력해 주세요.' : '날짜·시간·목적지를 확인한 뒤 필요한 내용을 수정해 주세요.'}</Text></Card> : null}
+      {step === 0 && params.calendarImport ? <Card style={styles.importNotice} accessibilityLabel="캘린더 일정 가져오기 안내"><View style={styles.importNoticeTitle}><AppIcon name="calendar" size={20} /><Text style={styles.importNoticeHeading}>캘린더에서 가져왔어요</Text></View><Text style={type.bodyMuted}>{params.calendarImport === 'all-day' ? '종일 일정에는 약속 시간이 없습니다. 다음으로 가기 전에 시간을 골라 주세요.' : '날짜·시간·목적지를 확인한 뒤 필요한 내용을 수정해 주세요.'}</Text></Card> : null}
       {step === 0 ? <AppointmentForm draft={draft} onChange={updateDraft} /> : null}
       {step === 1 ? <TransportForm draft={draft} onChange={updateDraft} /> : null}
-      {step === 2 ? <RoutineForm draft={draft} onChange={updateDraft} /> : null}
+      {step === 2 ? <RoutineForm draft={draft} onChange={updateDraft} dailySkip={dailySkip} onRestoreDaily={restoreDaily} /> : null}
 
       {step === 0 ? <Button label="음성 대화로 다시 확인" variant="secondary" accessibilityHint="AI가 현재 입력 내용을 바탕으로 모호한 항목만 다시 묻습니다" onPress={() => router.push('/voice-schedule')} /> : null}
       <View style={styles.actions}>
         {step > 0 ? <Button label="이전" variant="secondary" onPress={() => setDraftStep((step - 1) as 0 | 1)} /> : null}
-        <View style={{ flex: 1 }}><Button label={step === 2 ? editingConfirmedPlanId ? '수정 계획 확인' : 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : step === 0 ? nextFromAppointment() : setDraftStep(2)} /></View>
+        <View style={{ flex: 1 }}><Button label={step === 2 ? editingConfirmedPlanId ? '수정 계획 확인' : 'AI 계획 만들기' : '다음'} onPress={() => step === 2 ? void createPlan() : step === 0 ? nextFromAppointment() : goToRoutines()} /></View>
       </View>
       {planError ? <Text accessibilityRole="alert" style={styles.formError}>{planError}</Text> : null}
       <Text accessibilityLiveRegion="polite" style={[styles.saved, draftStatus === 'error' && styles.savedError]}>
@@ -80,7 +106,18 @@ export default function CreateScreen() {
 
 function AppointmentForm({ draft, onChange }: DraftFormProps) {
   const styles = useThemedStyles(createStyles);
-  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} replaceOnInput={isGeneratedScheduleTitle(draft.title)} onChangeText={(title) => onChange({ title })} /><View style={styles.row}><View style={{ flex: 1 }}><Field label="날짜" value={draft.date} onChangeText={(date) => onChange({ date })} /></View><View style={{ flex: 1 }}><Field label="약속 시간" value={draft.appointmentTime} onChangeText={(appointmentTime) => onChange({ appointmentTime })} /></View></View><DestinationPicker value={draft} onChange={onChange} /></View>;
+  const changeTime = (appointmentTime: string) => {
+    // A repeating appointment sits on the first repeat weekday whose clock is still ahead; moving
+    // the clock past now on a repeat day moves the date on to the next one, as an alarm would.
+    const days = normalizeRepeatWeekdays(draft.repeatWeekdays ?? parseRepeatWeekdaysText(draft.recurrence));
+    if (!days.length) { onChange({ appointmentTime }); return; }
+    const now = Date.now();
+    onChange({ appointmentTime, date: formatAppointmentDateValue(nextRepeatDate(days, resolveAppointmentDate(draft.date, now), appointmentTime, now)) });
+  };
+  return <View style={styles.form}><SectionTitle>언제, 어디에서 만나나요?</SectionTitle><Field label="일정 이름" value={draft.title} replaceOnInput={isGeneratedScheduleTitle(draft.title)} onChangeText={(title) => onChange({ title })} />
+    <View><Text style={styles.fieldLabel}>약속 시간</Text><View style={styles.wheelCard}><TimeWheelPicker value={draft.appointmentTime} onChange={changeTime} /></View></View>
+    <AppointmentDatePicker date={draft.date} clock={draft.appointmentTime} repeatWeekdays={draft.repeatWeekdays} recurrence={draft.recurrence} onChange={(patch) => onChange(patch)} />
+    <DestinationPicker value={draft} onChange={onChange} /></View>;
 }
 
 function TransportForm({ draft, onChange }: DraftFormProps) {
@@ -90,7 +127,7 @@ function TransportForm({ draft, onChange }: DraftFormProps) {
   return <View style={styles.form}><SectionTitle>어떻게 이동할까요?</SectionTitle><View style={styles.choiceGrid}>{transports.map((item) => { const active = draft.transport === item; return <Pressable accessibilityRole="radio" accessibilityState={{ checked: active }} key={item} onPress={() => onChange({ transport: item })} style={[styles.choice, active && styles.choiceActive]}><AppIcon name={iconForTransport(item)} size={26} strokeWidth={2} iconColor={active ? c.cyan : c.deepBlue} /><Text style={[styles.choiceLabel, active && styles.choiceLabelActive]}>{item}</Text></Pressable>; })}</View><Card><Text style={type.heading}>도착 우선순위</Text><Text style={[type.bodyMuted, { marginTop: 4 }]}>중요한 약속이라 정시 도착을 우선해요.</Text><View style={styles.segment}><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'on-time' }} onPress={() => onChange({ priority: 'on-time' })} style={[styles.segmentOption, draft.priority === 'on-time' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'on-time' && styles.segmentTextActive]}>정시 도착 우선</Text></Pressable><Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.priority === 'cost' }} onPress={() => onChange({ priority: 'cost' })} style={[styles.segmentOption, draft.priority === 'cost' && styles.segmentActive]}><Text style={[styles.segmentText, draft.priority === 'cost' && styles.segmentTextActive]}>비용 우선</Text></Pressable></View></Card></View>;
 }
 
-function RoutineForm({ draft, onChange }: DraftFormProps) {
+function RoutineForm({ draft, onChange, dailySkip, onRestoreDaily }: DraftFormProps & { dailySkip: OncePerDaySkip | null; onRestoreDaily: (entry: OncePerDaySkip['removed'][number]) => void }) {
   const styles = useThemedStyles(createStyles);
   const type = useAppType();
   const { personalizationProfile } = useSchedule();
@@ -130,6 +167,9 @@ function RoutineForm({ draft, onChange }: DraftFormProps) {
   };
 
   return <View style={styles.form}><SectionTitle>무엇을 준비해야 하나요?</SectionTitle><Text style={type.bodyMuted}>설정한 기본 추천과 최근 기록을 시작점으로 보여드려요. 나에게 맞게 항목과 시간을 조정할 수 있어요.</Text>
+    {/* A second appointment of the day starts from what the first one left: the once-a-day steps
+        are out, named, and one tap puts any of them back. */}
+    {dailySkip ? <Card style={styles.dailyNote} accessibilityLabel="하루 한 번 준비 안내"><View style={styles.importNoticeTitle}><AppIcon name="check" size={18} /><Text style={styles.dailyNoteHeading}>오늘 두 번째 약속이에요</Text></View><Text style={type.bodyMuted}>{describeOncePerDaySkip(dailySkip)}</Text><View style={styles.dailyChips}>{dailySkip.removed.map((entry) => <Pressable key={entry.routine.id} accessibilityRole="button" accessibilityLabel={`${entry.routine.label} 다시 넣기`} onPress={() => onRestoreDaily(entry)} style={({ pressed }) => [styles.dailyChip, pressed && styles.pressedRow]}><AppIcon name="plus" size={16} /><Text style={styles.dailyChipText}>{entry.routine.label} 다시 넣기</Text></Pressable>)}</View></Card> : null}
     {/* The running total is what actually moves the plan, so it stays visible while editing. */}
     <View accessibilityLiveRegion="polite" style={styles.routineTotal}><AppIcon name="time" size={18} /><Text style={styles.routineTotalText}>총 준비 시간 {totalMinutes}분</Text><Text style={type.caption}>{draft.routines.length}개 행동</Text></View>
     {draft.routines.map((item) => <Card key={item.id} style={styles.routine}><View style={styles.routineIcon}><AppIcon name={iconForRoutine(item.id, item.icon)} size={22} /></View><View style={styles.routineCopy}><Text style={[type.body, { fontWeight: '800' }]}>{item.label}</Text>{item.minutesEditedByUser ? <Text style={type.caption}>내가 정한 시간</Text> : personalization?.routineMinutes[item.id] ? <Text style={type.caption}>최근 평균 {personalization.routineMinutes[item.id].minutes}분 적용 중</Text> : null}</View><View style={styles.minuteControls}><Pressable accessibilityLabel={`${item.label} 1분 줄이기`} onPress={() => changeMinutes(item.id, -1)} style={styles.minuteButton}><AppIcon name="minus" size={18} /></Pressable><Text style={styles.minuteText}>{effectiveRoutineMinutes(item, personalization)}분</Text><Pressable accessibilityLabel={`${item.label} 1분 늘리기`} onPress={() => changeMinutes(item.id, 1)} style={styles.minuteButton}><AppIcon name="plus" size={18} /></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel={`${item.label} 준비 행동 삭제`} accessibilityState={{ disabled: onlyOneLeft }} disabled={onlyOneLeft} onPress={() => removeStep(item.id)} style={({ pressed }) => [styles.removeRoutine, onlyOneLeft && styles.removeRoutineDisabled, pressed && styles.pressedRow]}><AppIcon name="trash" size={18} iconColor={onlyOneLeft ? undefined : '#C2413A'} /></Pressable></Card>)}
@@ -162,9 +202,10 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   importNotice: { gap: space.sm, backgroundColor: c.ice, padding: space.lg }, importNoticeTitle: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, importNoticeHeading: { color: c.navy, fontSize: 16, lineHeight: 22, fontWeight: '900' },
   steps: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.md },
   stepItem: { flex: 1, alignItems: 'center', gap: 5 }, stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceMuted }, stepDotActive: { backgroundColor: c.deepBlue }, stepNumber: { color: c.textMuted, fontSize: 12, fontWeight: '900' }, stepNumberActive: { color: c.onInverse }, stepLabel: { fontSize: 11, color: c.textMuted }, stepLabelActive: { color: c.deepBlue, fontWeight: '800' },
-  form: { gap: space.lg }, row: { flexDirection: 'row', gap: space.md }, fieldLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: c.text, paddingVertical: 12 },
+  form: { gap: space.lg }, wheelCard: { borderRadius: radius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, paddingVertical: space.md, paddingHorizontal: space.sm }, fieldLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700', marginBottom: 7 }, field: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: space.lg }, input: { flex: 1, fontSize: 16, color: c.text, paddingVertical: 12 },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, choice: { width: '31%', minHeight: 92, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', gap: 8 }, choiceActive: { backgroundColor: c.surfaceInverse, borderColor: c.surfaceInverse }, choiceLabel: { fontSize: 13, color: c.textMuted, fontWeight: '700' }, choiceLabelActive: { color: c.onInverse }, segment: { marginTop: space.lg, flexDirection: 'row', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, padding: 4 }, segmentActive: { backgroundColor: c.deepBlue },
   segmentOption: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' }, segmentText: { color: c.textMuted, fontSize: 12, fontWeight: '700' }, segmentTextActive: { color: c.onInverse, fontWeight: '800' },
+  dailyNote: { gap: space.sm, backgroundColor: c.successSoft, borderColor: c.successSoft, padding: space.lg }, dailyNoteHeading: { color: c.success, fontSize: 15, lineHeight: 21, fontWeight: '900' }, dailyChips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }, dailyChip: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }, dailyChipText: { color: c.deepBlue, fontSize: 13, fontWeight: '800' },
   routineTotal: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.infoSoft },
   routineTotalText: { flex: 1, color: c.deepBlue, fontSize: 15, fontWeight: '900' },
   routineCopy: { flex: 1, gap: 2 },

@@ -13,6 +13,7 @@ import {
   removeConfirmedPlan,
   replaceConfirmedPlan,
   settlePastConfirmedPlans,
+  spawnNextRecurringPlans,
   saveConfirmedPlans,
 } from '../confirmed-plans';
 
@@ -185,5 +186,76 @@ describe('confirmed schedule plans', () => {
   test('ignores malformed saved data', async () => {
     const storage = createMemoryStorage('{"version":1,"plans":[{"id":"broken"}]}');
     await expect(loadConfirmedPlans(storage)).resolves.toEqual([]);
+  });
+});
+
+describe('repeating confirmed plans', () => {
+  const saturday = new Date('2026-08-08T09:00:00+09:00').getTime(); // 2026-08-08 (토)
+
+  function weeklyPlan(days: number[], date = '2026-08-10 (월)', confirmedAt = saturday) {
+    const schedule = {
+      ...createDefaultScheduleDraft(),
+      title: '필라테스',
+      date,
+      appointmentTime: '19:00',
+      repeatWeekdays: days,
+      recurrence: '매주 월·수',
+      routines: [{ id: 'ready', icon: 'routine', label: '준비', minutes: 20 }],
+      transport: '지하철' as const,
+    };
+    const plan = createSchedulePlan(schedule, { travelMinutes: 20 });
+    return confirmSchedulePlan({ schedule, plan, now: confirmedAt });
+  }
+
+  test('a repeating appointment carries a series id, a one-off does not', () => {
+    expect(weeklyPlan([1, 3]).seriesId).toBe(weeklyPlan([1, 3]).id);
+    expect(planAt('치과', '14:00', saturday).seriesId).toBeUndefined();
+  });
+
+  test('creates the next occurrence once the current one is over, on the next repeat weekday', () => {
+    const monday = weeklyPlan([1, 3]);
+    const afterMonday = monday.appointmentAt + 60_000;
+    const settled = settlePastConfirmedPlans([monday], afterMonday);
+    const spawned = spawnNextRecurringPlans(settled, afterMonday);
+
+    expect(spawned).toHaveLength(2);
+    const next = spawned.find((plan) => plan.id !== monday.id)!;
+    expect(next.state).toBe('scheduled');
+    expect(next.seriesId).toBe(monday.id);
+    expect(next.schedule.date).toBe('2026-08-12 (수)');
+    expect(next.schedule.appointmentTime).toBe('19:00');
+    expect(new Date(next.appointmentAt).getDay()).toBe(3);
+    expect(next.appointmentAt - next.prepStartAt).toBe(monday.appointmentAt - monday.prepStartAt);
+    expect(next.notificationIdentifier).toBeUndefined();
+  });
+
+  test('does not create a second occurrence while one is already waiting, and leaves one-offs alone', () => {
+    const monday = weeklyPlan([1, 3]);
+    const afterMonday = monday.appointmentAt + 60_000;
+    const once = spawnNextRecurringPlans(settlePastConfirmedPlans([monday], afterMonday), afterMonday);
+    expect(spawnNextRecurringPlans(once, afterMonday + 1)).toBe(once);
+
+    const oneOff = settlePastConfirmedPlans([planAt('치과', '14:00', saturday)], saturday + 86_400_000);
+    expect(spawnNextRecurringPlans(oneOff, saturday + 86_400_000)).toBe(oneOff);
+  });
+
+  test('catches up from now when the app was away for weeks', () => {
+    const monday = weeklyPlan([1]);
+    const threeWeeksLater = monday.appointmentAt + 21 * 86_400_000 + 3_600_000;
+    const spawned = spawnNextRecurringPlans(settlePastConfirmedPlans([monday], threeWeeksLater), threeWeeksLater);
+    const next = spawned.find((plan) => plan.id !== monday.id)!;
+    expect(next.appointmentAt).toBeGreaterThan(threeWeeksLater);
+    expect(next.appointmentAt - threeWeeksLater).toBeLessThan(7 * 86_400_000);
+    expect(new Date(next.appointmentAt).getDay()).toBe(1);
+  });
+
+  test('the created occurrence survives a save and load', async () => {
+    const monday = weeklyPlan([1, 3]);
+    const afterMonday = monday.appointmentAt + 60_000;
+    const spawned = spawnNextRecurringPlans(settlePastConfirmedPlans([monday], afterMonday), afterMonday);
+    const storage = createMemoryStorage();
+    await saveConfirmedPlans(storage, spawned);
+    const loaded = await loadConfirmedPlans(storage);
+    expect(loaded.map((plan) => plan.seriesId)).toEqual([monday.id, monday.id]);
   });
 });

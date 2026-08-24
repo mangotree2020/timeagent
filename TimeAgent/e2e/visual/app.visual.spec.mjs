@@ -106,7 +106,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const screens = [
-  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '좋은 오후예요, 서연님' },
+  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘의 준비 계획' },
   { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
   { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
@@ -138,7 +138,7 @@ const darkSettings = {
 };
 
 const darkScreens = [
-  { id: 'dark-home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '좋은 오후예요, 서연님' },
+  { id: 'dark-home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘의 준비 계획' },
   { id: 'dark-plan', path: '/plan', ready: '확정된 준비 계획' },
   { id: 'dark-schedules', path: '/schedules', ready: '내 일정' },
   { id: 'dark-settings', path: '/settings', ready: '내 생활에 맞게 TimeAgent를 조정하세요' },
@@ -412,13 +412,49 @@ test('새 일정은 30분 이후 기본값을 보여주고 이름 입력을 바�
   const title = page.getByRole('textbox', { name: '일정 이름' });
 
   await expect(title).toHaveValue('목요일 오후 약속');
-  await expect(page.getByRole('textbox', { name: '날짜' })).toHaveValue('7월 23일 (오늘)');
-  await expect(page.getByRole('textbox', { name: '약속 시간' })).toHaveValue('13:35');
+  // The clock is chosen on 오전/오후·시·분 drums and the date on a calendar row, so the values are
+  // read from the spoken readout and the row label rather than text boxes.
+  await expect(page.getByText(/^오후 1:35/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^날짜 선택, 오늘 · 7월 23일 \(목\)/ })).toBeVisible();
   await expectVisual(page, 'create-step-1-default');
 
   await title.click();
   await page.keyboard.type('치과 검진');
   await expect(title).toHaveValue('치과 검진');
+});
+
+test('약속 시간은 휠로, 날짜는 달력으로 고르고 요일을 켜면 매주 반복됨', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('tab', { name: '홈', exact: true }).click();
+  await page.getByRole('button', { name: '음성으로 새 일정 만들기', exact: true }).click();
+  await page.getByRole('button', { name: '키보드로 직접 입력·수정', exact: true }).click();
+  await expect(page.getByText(/^오후 1:35/)).toBeVisible();
+
+  // Five rows down on the minute drum: 35 → 40.
+  const minute = page.getByRole('slider', { name: '분' });
+  await minute.hover();
+  await page.mouse.wheel(0, 56 * 5);
+  await expect(page.getByText(/^오후 1:40/)).toBeVisible();
+  await expect(minute).toHaveAttribute('aria-valuetext', '40');
+
+  await page.getByRole('button', { name: /^날짜 선택, 오늘 · 7월 23일 \(목\)/ }).click();
+  await expect(page.getByRole('heading', { name: '2026년 7월' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '7월 22일 수요일' })).toBeDisabled();
+  await expectVisual(page, 'create-calendar-open');
+  await page.getByRole('button', { name: '7월 30일 목요일' }).click();
+  await expect(page.getByRole('button', { name: /^날짜 선택, 7월 30일 \(목\)/ })).toBeVisible();
+
+  await page.getByRole('checkbox', { name: '금요일마다 반복' }).click();
+  await expect(page.getByRole('button', { name: /^날짜 선택, 7월 31일 \(금\)/ })).toBeVisible();
+  await expect(page.getByText('매주 금', { exact: true })).toBeVisible();
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(window.localStorage.getItem('@on-time/schedule-draft') ?? '{}');
+    return saved.date === '2026-07-31 (금)' && saved.appointmentTime === '13:40' && saved.repeatWeekdays?.join() === '5' && saved.recurrence === '매주 금';
+  });
+  await expectVisual(page, 'create-repeat-friday');
+
+  await page.getByRole('button', { name: '반복 끄기', exact: true }).click();
+  await expect(page.getByText('반복 없음', { exact: true })).toBeVisible();
 });
 
 test('선택한 성별의 기본 준비 항목을 새 일정에 적용함', async ({ page }) => {
@@ -579,17 +615,30 @@ test('음성 정리 결과에 확인한 이동수단을 표시함', async ({ pag
   expect(transportBox.height, '이동수단 행의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
 });
 
-test('홈 음성 일정 버튼이 내비게이션 위에 고정됨', async ({ page }) => {
+test('음성 일정 버튼이 내비게이션 가운데에 반쯤 걸쳐 고정됨', async ({ page }) => {
   await page.goto('/');
-  await page.getByText('좋은 오후예요, 서연님', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('오늘의 준비 계획', { exact: true }).waitFor({ state: 'visible' });
   const floatingAction = page.getByRole('button', { name: '음성으로 새 일정 만들기' });
   const homeTab = page.getByRole('tab', { name: '홈' });
+  const settingsTab = page.getByRole('tab', { name: '설정' });
   const before = await floatingAction.boundingBox();
   const tab = await homeTab.boundingBox();
+  const lastTab = await settingsTab.boundingBox();
+  const viewport = page.viewportSize();
 
   expect(before).not.toBeNull();
   expect(tab).not.toBeNull();
-  expect(before.y + before.height, '음성 일정 버튼 하단이 내비게이션 탭 위에 있어야 합니다').toBeLessThanOrEqual(tab.y - 12);
+  // Centred on the bar, and the bar's top edge runs through the middle of the button.
+  expect(Math.abs(before.x + before.width / 2 - viewport.width / 2), '음성 일정 버튼은 가로 가운데에 있어야 합니다').toBeLessThanOrEqual(2);
+  expect(before.x, '음성 일정 버튼은 홈 탭 오른쪽에 있어야 합니다').toBeGreaterThan(tab.x + tab.width);
+  expect(before.x + before.width, '음성 일정 버튼은 설정 탭 왼쪽에 있어야 합니다').toBeLessThan(lastTab.x);
+  const barTop = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const bar = tabs[0]?.parentElement;
+    return bar ? bar.getBoundingClientRect().top : null;
+  });
+  expect(barTop).not.toBeNull();
+  expect(Math.abs(before.y + before.height / 2 - barTop), '버튼의 절반이 내비게이션 바 위로 올라와야 합니다').toBeLessThanOrEqual(3);
 
   await page.evaluate(() => {
     for (const element of document.querySelectorAll('*')) {
@@ -956,8 +1005,9 @@ test('캘린더 일정은 선택·확인 후 새 초안으로 가져옴', async 
   await page.getByRole('button', { name: '이 일정 가져오기' }).click();
   await expect(page.getByText('캘린더에서 가져왔어요', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: '일정 이름' })).toHaveValue('팀 주간 회의');
-  await expect(page.getByRole('textbox', { name: '날짜' })).toHaveValue('2026-07-28');
-  await expect(page.getByRole('textbox', { name: '약속 시간' })).toHaveValue('10:00');
+  // The imported day and clock land on the date row and the time drums.
+  await expect(page.getByRole('button', { name: /^날짜 선택, 7월 28일 \(화\)/ })).toBeVisible();
+  await expect(page.getByText(/^오전 10:00/)).toBeVisible();
   await expect(page.getByRole('textbox', { name: '목적지', exact: true })).toHaveValue('서울시청 회의실');
 });
 
@@ -1106,6 +1156,27 @@ test('설정한 다크 모드를 음성 일정 화면에 저장·적용함', asy
   await expect(firstQuestion).toBeVisible();
   await expect(firstQuestion).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expectVisual(page, 'voice-schedule-dark');
+});
+
+test('같은 날 두 번째 약속은 샤워·화장을 빼고 첫 일정에 맡김', async ({ page }) => {
+  // The fixture already holds a 14:00 appointment today; a 16:00 draft is the second of the day.
+  await page.addInitScript(() => {
+    const saved = JSON.parse(window.localStorage.getItem('@on-time/schedule-draft'));
+    window.localStorage.setItem('@on-time/schedule-draft', JSON.stringify({ ...saved, step: 1, appointmentTime: '16:00' }));
+  });
+  await page.goto('/create');
+  await page.getByText('어떻게 이동할까요?', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.getByText('오늘 두 번째 약속이에요', { exact: true })).toBeVisible();
+  await expect(page.getByText('오늘 14:00 서면 볼링장 친구 약속 준비에 샤워·화장이 이미 있어 이번 계획에서는 뺐어요.', { exact: true })).toBeVisible();
+  await expect(page.getByText('샤워', { exact: true })).toBeHidden();
+  await expect(page.getByText('옷 입기', { exact: true })).toBeVisible();
+  await expectVisual(page, 'create-second-of-day');
+
+  await page.getByRole('button', { name: '샤워 다시 넣기', exact: true }).click();
+  await expect(page.getByText('샤워', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '샤워 다시 넣기', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: '화장 다시 넣기', exact: true })).toBeVisible();
 });
 
 test('목적지 선택 화면은 좁은 화면에서도 가로 잘림이 없음', async ({ page }) => {

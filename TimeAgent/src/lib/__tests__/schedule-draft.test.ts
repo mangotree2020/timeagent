@@ -119,3 +119,20 @@ describe('resolveTransportMode', () => {
     expect(resolveTransportMode('')).toBe('AI 추천');
   });
 });
+
+describe('repeat weekdays in a saved draft', () => {
+  test('restores the chosen weekdays and rejects a corrupted list', async () => {
+    const storage = createMemoryStorage();
+    const draft = { ...createDefaultScheduleDraft(), repeatWeekdays: [1, 3, 5], recurrence: '매주 월·수·금' };
+    await saveScheduleDraft(storage, draft);
+    await expect(loadScheduleDraft(storage)).resolves.toEqual(draft);
+
+    const broken = createMemoryStorage(JSON.stringify({ ...draft, repeatWeekdays: [1, 9] }));
+    await expect(loadScheduleDraft(broken)).resolves.toBeNull();
+  });
+
+  test('a new draft is a one-off', () => {
+    expect(createDefaultScheduleDraft().repeatWeekdays).toEqual([]);
+    expect(createDefaultScheduleDraft().recurrence).toBe('반복 없음');
+  });
+});

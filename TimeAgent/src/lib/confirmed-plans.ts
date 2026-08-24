@@ -1,3 +1,5 @@
+import { formatAppointmentDateValue, resolveAppointmentDate, toLocalDate } from './appointment-date';
+import { nextRepeatDateAfter, normalizeRepeatWeekdays } from './appointment-recurrence';
 import { SchedulePlan } from './planning';
 import { ScheduleDraft } from './schedule-draft';
 
@@ -21,6 +23,11 @@ export type ConfirmedSchedulePlan = {
     delayMinutes: number;
   };
   notificationIdentifier?: string;
+  /**
+   * Shared by every occurrence of a repeating appointment, so the next one can be created exactly
+   * once when this one is over. Absent on a one-off.
+   */
+  seriesId?: string;
 };
 
 type StorageLike = {
@@ -40,16 +47,54 @@ export function confirmSchedulePlan({
   const appointmentAt = resolveScheduleDateTime(schedule.date, schedule.appointmentTime, now);
   const prepStartAt = resolveScheduleDateTime(schedule.date, plan.prepStart, now)
     - (clockMinutes(plan.prepStart) > clockMinutes(schedule.appointmentTime) ? 24 * 60 * 60_000 : 0);
+  const id = `${appointmentAt}-${now}-${schedule.title.trim()}`;
+  const repeats = normalizeRepeatWeekdays(schedule.repeatWeekdays).length > 0;
   return {
     version: CONFIRMED_PLANS_VERSION,
-    id: `${appointmentAt}-${now}-${schedule.title.trim()}`,
+    id,
     schedule: { ...schedule, routines: schedule.routines.map((routine) => ({ ...routine })) },
     plan: { ...plan, timeline: plan.timeline.map((step) => ({ ...step })) },
     appointmentAt,
     prepStartAt,
     confirmedAt: now,
     state: 'scheduled',
+    ...(repeats ? { seriesId: id } : {}),
   };
+}
+
+/**
+ * Creates the next occurrence of every repeating appointment whose current one is over, so a
+ * weekly appointment keeps its place in the list without being re-entered. Each series grows by
+ * at most one scheduled occurrence at a time: nothing is created while a later occurrence already
+ * exists, and deleting that occurrence ends the series. Returns the same array when nothing changed.
+ */
+export function spawnNextRecurringPlans(plans: ConfirmedSchedulePlan[], now = Date.now()) {
+  const created: ConfirmedSchedulePlan[] = [];
+  for (const plan of plans) {
+    const days = normalizeRepeatWeekdays(plan.schedule.repeatWeekdays);
+    if (!days.length || (plan.state !== 'completed' && plan.state !== 'incomplete')) continue;
+    const seriesId = plan.seriesId ?? plan.id;
+    const hasLater = [...plans, ...created].some((other) => (
+      other !== plan && (other.seriesId ?? other.id) === seriesId && other.appointmentAt > plan.appointmentAt
+    ));
+    if (hasLater) continue;
+    const nextDate = nextRepeatDateAfter(days, toLocalDate(plan.appointmentAt), plan.schedule.appointmentTime, now);
+    const dateText = formatAppointmentDateValue(nextDate);
+    const appointmentAt = resolveScheduleDateTime(dateText, plan.schedule.appointmentTime, now);
+    created.push({
+      version: CONFIRMED_PLANS_VERSION,
+      id: `${seriesId}@${appointmentAt}`,
+      schedule: { ...plan.schedule, date: dateText, routines: plan.schedule.routines.map((routine) => ({ ...routine })) },
+      plan: { ...plan.plan, timeline: plan.plan.timeline.map((step) => ({ ...step })) },
+      appointmentAt,
+      prepStartAt: appointmentAt - (plan.appointmentAt - plan.prepStartAt),
+      confirmedAt: now,
+      state: 'scheduled',
+      seriesId,
+    });
+  }
+  if (!created.length) return plans;
+  return created.reduce((list, plan) => addConfirmedPlan(list, plan), plans);
 }
 
 export function addConfirmedPlan(plans: ConfirmedSchedulePlan[], plan: ConfirmedSchedulePlan) {
@@ -157,29 +202,7 @@ export async function saveConfirmedPlans(storage: StorageLike, plans: ConfirmedS
 }
 
 export function resolveScheduleDateTime(dateText: string, clock: string, now = Date.now()) {
-  const reference = new Date(now);
-  const iso = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/.exec(dateText);
-  const korean = /(\d{1,2})월\s*(\d{1,2})일/.exec(dateText);
-  let year = reference.getFullYear();
-  let month = reference.getMonth();
-  let day = reference.getDate();
-  if (dateText.includes('내일')) {
-    const tomorrow = new Date(year, month, day + 1);
-    year = tomorrow.getFullYear();
-    month = tomorrow.getMonth();
-    day = tomorrow.getDate();
-  } else if (dateText.includes('오늘')) {
-    // Keep the reference date even if a stale formatted month/day is present.
-  } else if (iso) {
-    year = Number(iso[1]);
-    month = Number(iso[2]) - 1;
-    day = Number(iso[3]);
-  } else if (korean) {
-    month = Number(korean[1]) - 1;
-    day = Number(korean[2]);
-    const candidate = new Date(year, month, day, 23, 59, 59, 999).getTime();
-    if (!dateText.includes('오늘') && !dateText.includes('내일') && candidate < now) year += 1;
-  }
+  const { year, month, day } = resolveAppointmentDate(dateText, now);
   const minutes = clockMinutes(clock);
   return new Date(year, month, day, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
 }
@@ -230,7 +253,8 @@ function isConfirmedSchedulePlan(value: unknown): value is ConfirmedSchedulePlan
       && typeof value.completion.onTime === 'boolean'
       && isFiniteNumber(value.completion.delayMinutes)
     ))
-    && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string');
+    && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string')
+    && (value.seriesId === undefined || typeof value.seriesId === 'string');
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

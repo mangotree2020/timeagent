@@ -1,20 +1,17 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Screen, SectionTitle, StatusPill, useAppType } from '@/components/app-ui';
 import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { HomeLogoButton } from '@/components/home-logo-button';
-import { VoicePulseButton } from '@/components/voice-pulse-button';
 import { Timeline } from '@/components/timeline';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { useSchedule } from '@/state/schedule-context';
-import { getHomeFloatingActionBottom } from '@/lib/bottom-navigation-layout';
+import { describeRepeatWeekdays, normalizeRepeatWeekdays } from '@/lib/appointment-recurrence';
 import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
-import { createHomeGreeting } from '@/lib/home-greeting';
 import { preparationCountdown, shouldAnimateHomeLogo } from '@/lib/home-attention';
 import { loadCurrentDeviceWeather, WeatherPermissionNeededError } from '@/lib/device-weather-provider';
 import {
@@ -23,7 +20,6 @@ import {
   WeatherSnapshot,
   weatherPreparationAdvice,
 } from '@/lib/weather';
-import { useAuth } from '@/state/auth-context';
 import { useTaskExecution } from '@/state/task-context';
 
 type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
@@ -44,8 +40,6 @@ export default function HomeScreen() {
   const [today, setToday] = useState(() => new Date());
   const [weather, setWeather] = useState<WeatherSnapshot | null>(() => weatherFixtureMode ? createWeatherPreviewFixture() : null);
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>(weatherFixtureMode ? 'ready' : weatherErrorFixtureMode ? 'error' : 'checking');
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const { currentTask } = useTaskExecution();
   const { confirmedPlans, confirmedPlansStatus, progressSession, selectConfirmedPlan, startProgress, delayMinutes } = useSchedule();
   const todayPlans = plansForLocalDate(confirmedPlans, today)
@@ -129,8 +123,7 @@ export default function HomeScreen() {
       <Screen>
         <View style={styles.homeHeader}>
           <View style={styles.homeHeaderCopy}>
-            <Text accessibilityRole="header" style={styles.greeting}>{createHomeGreeting(today, user?.name)}</Text>
-            <Text style={styles.headerMeta}>{new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }).format(today)} · {scheduleSummary}</Text>
+            <Text accessibilityRole="header" style={styles.headerMeta}>{new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }).format(today)} · {scheduleSummary}</Text>
           </View>
           <HomeLogoButton hasMessage={hasAttentionMessage} onPress={() => router.push('/alerts')} />
         </View>
@@ -191,7 +184,6 @@ export default function HomeScreen() {
         {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
 
       </Screen>
-      <VoicePulseButton label="음성으로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} style={[styles.fab, { bottom: getHomeFloatingActionBottom(insets.bottom) - 8 }]} />
       <BottomNav />
     </View>
   );
@@ -255,6 +247,7 @@ function RegisteredPlanList({ plans, onSelect }: { plans: ConfirmedSchedulePlan[
             <View style={styles.registeredCopy}>
               <View style={styles.registeredTitleRow}><Text numberOfLines={1} style={styles.registeredTitle}>{item.schedule.title}</Text><StatusPill label={item.state === 'active' ? '실행 중' : `${item.plan.prepStart} 시작`} tone={item.state === 'active' ? 'success' : 'info'} /></View>
               <View style={styles.locationRow}><AppIcon name="location" size={15} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.registeredLocation}>{item.schedule.destination}</Text></View>
+              {normalizeRepeatWeekdays(item.schedule.repeatWeekdays).length ? <View style={styles.locationRow}><AppIcon name="routine" size={15} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.registeredLocation}>{describeRepeatWeekdays(item.schedule.repeatWeekdays ?? [])} 반복</Text></View> : null}
             </View>
             <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
           </Card>
@@ -314,8 +307,7 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   page: { flex: 1 },
   homeHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   homeHeaderCopy: { flex: 1, gap: 1 },
-  greeting: { flexShrink: 1, color: c.navy, fontSize: 23, lineHeight: 30, fontWeight: '900', letterSpacing: -0.55 },
-  headerMeta: { color: c.textMuted, fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  headerMeta: { color: c.navy, fontSize: 17, lineHeight: 24, fontWeight: '900', letterSpacing: -0.3 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroPressable: { minHeight: 44, borderRadius: radius.lg },
   nowTaskPressable: { minHeight: 44, borderRadius: radius.lg },
@@ -373,5 +365,4 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   streakTitle: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
   streakDetail: { color: c.textMuted, fontSize: 12, lineHeight: 18 },
   streakLink: { minWidth: 44, minHeight: 44, textAlign: 'right', textAlignVertical: 'center', color: c.deepBlue, fontSize: 13, lineHeight: 44, fontWeight: '900' },
-  fab: { position: 'absolute', right: 14, zIndex: 10 },
 });

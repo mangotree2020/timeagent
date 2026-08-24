@@ -1,20 +1,24 @@
 import {
+  BOTTOM_NAV_ACTION_OVERLAP,
+  BOTTOM_NAV_ACTION_SIZE,
+  getBottomNavigationActionReach,
   getBottomNavigationHeight,
-  getHomeFloatingActionBottom,
 } from '@/lib/bottom-navigation-layout';
 
 describe('bottom navigation layout', () => {
-  it('keeps the floating action above the minimum navigation height', () => {
+  it('keeps the minimum navigation height and docks half of the voice button above it', () => {
     expect(getBottomNavigationHeight(0)).toBe(72);
-    expect(getHomeFloatingActionBottom(0)).toBe(84);
+    expect(BOTTOM_NAV_ACTION_OVERLAP).toBe(BOTTOM_NAV_ACTION_SIZE / 2);
+    expect(getBottomNavigationActionReach(0)).toBe(72 + 30);
   });
 
-  it('moves the floating action up with an Android or iOS bottom safe-area inset', () => {
+  it('grows with an Android or iOS bottom safe-area inset', () => {
     expect(getBottomNavigationHeight(34)).toBe(92);
-    expect(getHomeFloatingActionBottom(34)).toBe(104);
+    expect(getBottomNavigationActionReach(34)).toBe(122);
   });
 
-  it('does not allow invalid negative insets to move the action under navigation', () => {
-    expect(getHomeFloatingActionBottom(-20)).toBe(84);
+  it('does not let an invalid negative inset shrink the bar', () => {
+    expect(getBottomNavigationHeight(-20)).toBe(72);
+    expect(getBottomNavigationActionReach(-20)).toBe(102);
   });
 });

@@ -15,6 +15,7 @@ import { AppIcon, IconButton, iconForTransport } from '@/components/app-icon';
 import { Button } from '@/components/app-ui';
 import { DestinationPicker } from '@/components/destination-picker';
 import { radius, space } from '@/constants/design';
+import { describeAppointmentDateText } from '@/lib/appointment-date';
 import { canUseAppTts } from '@/lib/screen-reader-state';
 import { ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 import {
@@ -704,7 +705,7 @@ function VoiceReview({ proposal, assistantReady, clarification, requiredConfirma
   return <View accessibilityLabel="AI가 추출한 일정 확인" style={[styles.review, { backgroundColor: palette.surface, borderColor: palette.border }]}>
     <View style={styles.reviewHeading}><View style={styles.reviewHeadingCopy}><Text style={[styles.reviewLead, { color: palette.primary }]}>이렇게 등록할까요?</Text><Text style={[styles.reviewHint, { color: palette.textMuted }]}>추출된 값만 눌러 바로 수정할 수 있어요</Text></View><View style={[styles.confidence, { backgroundColor: canConfirm ? '#E7F8F3' : '#FFF4E5' }]}><Text style={[styles.confidenceText, { color: canConfirm ? '#0D766E' : '#9A5A00' }]}>{canConfirm ? '확인 완료' : '확인 필요'}</Text></View></View>
     <EditableRow label="일정명" value={proposal.title} field="title" editing={editField === 'title'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(title) => onChange({ title }, 'title')} />
-    <EditableRow label="날짜" value={proposal.date} field="date" editing={editField === 'date'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(date) => onChange({ date }, 'date')} />
+    <EditableRow label="날짜" value={describeAppointmentDateText(proposal.date)} editValue={proposal.date} field="date" editing={editField === 'date'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(date) => onChange({ date }, 'date')} />
     <EditableRow label="시간" value={proposal.appointmentTime ? `${proposal.appointmentTime}–${endTime}` : ''} editValue={proposal.appointmentTime} field="time" editing={editField === 'time'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(appointmentTime) => onChange({ appointmentTime }, 'time')} />
     <TransportRow value={requiredConfirmations.transport ? proposal.transport : ''} editing={editField === 'transport'} palette={palette} onEdit={onEditField} onSelect={(transport) => { onChange({ transport }, 'transport'); onEditField(null); }} />
     <EditableRow label="장소" value={proposal.destination} field="destination" editing={editField === 'destination'} palette={palette} onEdit={onEditField} onEditingLayout={onEditingRow} onSubmit={(destination) => onChange({ destination, destinationAddress: '', destinationCoordinate: null }, 'destination')} />

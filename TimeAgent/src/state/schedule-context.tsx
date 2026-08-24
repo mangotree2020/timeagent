@@ -9,6 +9,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics';
 import { loadAppSettings } from '@/lib/app-settings';
 import { routinesForPreset } from '@/lib/preparation-profile';
 import { cancelConfirmedPlanStart, scheduleConfirmedPlanStart } from '@/lib/confirmed-plan-notification-service';
+import { applyOncePerDayRule } from '@/lib/daily-routines';
 import {
   addConfirmedPlan,
   completeConfirmedPlan,
@@ -21,6 +22,7 @@ import {
   replaceConfirmedPlan,
   saveConfirmedPlans,
   settlePastConfirmedPlans,
+  spawnNextRecurringPlans,
 } from '@/lib/confirmed-plans';
 import {
   clearScheduleDraft,
@@ -438,8 +440,15 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
 
     const settleElapsedPlans = async () => {
       const currentPlans = confirmedPlansRef.current;
-      const settled = settlePastConfirmedPlans(currentPlans);
-      const changed = settled.some((plan, index) => plan !== currentPlans[index]);
+      const elapsed = settlePastConfirmedPlans(currentPlans);
+      // A repeating appointment that is over gets its next occurrence, alarm included, right here.
+      const withNext = spawnNextRecurringPlans(elapsed);
+      const settled = withNext === elapsed ? elapsed : await Promise.all(withNext.map(async (plan) => {
+        if (elapsed.includes(plan) || plan.state !== 'scheduled') return plan;
+        const notification = await scheduleConfirmedPlanStart(plan);
+        return notification.identifier ? { ...plan, notificationIdentifier: notification.identifier } : plan;
+      }));
+      const changed = settled.length !== currentPlans.length || settled.some((plan, index) => plan !== currentPlans[index]);
       const currentProgress = progressSessionRef.current;
       const progressPlan = currentProgress?.confirmedPlanId
         ? settled.find((plan) => plan.id === currentProgress.confirmedPlanId)
@@ -688,7 +697,10 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     return true;
   }, [commitProgress, createCurrentPlan, pendingSchedule]);
 
-  const finalizeSchedule = useCallback(async (schedule: ScheduleDraft) => {
+  const finalizeSchedule = useCallback(async (entered: ScheduleDraft) => {
+    // Once-a-day steps another appointment that day already carries never reach the plan, however
+    // the draft got here; a step the person put back on purpose is marked and stays.
+    const { schedule } = applyOncePerDayRule(entered, confirmedPlansRef.current, { excludeId: editingConfirmedPlanId });
     const nextPlan = createCurrentPlan(schedule);
     setDraft(schedule);
     setPendingSchedule(schedule);
@@ -705,9 +717,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setDraftStatus('error');
     }
     void recordAnalyticsEvent(AsyncStorage, 'draft_completed');
-  }, [createCurrentPlan]);
+  }, [createCurrentPlan, editingConfirmedPlanId]);
 
-  const confirmScheduleDirectly = useCallback(async (schedule: ScheduleDraft) => {
+  const confirmScheduleDirectly = useCallback(async (dictated: ScheduleDraft) => {
+    // Dictated appointments skip the create screen, so the once-a-day rule is applied here.
+    const { schedule } = applyOncePerDayRule(dictated, confirmedPlansRef.current);
     const plan = createCurrentPlan(schedule);
     await finalizeSchedule(schedule);
     const confirmed = confirmSchedulePlan({ schedule, plan });

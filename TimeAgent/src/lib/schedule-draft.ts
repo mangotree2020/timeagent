@@ -1,3 +1,4 @@
+import { isRepeatWeekdayList, NO_REPEAT_LABEL } from './appointment-recurrence';
 import { defaultRoutinesForGender, PreparationGender } from './preparation-profile';
 
 export const SCHEDULE_DRAFT_STORAGE_KEY = '@on-time/schedule-draft';
@@ -32,6 +33,11 @@ export type RoutineDraft = {
    * Optional so drafts and confirmed plans saved before this existed still load.
    */
   minutesEditedByUser?: boolean;
+  /**
+   * Set when the person put a once-a-day step (shower, make-up) back into a second appointment of
+   * the day on purpose, so the once-a-day rule does not take it out again when the plan is made.
+   */
+  keepOnSameDay?: boolean;
 };
 
 export type ScheduleDraft = {
@@ -53,7 +59,13 @@ export type ScheduleDraft = {
   priority: 'on-time' | 'cost';
   routines: RoutineDraft[];
   durationMinutes?: number;
+  /** Repeat as a sentence (`반복 없음`, `매주 월·수·금`) — what the voice flow shows and edits. */
   recurrence?: string;
+  /**
+   * Weekdays the appointment repeats on (0 = 일 … 6 = 토); empty or absent for a one-off. The
+   * pickers write this and keep `recurrence` in step with it.
+   */
+  repeatWeekdays?: number[];
 };
 
 type StorageLike = {
@@ -83,7 +95,8 @@ export function createDefaultScheduleDraft(
     priority: 'on-time',
     routines: defaultRoutinesForGender(preparationGender),
     durationMinutes: 60,
-    recurrence: '반복 없음',
+    recurrence: NO_REPEAT_LABEL,
+    repeatWeekdays: [],
   };
 }
 
@@ -168,7 +181,8 @@ function isScheduleDraft(value: unknown): value is ScheduleDraft {
     && (draft.destinationDistanceMeters === undefined
       || draft.destinationDistanceMeters === null
       || (Number.isFinite(draft.destinationDistanceMeters) && draft.destinationDistanceMeters >= 0))
-    && (draft.recurrence === undefined || typeof draft.recurrence === 'string');
+    && (draft.recurrence === undefined || typeof draft.recurrence === 'string')
+    && (draft.repeatWeekdays === undefined || isRepeatWeekdayList(draft.repeatWeekdays));
 }
 
 function isCoordinate(value: unknown): value is { latitude: number; longitude: number } {
