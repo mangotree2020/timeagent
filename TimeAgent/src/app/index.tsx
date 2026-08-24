@@ -1,28 +1,19 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
 import { Button, Card, Screen, SectionTitle, StatusPill, useAppType } from '@/components/app-ui';
-import { AppIcon, type AppIconName } from '@/components/app-icon';
-import { HomeLogoButton } from '@/components/home-logo-button';
+import { AppIcon } from '@/components/app-icon';
 import { Timeline } from '@/components/timeline';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { useSchedule } from '@/state/schedule-context';
 import { describeRepeatWeekdays, normalizeRepeatWeekdays } from '@/lib/appointment-recurrence';
 import { ConfirmedSchedulePlan, currentOnTimeArrivalStreak, formatConfirmedPlanDate, plansForLocalDate, plansForLocalDateRange } from '@/lib/confirmed-plans';
-import { preparationCountdown, shouldAnimateHomeLogo } from '@/lib/home-attention';
-import { loadCurrentDeviceWeather, WeatherPermissionNeededError } from '@/lib/device-weather-provider';
-import {
-  createWeatherPreviewFixture,
-  roundTemperature,
-  WeatherSnapshot,
-  weatherPreparationAdvice,
-} from '@/lib/weather';
+import { preparationCountdown } from '@/lib/home-attention';
 import { useTaskExecution } from '@/state/task-context';
 
-type WeatherStatus = 'checking' | 'ready' | 'permission-needed' | 'error';
 
 const countdownIconColor: Record<'info' | 'warning' | 'success', string> = {
   info: '#0B5FA5',
@@ -34,14 +25,12 @@ export default function HomeScreen() {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
-  const params = useLocalSearchParams<{ e2eWeather?: string; e2eStreak?: string }>();
-  const weatherFixtureMode = __DEV__ && params.e2eWeather === 'ready';
-  const weatherErrorFixtureMode = __DEV__ && params.e2eWeather === 'error';
+  const params = useLocalSearchParams<{ e2eStreak?: string }>();
   const [today, setToday] = useState(() => new Date());
-  const [weather, setWeather] = useState<WeatherSnapshot | null>(() => weatherFixtureMode ? createWeatherPreviewFixture() : null);
-  const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>(weatherFixtureMode ? 'ready' : weatherErrorFixtureMode ? 'error' : 'checking');
+
+
   const { currentTask } = useTaskExecution();
-  const { confirmedPlans, confirmedPlansStatus, progressSession, selectConfirmedPlan, startProgress, delayMinutes } = useSchedule();
+  const { confirmedPlans, confirmedPlansStatus, progressSession, selectConfirmedPlan, startProgress } = useSchedule();
   const todayPlans = plansForLocalDate(confirmedPlans, today)
     .filter((plan) => plan.state === 'scheduled' || plan.state === 'active');
   const homePlans = plansForLocalDateRange(confirmedPlans, today, 2)
@@ -71,103 +60,77 @@ export default function HomeScreen() {
     selectConfirmedPlan(id);
     router.push('/plan');
   };
-  const scheduleSummary = confirmedPlansStatus === 'loading'
-    ? '오늘·내일 약속 확인 중'
-    : `오늘·내일 약속 ${homePlans.length}개`;
-  const hasAttentionMessage = shouldAnimateHomeLogo({
-    delayMinutes,
-    weatherIcon: weather?.icon,
-    weatherStatus,
-    calendarStatus: 'ready',
-  });
-
-  const loadWeather = useCallback(async () => {
-    if (weatherFixtureMode) {
-      setWeather(createWeatherPreviewFixture());
-      setWeatherStatus('ready');
-      return;
-    }
-    if (weatherErrorFixtureMode) {
-      setWeather(null);
-      setWeatherStatus('error');
-      return;
-    }
-    setWeatherStatus('checking');
-    try {
-      setWeather(await loadCurrentDeviceWeather());
-      setWeatherStatus('ready');
-    } catch (error) {
-      setWeather(null);
-      setWeatherStatus(error instanceof WeatherPermissionNeededError ? 'permission-needed' : 'error');
-    }
-  }, [weatherErrorFixtureMode, weatherFixtureMode]);
-
   useEffect(() => {
     const clock = setInterval(() => setToday(new Date()), 60_000);
     return () => clearInterval(clock);
   }, []);
 
-  useEffect(() => {
-    const initialLoad = setTimeout(() => void loadWeather(), 0);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadWeather();
-    });
-    return () => {
-      clearTimeout(initialLoad);
-      subscription.remove();
-    };
-  }, [loadWeather]);
-
   return (
     <View style={styles.page}>
       <Screen>
-        <View style={styles.homeHeader}>
-          <View style={styles.homeHeaderCopy}>
-            <Text accessibilityRole="header" style={styles.headerMeta}>{new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }).format(today)} · {scheduleSummary}</Text>
-          </View>
-          <HomeLogoButton hasMessage={hasAttentionMessage} onPress={() => router.push('/alerts')} />
-        </View>
-
         {currentTask ? <NowTaskCard task={currentTask} onPress={() => router.push('/task-focus' as Href)} /> : null}
 
         {schedule ? <Card style={styles.hero}>
-          {/* The action sits beside the card's own tap target rather than inside it: nesting one
-              button in another is invalid on web and swallows the outer press. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${schedule.title}, ${schedule.appointmentTime}, ${schedule.destination}`}
-            accessibilityHint="상세 일정과 준비 계획을 확인합니다"
-            onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
-            style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
-          >
-            {/* The section heading above already says these are appointments; a label inside the
-                card said it a third time. The title leads, with the chevron beside it. */}
-            <View style={styles.heroTop}>
-              <Text numberOfLines={2} style={[styles.heroTitle, styles.heroTitleLead]}>{schedule.title}</Text>
-              <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
-            </View>
-            {/* People check the home card to answer "when do I have to move?", so the countdown to
-                preparation sits above the appointment details and carries its own colour. */}
-            {countdown ? <View accessibilityLabel={countdown.accessibilityLabel} accessibilityLiveRegion="polite" style={[styles.countdown, styles[`countdown_${countdown.tone}`]]}>
-              <AppIcon name="time" size={18} iconColor={countdownIconColor[countdown.tone]} />
-              <Text style={[styles.countdownText, { color: countdownIconColor[countdown.tone] }]}>{countdown.label}</Text>
-              <Text style={styles.countdownAt}>{nextHomePlan?.plan.prepStart} 준비 시작</Text>
-            </View> : null}
-            <View style={styles.appointmentMeta}>
-              <View style={styles.appointmentDetail}><AppIcon name="time" size={22} iconColor={c.deepBlue} /><Text style={styles.appointmentDetailText}>{schedule.appointmentTime}</Text></View>
-              <View style={styles.appointmentDetail}><AppIcon name="location" size={22} iconColor={c.textMuted} /><Text numberOfLines={1} style={styles.heroLocation}>{schedule.destination}</Text></View>
-            </View>
-          </Pressable>
-          {/* Being ready sooner than planned is common, and waiting for the scheduled start is
-              the one thing the app should never force. This starts the same run immediately. */}
-          <Button
-            label={preparationRunning ? '준비 화면 열기' : '지금 시작'}
-            accessibilityHint={preparationRunning ? '진행 중인 준비 화면으로 이동합니다' : '준비 시작 시각을 기다리지 않고 지금 바로 준비를 시작합니다'}
-            onPress={() => void startPreparationNow()}
-          />
-        </Card> : <Card style={styles.emptyPlan}><View style={styles.weatherIcon}><AppIcon name="calendar" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.weatherStateBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '말로 일정을 등록하면 준비 시작 시각에 자동으로 실행됩니다.'}</Text>{confirmedPlansStatus !== 'loading' ? <Button label="말로 새 일정 만들기" variant="secondary" onPress={() => router.push('/voice-schedule')} /> : null}</View></Card>}
-
-        <HomeWeather status={weatherStatus} weather={weather} fixtureMode={weatherFixtureMode} onRetry={() => void loadWeather()} />
+          {/* The box answers "what, when do I move, when is it" and opens the live preparation
+              screen — same place as the round 시작 button. The pencil is the only way out to the
+              plan detail, for reading or changing the plan. Buttons stay siblings of the pressable
+              areas: nesting one button in another is invalid on web and swallows the outer press. */}
+          <View style={styles.heroTop}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${schedule.title}, 실시간 준비 화면 열기`}
+              accessibilityHint="시작 버튼과 같은 실시간 준비 화면으로 이동합니다"
+              onPress={() => void startPreparationNow()}
+              style={({ pressed }) => [styles.heroTitleLead, pressed && styles.buttonPressed]}
+            >
+              <Text numberOfLines={2} style={styles.heroTitle}>{schedule.title}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="준비 계획 상세 보기"
+              accessibilityHint="계획을 확인하고 수정할 수 있습니다"
+              onPress={() => nextHomePlan && openRegisteredPlan(nextHomePlan.id)}
+              style={({ pressed }) => [styles.heroEdit, pressed && styles.buttonPressed]}
+            >
+              <AppIcon name="edit" size={20} iconColor={c.deepBlue} />
+            </Pressable>
+          </View>
+          <View style={styles.heroTimeRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`준비 시작 ${nextHomePlan?.plan.prepStart ?? ''}${countdown ? `, ${countdown.label}` : ''}, 약속 ${schedule.appointmentTime}. 실시간 준비 화면 열기`}
+              accessibilityLiveRegion="polite"
+              onPress={() => void startPreparationNow()}
+              style={({ pressed }) => [styles.heroTimesPressable, pressed && styles.buttonPressed]}
+            >
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} style={styles.heroTimes}>
+                <Text style={[styles.heroPrepTime, countdown && { color: countdownIconColor[countdown.tone] }]}>{nextHomePlan?.plan.prepStart}</Text>
+                {countdown ? <Text style={[styles.heroCountdown, { color: countdownIconColor[countdown.tone] }]}>{` (${countdown.label})`}</Text> : null}
+                <Text style={styles.heroSlash}>{' / '}</Text>
+                <Text style={styles.heroAppointmentTime}>{schedule.appointmentTime}</Text>
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={preparationRunning ? '시작. 진행 중인 준비 화면 열기' : '시작. 지금 바로 준비 시작'}
+              onPress={() => void startPreparationNow()}
+              style={({ pressed }) => [styles.startCircle, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.startCircleText}>시작</Text>
+            </Pressable>
+          </View>
+        </Card> : <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="확정된 다음 약속이 없어요. 새 일정 만들기"
+          accessibilityHint="일정 생성 화면으로 이동합니다"
+          disabled={confirmedPlansStatus === 'loading'}
+          onPress={() => router.push({ pathname: '/create', params: { new: '1' } })}
+          style={({ pressed }) => [styles.heroPressable, pressed && styles.buttonPressed]}
+        >
+          {/* One quiet box instead of a pitch: what is true now, one line of what happens next,
+              and the whole box goes to the create screen. */}
+          <Card style={styles.emptyPlan}><View style={styles.emptyIcon}><AppIcon name="plus" size={22} /></View><View style={styles.emptyCopy}><Text style={styles.emptyTitle}>{confirmedPlansStatus === 'loading' ? '저장된 계획을 불러오고 있어요' : '확정된 다음 약속이 없어요'}</Text><Text style={styles.emptyBody}>{confirmedPlansStatus === 'loading' ? '잠시만 기다려 주세요.' : '일정을 등록하면 준비 시작 시각에 자동으로 실행돼요.'}</Text></View><AppIcon name="chevronRight" size={20} iconColor={c.textMuted} /></Card>
+        </Pressable>}
 
         {homePlans.length ? <>
           <SectionTitle action={<Pressable accessibilityRole="button" onPress={() => router.push('/schedules')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable>}>오늘·내일 등록 약속 {homePlans.length}개</SectionTitle>
@@ -181,7 +144,7 @@ export default function HomeScreen() {
 
         {/* The link has to follow the card's own source, or it offers "전체 보기" over an empty state. */}
         <SectionTitle action={nextTodayPlan ? <Pressable accessibilityRole="button" onPress={() => router.push('/plan')} style={styles.sectionAction}><Text style={styles.link}>전체 보기</Text></Pressable> : undefined}>오늘의 준비 계획</SectionTitle>
-        {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline.slice(0, 4)} compact /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
+        {nextTodayPlan?.plan.timeline.length ? <Card><Timeline steps={nextTodayPlan.plan.timeline} compact transport={nextTodayPlan.schedule.transport} /></Card> : <Card style={styles.todayEmpty}><Text style={type.bodyMuted}>오늘 확정한 계획이 있으면 준비 행동과 자동 시작 시각을 여기에 보여드려요.</Text></Card>}
 
       </Screen>
       <BottomNav />
@@ -257,57 +220,8 @@ function RegisteredPlanList({ plans, onSelect }: { plans: ConfirmedSchedulePlan[
   );
 }
 
-function HomeWeather({ status, weather, fixtureMode, onRetry }: { status: WeatherStatus; weather: WeatherSnapshot | null; fixtureMode: boolean; onRetry: () => void }) {
-  const styles = useThemedStyles(createStyles);
-  const c = useAppTheme().palette;
-  if (status === 'checking') {
-    return <Card style={styles.weatherState}><ActivityIndicator color={c.deepBlue} /><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>현재 날씨 확인 중</Text><Text style={styles.weatherStateBody}>승인된 현재 위치로 날씨를 불러오고 있어요.</Text></View></Card>;
-  }
-
-  if (status === 'permission-needed') {
-    return <Card style={styles.weatherState}><View style={styles.weatherIcon}><AppIcon name="location" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>현재 위치 날씨를 확인하세요</Text><Text style={styles.weatherStateBody}>위치 권한을 허용하면 일정 준비에 필요한 날씨를 보여드려요.</Text><Pressable accessibilityRole="button" accessibilityLabel="위치 권한 설정" onPress={() => router.push({ pathname: '/permissions', params: { focus: 'location' } })} style={styles.weatherLink}><Text style={styles.weatherLinkText}>위치 권한 설정</Text><AppIcon name="chevronRight" size={16} /></Pressable></View></Card>;
-  }
-
-  if (status === 'error' || !weather) {
-    return <Card style={styles.weatherState}><View style={styles.weatherIcon}><AppIcon name="error" size={22} /></View><View style={styles.weatherStateCopy}><Text style={styles.weatherStateTitle}>날씨를 불러오지 못했어요</Text><Text style={styles.weatherStateBody}>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</Text><Pressable accessibilityRole="button" accessibilityLabel="날씨 다시 불러오기" onPress={onRetry} style={styles.weatherLink}><Text style={styles.weatherLinkText}>다시 불러오기</Text><AppIcon name="chevronRight" size={16} /></Pressable></View></Card>;
-  }
-
-  const locationName = weather.locationName || '주변 날씨';
-  const accessibilityLabel = `${locationName} 날씨 ${weather.condition}, ${roundTemperature(weather.temperatureC)}도. 날씨 상세 보기`;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityHint="날씨 상세 화면으로 이동합니다"
-      onPress={() => router.push(fixtureMode ? { pathname: '/weather', params: { e2eWeather: 'ready' } } : '/weather')}
-      style={({ pressed }) => [styles.weatherPressable, pressed && styles.buttonPressed]}
-    >
-      <Card style={styles.weatherCard}>
-        <View style={styles.weatherIcon}><AppIcon name={weatherIconName(weather)} size={24} /></View>
-        <View style={styles.weatherCopy}>
-          <Text style={styles.weatherCondition}>{locationName} · {weather.condition} {roundTemperature(weather.temperatureC)}°</Text>
-          <Text numberOfLines={2} style={styles.weatherAdvice}>{weatherPreparationAdvice(weather)}</Text>
-        </View>
-        <AppIcon name="chevronRight" size={20} iconColor={c.textMuted} />
-      </Card>
-    </Pressable>
-  );
-}
-
-function weatherIconName(weather: WeatherSnapshot): AppIconName {
-  if (weather.icon === 'clear') return 'weatherClear';
-  if (weather.icon === 'fog') return 'weatherFog';
-  if (weather.icon === 'rain') return 'weatherRain';
-  if (weather.icon === 'snow') return 'weatherSnow';
-  if (weather.icon === 'storm') return 'weatherStorm';
-  return 'weatherCloudy';
-}
-
 const createStyles = (c: AppPalette) => StyleSheet.create({
   page: { flex: 1 },
-  homeHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
-  homeHeaderCopy: { flex: 1, gap: 1 },
-  headerMeta: { color: c.navy, fontSize: 17, lineHeight: 24, fontWeight: '900', letterSpacing: -0.3 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroPressable: { minHeight: 44, borderRadius: radius.lg },
   nowTaskPressable: { minHeight: 44, borderRadius: radius.lg },
@@ -317,20 +231,25 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   nowTaskAction: { color: c.onInverse, fontSize: 24, lineHeight: 31, fontWeight: '900' },
   nowTaskNext: { color: c.onInverseMuted, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   hero: { minHeight: 148, gap: space.md, padding: space.xl, borderColor: 'transparent', boxShadow: '0 10px 28px rgba(15,23,42,0.055)', elevation: 2 },
-  emptyPlan: { minHeight: 132, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  emptyPlan: { minHeight: 112, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  emptyIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice, flexShrink: 0 },
+  emptyCopy: { flex: 1, gap: 3 },
+  emptyTitle: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  emptyBody: { color: c.textMuted, fontSize: 13, lineHeight: 19 },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   heroTitleLead: { flex: 1 },
-  countdown: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md },
-  countdown_info: { backgroundColor: c.infoSoft },
-  countdown_warning: { backgroundColor: c.warningSoft },
-  countdown_success: { backgroundColor: c.successSoft },
-  countdownText: { fontSize: 17, fontWeight: '900' },
-  countdownAt: { flex: 1, textAlign: 'right', color: c.textMuted, fontSize: 13, fontWeight: '700' },
   heroTitle: { color: c.navy, fontSize: 22, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
-  appointmentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg },
-  appointmentDetail: { minHeight: 24, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7 },
-  appointmentDetailText: { color: c.deepBlue, fontSize: 22, lineHeight: 30, fontWeight: '900' },
-  heroLocation: { flexShrink: 1, color: c.textMuted, fontSize: 22, lineHeight: 30, fontWeight: '700' },
+  heroEdit: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.primarySoft },
+  heroTimeRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  heroTimesPressable: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: radius.md },
+  // The appointment time keeps its size; the preparation start leads in the countdown's colour.
+  heroTimes: { fontSize: 22, lineHeight: 30, fontWeight: '900', color: c.deepBlue, fontVariant: ['tabular-nums'] },
+  heroPrepTime: { color: c.deepBlue },
+  heroCountdown: { fontSize: 15, fontWeight: '800' },
+  heroSlash: { color: c.textMuted, fontWeight: '700' },
+  heroAppointmentTime: { color: c.navy },
+  startCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: c.deepBlue, boxShadow: '0 6px 16px rgba(27,100,218,0.35)', elevation: 4 },
+  startCircleText: { color: c.onPrimary, fontSize: 15, fontWeight: '900' },
   buttonPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   registeredList: { gap: space.sm },
   registeredPressable: { minHeight: 44, borderRadius: radius.lg },
@@ -342,18 +261,6 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   registeredTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   registeredTitle: { flex: 1, color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
   registeredLocation: { flex: 1, color: c.textMuted, fontSize: 13, lineHeight: 18 },
-  weatherPressable: { minHeight: 44, borderRadius: radius.lg },
-  weatherCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderColor: 'transparent', boxShadow: '0 6px 18px rgba(15,23,42,0.035)' },
-  weatherIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice, flexShrink: 0 },
-  weatherCopy: { flex: 1, gap: 2 },
-  weatherCondition: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  weatherAdvice: { color: c.textMuted, fontSize: 13, lineHeight: 18 },
-  weatherState: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
-  weatherStateCopy: { flex: 1, gap: 3 },
-  weatherStateTitle: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
-  weatherStateBody: { color: c.textMuted, fontSize: 13, lineHeight: 19 },
-  weatherLink: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  weatherLinkText: { color: c.deepBlue, fontSize: 14, lineHeight: 20, fontWeight: '900' },
   link: { color: c.deepBlue, fontSize: 14, fontWeight: '800' },
   sectionAction: { minHeight: 44, minWidth: 52, alignItems: 'flex-end', justifyContent: 'center' },
   todayEventPressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },

@@ -57,3 +57,14 @@ describe('routine presets', () => {
     }
   });
 });
+
+describe('male defaults never include 화장', () => {
+  test('every male list starts with 면도 instead of 화장, in all presets', () => {
+    for (const preset of ['기본 외출 준비', '빠른 준비', '여유있는 준비'] as const) {
+      const routines = routinesForPreset('male', preset);
+      expect(routines.some((routine) => routine.id === 'makeup')).toBe(false);
+      if (preset !== '빠른 준비') expect(routines.some((routine) => routine.label === '면도')).toBe(true);
+    }
+    expect(defaultRoutinesForGender('male').map((routine) => routine.label)).toContain('면도');
+  });
+});

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import * as Speech from 'expo-speech';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
@@ -15,8 +16,10 @@ import {
   completeConfirmedPlan,
   confirmSchedulePlan,
   ConfirmedSchedulePlan,
+  describePrepStartReminder,
   findDueConfirmedPlan,
   loadConfirmedPlans,
+  PREP_START_REMINDER_MINUTES,
   markConfirmedPlanState,
   removeConfirmedPlan,
   replaceConfirmedPlan,
@@ -35,6 +38,7 @@ import {
 } from '@/lib/schedule-draft';
 import { createSchedulePlan, currentClock, SchedulePlan } from '@/lib/planning';
 import { readCurrentCoordinate } from '@/lib/current-position';
+import { canUseAppTts } from '@/lib/screen-reader-state';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { ROUTED_TRANSPORT_MODES, TravelEstimate, TravelEstimates, travelMinutesForMode } from '@/lib/travel-estimate';
 import {
@@ -446,7 +450,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       const settled = withNext === elapsed ? elapsed : await Promise.all(withNext.map(async (plan) => {
         if (elapsed.includes(plan) || plan.state !== 'scheduled') return plan;
         const notification = await scheduleConfirmedPlanStart(plan);
-        return notification.identifier ? { ...plan, notificationIdentifier: notification.identifier } : plan;
+        return {
+          ...plan,
+          ...(notification.identifier ? { notificationIdentifier: notification.identifier } : {}),
+          ...(notification.reminderIdentifier ? { reminderNotificationIdentifier: notification.reminderIdentifier } : {}),
+        };
       }));
       const changed = settled.length !== currentPlans.length || settled.some((plan, index) => plan !== currentPlans[index]);
       const currentProgress = progressSessionRef.current;
@@ -558,6 +566,33 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     // one that was navigated to, and being yanked away mid-form is worse than a missed cue.
     if (source === 'auto' && Platform.OS !== 'web') router.push({ pathname: '/progress', params: { source: 'auto' } });
   }, [commitConfirmedPlans, commitProgress, progressStatus]);
+
+  // The five-minute warning, spoken. The scheduled notification covers a phone in a pocket; this
+  // covers someone with the app open, and says it only once per plan.
+  const spokenReminders = useRef(new Set<string>());
+  useEffect(() => {
+    if (Platform.OS === 'web' || confirmedPlansStatus === 'loading') return;
+    const next = confirmedPlans.find((plan) => plan.state === 'scheduled');
+    if (!next || spokenReminders.current.has(next.id)) return;
+    const reminderAt = next.prepStartAt - PREP_START_REMINDER_MINUTES * 60_000;
+    const speakWarning = async () => {
+      if (spokenReminders.current.has(next.id)) return;
+      const now = Date.now();
+      if (now < reminderAt - 1_000 || now >= next.prepStartAt) return;
+      spokenReminders.current.add(next.id);
+      const settings = await loadAppSettings(AsyncStorage);
+      if (!settings.notifications || !await canUseAppTts()) return;
+      Speech.speak(describePrepStartReminder(next), { language: 'ko-KR', rate: 0.95, pitch: 1 });
+    };
+    const timer = setTimeout(() => void speakWarning(), Math.max(0, Math.min(reminderAt - Date.now(), 2_147_000_000)));
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void speakWarning();
+    });
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [confirmedPlans, confirmedPlansStatus]);
 
   useEffect(() => {
     if (confirmedPlansStatus === 'loading' || progressStatus === 'loading' || progressSession?.state === 'active') return;
@@ -726,9 +761,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     await finalizeSchedule(schedule);
     const confirmed = confirmSchedulePlan({ schedule, plan });
     const notification = await scheduleConfirmedPlanStart(confirmed);
-    const stored = notification.identifier
-      ? { ...confirmed, notificationIdentifier: notification.identifier }
-      : confirmed;
+    const stored = {
+      ...confirmed,
+      ...(notification.identifier ? { notificationIdentifier: notification.identifier } : {}),
+      ...(notification.reminderIdentifier ? { reminderNotificationIdentifier: notification.reminderIdentifier } : {}),
+    };
     await commitConfirmedPlans(addConfirmedPlan(confirmedPlansRef.current, stored));
     await clearScheduleDraft(AsyncStorage);
     setPendingSchedule(null);
@@ -826,9 +863,11 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
         confirmedAt: editing.confirmedAt,
       } : created;
       const notification = await scheduleConfirmedPlanStart(confirmed);
-      const stored = notification.identifier
-        ? { ...confirmed, notificationIdentifier: notification.identifier }
-        : confirmed;
+      const stored = {
+        ...confirmed,
+        ...(notification.identifier ? { notificationIdentifier: notification.identifier } : {}),
+        ...(notification.reminderIdentifier ? { reminderNotificationIdentifier: notification.reminderIdentifier } : {}),
+      };
       if (editing) await cancelConfirmedPlanStart(editing);
       await commitConfirmedPlans(editing
         ? replaceConfirmedPlan(confirmedPlansRef.current, editing.id, stored)

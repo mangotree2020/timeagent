@@ -23,7 +23,7 @@ describe('app settings persistence', () => {
     const settings: AppSettings = {
       ...createDefaultAppSettings(),
       defaultLocation: '부산역',
-      preferredTransport: '버스',
+      preferredTransport: '대중교통',
       bufferMinutes: 10,
       coachTone: '간결하게',
       notifications: false,
@@ -100,7 +100,7 @@ describe('app settings persistence', () => {
     const storage = createMemoryStorage(JSON.stringify({
       version: 3,
       defaultLocation: '해운대구',
-      preferredTransport: '버스',
+      preferredTransport: '대중교통',
       bufferMinutes: 10,
       routinePreset: '빠른 준비',
       preparationGender: 'unspecified',
@@ -114,9 +114,17 @@ describe('app settings persistence', () => {
 
     expect(loaded).toMatchObject({
       defaultLocation: '해운대구',
-      preferredTransport: '버스',
+      preferredTransport: '대중교통',
       colorMode: 'dark',
       stepCoaching: true,
     });
+  });
+
+  test('folds a preferred transport saved before the combined modes into them', async () => {
+    const legacySubway = createMemoryStorage(JSON.stringify({ ...createDefaultAppSettings(), preferredTransport: '지하철' }));
+    await expect(loadAppSettings(legacySubway)).resolves.toEqual(expect.objectContaining({ preferredTransport: '대중교통' }));
+
+    const legacyTaxi = createMemoryStorage(JSON.stringify({ ...createDefaultAppSettings(), preferredTransport: '택시' }));
+    await expect(loadAppSettings(legacyTaxi)).resolves.toEqual(expect.objectContaining({ preferredTransport: '승용차(택시)' }));
   });
 });

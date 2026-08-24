@@ -23,6 +23,8 @@ export type ConfirmedSchedulePlan = {
     delayMinutes: number;
   };
   notificationIdentifier?: string;
+  /** The five-minutes-before message, so it can be cancelled with the plan. */
+  reminderNotificationIdentifier?: string;
   /**
    * Shared by every occurrence of a repeating appointment, so the next one can be created exactly
    * once when this one is over. Absent on a one-off.
@@ -207,6 +209,13 @@ export function resolveScheduleDateTime(dateText: string, clock: string, now = D
   return new Date(year, month, day, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
 }
 
+/** Five minutes' warning, in one sentence, for both the notification and the spoken reminder. */
+export function describePrepStartReminder(plan: ConfirmedSchedulePlan) {
+  return `5분 뒤 ${plan.plan.prepStart}에 ${plan.schedule.title} 준비를 시작해요.`;
+}
+
+export const PREP_START_REMINDER_MINUTES = 5;
+
 export function formatConfirmedPlanDate(appointmentAt: number, now = Date.now()) {
   const appointment = new Date(appointmentAt);
   const reference = new Date(now);
@@ -254,6 +263,7 @@ function isConfirmedSchedulePlan(value: unknown): value is ConfirmedSchedulePlan
       && isFiniteNumber(value.completion.delayMinutes)
     ))
     && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string')
+    && (value.reminderNotificationIdentifier === undefined || typeof value.reminderNotificationIdentifier === 'string')
     && (value.seriesId === undefined || typeof value.seriesId === 'string');
 }
 

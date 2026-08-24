@@ -21,7 +21,7 @@ import { addRoutine, removeRoutine } from '@/lib/ui-controls';
 import { useSchedule } from '@/state/schedule-context';
 
 const steps = ['약속 정보', '이동 정보', '준비 행동'];
-const transports: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
+const transports: TransportMode[] = ['AI 추천', '대중교통', '승용차(택시)', '도보'];
 
 export default function CreateScreen() {
   const styles = useThemedStyles(createStyles);

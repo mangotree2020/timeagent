@@ -48,12 +48,19 @@ export function travelMinutesForMode(
   distanceMeters: number | null | undefined,
 ): TravelEstimate | null {
   if (transport === 'AI 추천') return quickestEstimate(estimates, distanceMeters);
-  if (!isRoutedTransportMode(transport)) return null;
-  const routed = estimates[transport];
-  if (routed) return routed;
+  // The person chooses between public transport and a car; the providers still answer per way of
+  // travelling, and the combined mode takes the quickest of its own ways.
+  const candidates: readonly RoutedTransportMode[] = transport === '대중교통'
+    ? ['버스', '지하철']
+    : transport === '승용차(택시)'
+      ? ['자가용', '택시']
+      : isRoutedTransportMode(transport) ? [transport] : [];
+  if (!candidates.length) return null;
+  const answered = candidates.map((mode) => estimates[mode]).filter((estimate): estimate is TravelEstimate => Boolean(estimate));
+  if (answered.length) return answered.reduce((quickest, estimate) => (estimate.minutes < quickest.minutes ? estimate : quickest));
   if (typeof distanceMeters !== 'number' || !Number.isFinite(distanceMeters) || distanceMeters < 0) return null;
   return {
-    mode: transport,
+    mode: candidates[transport === '대중교통' ? 1 : 0],
     minutes: estimateTravelMinutes(transport, distanceMeters),
     distanceMeters,
     source: 'distance',

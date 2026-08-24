@@ -64,7 +64,7 @@ type EditableField = 'title' | 'date' | 'time' | 'destination' | 'transport' | '
 
 const INITIAL_PROMPT = '새 일정이나 할 일을 말해 주세요. “내일 3시 강남에서 병원” 또는 “보고서 작성해야 해”처럼 편하게 말하면 돼요.';
 const TTS_RELEASE_DELAY_MS = 500;
-const transports: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
+const transports: TransportMode[] = ['AI 추천', '대중교통', '승용차(택시)', '도보'];
 
 const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
   entryType: 'schedule',
@@ -81,7 +81,7 @@ const RESULT_FIXTURE: VoiceScheduleAssistantReply = {
     destination: '강남 세브란스병원',
     destinationAddress: '서울 강남구 언주로 211',
     destinationCoordinate: { latitude: 37.492, longitude: 127.046 },
-    transport: '지하철',
+    transport: '대중교통',
     durationMinutes: 60,
     recurrence: '반복 없음',
     preparationMinutes: 30,

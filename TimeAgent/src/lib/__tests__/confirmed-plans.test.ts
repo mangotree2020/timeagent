@@ -32,7 +32,7 @@ function planAt(title: string, appointmentTime: string, confirmedAt: number) {
     date: '8월 8일 (오늘)',
     appointmentTime,
     routines: [{ id: 'ready', icon: 'routine', label: '준비', minutes: 20 }],
-    transport: '지하철' as const,
+    transport: '대중교통' as const,
   };
   const plan = createSchedulePlan(schedule, { travelMinutes: 20 });
   return confirmSchedulePlan({ schedule, plan, now: confirmedAt });
@@ -201,7 +201,7 @@ describe('repeating confirmed plans', () => {
       repeatWeekdays: days,
       recurrence: '매주 월·수',
       routines: [{ id: 'ready', icon: 'routine', label: '준비', minutes: 20 }],
-      transport: '지하철' as const,
+      transport: '대중교통' as const,
     };
     const plan = createSchedulePlan(schedule, { travelMinutes: 20 });
     return confirmSchedulePlan({ schedule, plan, now: confirmedAt });

@@ -25,6 +25,7 @@ import Minus from 'lucide-react-native/icons/minus';
 import Navigation from 'lucide-react-native/icons/navigation';
 import PackageCheck from 'lucide-react-native/icons/package-check';
 import Palette from 'lucide-react-native/icons/palette';
+import Pencil from 'lucide-react-native/icons/pencil';
 import Plus from 'lucide-react-native/icons/plus';
 import Settings from 'lucide-react-native/icons/settings';
 import Search from 'lucide-react-native/icons/search';
@@ -76,6 +77,7 @@ const icons = {
   navigation: Navigation,
   ready: PackageCheck,
   makeup: Palette,
+  edit: Pencil,
   plus: Plus,
   settings: Settings,
   search: Search,
@@ -148,11 +150,11 @@ export function IconButton({
 }
 
 export function iconForTransport(value: string): AppIconName {
-  if (value.includes('AI')) return 'ai';
-  if (value.includes('지하철')) return 'subway';
+  if (value.includes('AI') || value.includes('추천')) return 'ai';
+  if (value.includes('대중교통') || value.includes('지하철') || value.includes('전철')) return 'subway';
   if (value.includes('버스')) return 'bus';
   if (value.includes('도보') || value.includes('걸어')) return 'walk';
-  if (value.includes('택시')) return 'taxi';
+  if (value.includes('택시') && !value.includes('승용차')) return 'taxi';
   return 'car';
 }
 

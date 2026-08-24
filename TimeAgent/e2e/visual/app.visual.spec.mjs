@@ -106,9 +106,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 const screens = [
-  { id: 'home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘의 준비 계획' },
-  { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eWeather=ready&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
-  { id: 'alerts', path: '/alerts', ready: '필요한 순간만 알려드려요' },
+  { id: 'home', path: '/?e2eCalendar=today', ready: '오늘의 준비 계획' },
+  { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
+  { id: 'alerts', path: '/alerts?e2eWeather=ready', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
   { id: 'voice-schedule-proposal', path: '/voice-schedule?e2eState=proposal', ready: '이렇게 등록할까요?' },
   { id: 'voice-schedule-auto', path: '/voice-schedule?e2eState=auto-listening', ready: '실시간 대화 · 자동 듣기' },
@@ -127,7 +127,7 @@ const screens = [
 const darkSettings = {
   version: 3,
   defaultLocation: '부산진구 부전동',
-  preferredTransport: '지하철',
+  preferredTransport: '대중교통',
   bufferMinutes: 5,
   routinePreset: '기본 외출 준비',
   preparationGender: 'unspecified',
@@ -138,7 +138,7 @@ const darkSettings = {
 };
 
 const darkScreens = [
-  { id: 'dark-home', path: '/?e2eCalendar=today&e2eWeather=ready', ready: '오늘의 준비 계획' },
+  { id: 'dark-home', path: '/?e2eCalendar=today', ready: '오늘의 준비 계획' },
   { id: 'dark-plan', path: '/plan', ready: '확정된 준비 계획' },
   { id: 'dark-schedules', path: '/schedules', ready: '내 일정' },
   { id: 'dark-settings', path: '/settings', ready: '내 생활에 맞게 TimeAgent를 조정하세요' },
@@ -481,7 +481,7 @@ test('설정의 이동 수단 선택지를 한 줄로 표시함', async ({ page 
   await expect(page.getByText('설정이 저장됐습니다', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /선호 이동수단/ }).click();
 
-  const options = ['도보', '버스', '지하철', '자가용', '택시'];
+  const options = ['대중교통', '승용차(택시)', '도보'];
   const boxes = await Promise.all(options.map((name) => page.getByRole('radio', { name, exact: true }).boundingBox()));
   expect(boxes.every(Boolean)).toBe(true);
   const top = boxes[0].y;
@@ -513,22 +513,20 @@ test('음성 일정은 이동수단 확인 전 확정할 수 없음', async ({ p
   await expect(page.getByRole('button', { name: '이동수단 확인 필요 수정', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '이동수단 확인 필요 수정', exact: true }).click();
-  await page.getByRole('radio', { name: '버스', exact: true }).click();
+  await page.getByRole('radio', { name: '대중교통', exact: true }).click();
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '이동수단 버스 수정', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '이동수단 대중교통 수정', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeEnabled();
 });
 
-test('음성 이동수단 질문의 다섯 선택지를 한 줄로 표시함', async ({ page }) => {
+test('음성 이동수단 질문의 세 선택지가 모두 보이고 터치 영역을 지킴', async ({ page }) => {
   await page.goto('/voice-schedule?e2eState=transport-missing');
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
 
-  const options = ['도보', '버스', '지하철', '자가용', '택시'];
+  const options = ['대중교통', '승용차(택시)', '도보'];
   const boxes = await Promise.all(options.map((name) => page.getByRole('button', { name, exact: true }).boundingBox()));
   expect(boxes.every(Boolean)).toBe(true);
-  const top = boxes[0].y;
   for (const box of boxes) {
-    expect(Math.abs(box.y - top), '이동수단 선택지가 같은 줄에 있어야 합니다').toBeLessThanOrEqual(1);
     expect(box.height, '이동수단 선택지의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
   }
 });
@@ -568,13 +566,13 @@ test('이동수단이 빠지면 다시 묻지 않고 예시 선택을 권함', a
   await page.goto('/voice-schedule?e2eState=transport-missing');
   // Repeating a word the microphone already missed rarely goes better, so the fixed list is open.
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
-  for (const option of ['도보', '버스', '지하철', '자가용', '택시']) {
+  for (const option of ['대중교통', '승용차(택시)', '도보']) {
     await expect(page.getByRole('button', { name: option, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeDisabled();
 
-  await page.getByRole('button', { name: '택시', exact: true }).click();
-  await expect(page.getByRole('button', { name: '이동수단 택시 수정', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '승용차(택시)', exact: true }).click();
+  await expect(page.getByRole('button', { name: '이동수단 승용차(택시) 수정', exact: true })).toBeVisible();
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
 });
 
@@ -588,14 +586,14 @@ test('음성 이동수단은 서버 왕복 없이 즉시 반영됨', async ({ pa
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toBeVisible();
 
   const started = Date.now();
-  await page.getByRole('button', { name: '지하철', exact: true }).click();
-  await expect(page.getByRole('button', { name: '이동수단 지하철 수정', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '대중교통', exact: true }).click();
+  await expect(page.getByRole('button', { name: '이동수단 대중교통 수정', exact: true })).toBeVisible();
   const elapsed = Date.now() - started;
 
   expect(elapsed, '선택은 서버 응답을 기다리지 않고 즉시 반영돼야 합니다').toBeLessThan(1_000);
   expect(assistantCalls, '로컬에서 답할 수 있는 선택은 AI 비서를 부르지 않아야 합니다').toEqual([]);
   await expect(page.getByText('어떻게 이동할까요?', { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel('사용자 발화: 지하철', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('사용자 발화: 대중교통', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '확정하고 일정 등록', exact: true })).toBeEnabled();
 });
 
@@ -603,7 +601,7 @@ test('음성 정리 결과에 확인한 이동수단을 표시함', async ({ pag
   await page.goto('/voice-schedule?e2eState=proposal');
   await expect(page.getByText('이렇게 등록할까요?', { exact: true })).toBeVisible();
 
-  const transportRow = page.getByRole('button', { name: '이동수단 지하철 수정', exact: true });
+  const transportRow = page.getByRole('button', { name: '이동수단 대중교통 수정', exact: true });
   await expect(transportRow).toBeVisible();
   const [timeBox, transportBox, destinationBox] = await Promise.all([
     page.getByRole('button', { name: '시간 15:00–16:00 수정', exact: true }).boundingBox(),
@@ -651,14 +649,29 @@ test('음성 일정 버튼이 내비게이션 가운데에 반쯤 걸쳐 고정�
 });
 
 test('홈은 오늘·내일 캘린더 약속 카테고리를 표시하지 않음', async ({ page }) => {
-  await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  await expect(page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true })).toBeVisible();
-  await expect(page.getByText('비 올 확률 70%. 우산을 챙기세요.', { exact: true })).toBeVisible();
+  await page.goto('/?e2eCalendar=today');
+  await expect(page.getByText('오늘의 준비 계획', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /날씨 상세 보기/ })).toHaveCount(0);
   await expect(page.getByText('재택근무', { exact: true })).toHaveCount(0);
   await expect(page.getByText('팀 점검 회의', { exact: true })).toHaveCount(0);
   await expect(page.getByText('저녁 약속', { exact: true })).toHaveCount(0);
   await expect(page.getByText('내일 오전 약속', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '+ 말로 추가', exact: true })).toHaveCount(0);
+});
+
+test('확정 약속이 없는 홈은 안내 상자 하나로 일정 생성에 진입함', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [] }));
+  });
+  await page.goto('/');
+  const emptyBox = page.getByRole('button', { name: '확정된 다음 약속이 없어요. 새 일정 만들기', exact: true });
+  await expect(emptyBox).toBeVisible();
+  // 안내는 한 줄이고, 별도의 말로 만들기 버튼은 없다. 내비게이션의 음성 버튼이 그 역할을 한다.
+  await expect(page.getByText('일정을 등록하면 준비 시작 시각에 자동으로 실행돼요.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '말로 새 일정 만들기', exact: true })).toHaveCount(0);
+  await emptyBox.click();
+  await expect(page).toHaveURL(/\/create\?new=1$/);
+  await expect(page.getByText('언제, 어디에서 만나나요?', { exact: true })).toBeVisible();
 });
 
 test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 이동함', async ({ page }) => {
@@ -671,30 +684,30 @@ test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 �
   await expect(page.getByText('지난 일정 화면입니다.', { exact: true })).toBeVisible();
 });
 
-test('홈 다음 약속은 남은 시간과 지금 시작을 함께 보여주고 카드 터치로 상세 일정에 진입함', async ({ page }) => {
-  await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  // 카드 안에 '다음 약속' 라벨은 없다. 섹션 제목이 이미 말한 것을 카드가 반복하지 않는다.
-  const nextAppointment = page.getByRole('button', { name: '서면 볼링장 친구 약속, 14:00, 서면 볼링장', exact: true });
-  await expect(nextAppointment).toBeVisible();
-  await expect(nextAppointment.getByText('서면 볼링장 친구 약속', { exact: true })).toBeVisible();
-  await expect(nextAppointment.getByText('14:00', { exact: true })).toBeVisible();
-  await expect(nextAppointment.getByText('서면 볼링장', { exact: true })).toBeVisible();
-  // The card answers "when do I have to move?" before the appointment time itself.
-  await expect(nextAppointment.getByText('준비 시작', { exact: false }).first()).toBeVisible();
+test('홈 약속 상자는 준비 시작/약속 시간을 한 줄로 보여주고 상자·시작 버튼이 실시간 준비 화면을 엶', async ({ page }) => {
+  await page.goto('/?e2eCalendar=today');
+  // 제목 영역과 시간 줄 전체가 실시간 준비 화면으로 가는 손잡이다.
+  const titleBox = page.getByRole('button', { name: '서면 볼링장 친구 약속, 실시간 준비 화면 열기', exact: true });
+  await expect(titleBox).toBeVisible();
+  const times = page.getByRole('button', { name: /^준비 시작 12:55.*약속 14:00/ });
+  await expect(times).toBeVisible();
+  await expect(times.getByText('/', { exact: false })).toBeVisible();
 
-  // The action is a sibling of the card's tap target, since a button inside a button is invalid
-  // on web. This fixture already has a run in progress, so it offers to reopen it.
-  const startNow = page.getByRole('button', { name: '준비 화면 열기', exact: true });
-  await expect(startNow).toBeVisible();
-  const startNowBox = await startNow.boundingBox();
-  expect(startNowBox.height, '준비 시작 액션의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
-  await expect(nextAppointment.getByRole('button')).toHaveCount(0);
+  const start = page.getByRole('button', { name: /^시작\./ });
+  await expect(start).toBeVisible();
+  const startBox = await start.boundingBox();
+  expect(startBox.height, '시작 버튼의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
+  expect(Math.abs(startBox.width - startBox.height), '시작 버튼은 원형이어야 합니다').toBeLessThanOrEqual(1);
 
-  await nextAppointment.click();
+  // 연필이 준비 계획 상세로 가는 유일한 출구다.
+  await page.getByRole('button', { name: '준비 계획 상세 보기', exact: true }).click();
   await expect(page).toHaveURL(/\/plan$/);
   await expect(page.getByText('확정된 준비 계획', { exact: true })).toBeVisible();
-});
+  await page.goBack();
 
+  await titleBox.click();
+  await expect(page).toHaveURL(/\/progress/);
+});
 test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 보여줌', async ({ page }) => {
   await page.addInitScript(({ firstPlan }) => {
     const secondPlan = {
@@ -717,14 +730,8 @@ test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 �
     window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [firstPlan, secondPlan, tomorrowPlan] }));
   }, { firstPlan: confirmedPlanFixture });
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  const weatherCard = page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true });
   const registeredHeading = page.getByText('오늘·내일 등록 약속 3개', { exact: true });
   await expect(registeredHeading).toBeVisible();
-  const weatherBox = await weatherCard.boundingBox();
-  const registeredBox = await registeredHeading.boundingBox();
-  expect(weatherBox).not.toBeNull();
-  expect(registeredBox).not.toBeNull();
-  expect(weatherBox.y + weatherBox.height, '날씨 정보가 등록 일정 위에 있어야 합니다').toBeLessThan(registeredBox.y);
   await expect(page.getByRole('button', { name: /등록 일정, 서면 볼링장 친구 약속/ })).toBeVisible();
   await expect(page.getByText('내일 일정', { exact: true })).toBeVisible();
   await expect(page.getByText('내일', { exact: true })).toBeVisible();
@@ -805,8 +812,8 @@ test('지난 일정 기록은 확인을 거쳐 삭제됨', async ({ page }) => {
   })).toBe(false);
 });
 
-test('홈 날씨 카드는 내부 상세 화면으로 이동하고 출처는 상세에서만 보여줌', async ({ page }) => {
-  await page.goto('/?e2eCalendar=today&e2eWeather=ready');
+test('알림의 날씨 카드는 내부 상세 화면으로 이동하고 출처는 상세에서만 보여줌', async ({ page }) => {
+  await page.goto('/alerts?e2eWeather=ready');
   await expect(page.getByText('날씨 데이터: 기상청', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '부산진구 날씨 비, 27도. 날씨 상세 보기', exact: true }).click();
   await expect(page).toHaveURL(/\/weather\?e2eWeather=ready$/);
@@ -815,23 +822,14 @@ test('홈 날씨 카드는 내부 상세 화면으로 이동하고 출처는 상
   await expect(page.getByRole('link', { name: '날씨 데이터 제공 기상청', exact: true })).toBeVisible();
 });
 
-test('홈 로고는 확인 메시지가 있을 때 알림 화면으로 이동함', async ({ page }) => {
-  await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  const alertLogo = page.getByRole('button', { name: '확인할 메시지가 있어요. 알림 보기', exact: true });
-  await expect(alertLogo).toBeVisible();
-  await alertLogo.click();
-  await expect(page).toHaveURL(/\/alerts$/);
-  await expect(page.getByText('필요한 순간만 알려드려요', { exact: true })).toBeVisible();
-});
-
-test('홈 날씨는 위치 권한과 네트워크 실패의 복구 행동을 제공함', async ({ page }) => {
-  await page.goto('/');
+test('알림의 날씨는 위치 권한과 네트워크 실패의 복구 행동을 제공함', async ({ page }) => {
+  await page.goto('/alerts');
   await expect(page.getByText('현재 위치 날씨를 확인하세요', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '위치 권한 설정', exact: true }).click();
   await expect(page).toHaveURL(/\/permissions\?focus=location$/);
   await expect(page.getByText('현재 위치', { exact: true })).toBeVisible();
 
-  await page.goto('/?e2eWeather=error');
+  await page.goto('/alerts?e2eWeather=error');
   await expect(page.getByText('날씨를 불러오지 못했어요', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '날씨 다시 불러오기', exact: true })).toBeVisible();
 });
@@ -888,6 +886,8 @@ test('progress-delayed 화면', async ({ page }) => {
 test('personalized-plan 화면', async ({ page }) => {
   await page.addInitScript((profile) => {
     window.localStorage.setItem('@on-time/personalization', JSON.stringify(profile));
+    // 같은 날 다른 확정 약속이 있으면 하루 한 번 규칙이 샤워를 빼서 개인화 배너가 사라진다.
+    window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [] }));
   }, personalizationProfile);
   await page.goto('/create');
   await page.getByRole('button', { name: 'AI 계획 만들기' }).click();

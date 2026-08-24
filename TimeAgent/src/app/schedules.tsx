@@ -2,13 +2,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon } from '@/components/app-icon';
+import { AppIcon, IconButton } from '@/components/app-icon';
 import { BottomNav } from '@/components/bottom-nav';
+import { PlanCalendar } from '@/components/plan-calendar';
 import { Button, Card, Header, Screen, StatusPill, appType, useAppType } from '@/components/app-ui';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
+import { describeAppointmentDate, localDateToDate, toLocalDate } from '@/lib/appointment-date';
 import { describeRepeatWeekdays, normalizeRepeatWeekdays } from '@/lib/appointment-recurrence';
-import { ConfirmedSchedulePlan, formatConfirmedPlanDate } from '@/lib/confirmed-plans';
+import { ConfirmedSchedulePlan, plansForLocalDate } from '@/lib/confirmed-plans';
 import {
   CalendarProviderKind,
   DeviceCalendarEvent,
@@ -129,7 +131,11 @@ export default function SchedulesScreen() {
             </Pressable>
           ))}
         </View>
-        <Text accessibilityLiveRegion="polite" style={styles.tabDescription}>{tab} 화면입니다.</Text>
+        <View style={styles.tabDescriptionRow}>
+          <Text accessibilityLiveRegion="polite" style={styles.tabDescription}>{tab} 화면입니다.</Text>
+          {/* The alarm-app gesture: one + at the end of the line, straight into manual entry. */}
+          {tab === '내 일정' ? <IconButton name="plus" label="새 일정 직접 등록" variant="primary" onPress={() => router.push({ pathname: '/create', params: { new: '1' } })} /> : null}
+        </View>
 
         {tab === '내 일정' ? <UpcomingSchedules plans={upcomingPlans} status={confirmedPlansStatus} onSelect={(id) => { selectConfirmedPlan(id); router.push('/plan'); }} /> : null}
         {tab === '지난 일정' ? <ClosedSchedules plans={closedPlans} status={confirmedPlansStatus} onDelete={deleteConfirmedPlan} /> : null}
@@ -159,19 +165,22 @@ function UpcomingSchedules({ plans, status, onSelect }: { plans: ConfirmedSchedu
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
+  // The month at a glance, like the phone's own calendar; the list below belongs to the chosen day.
+  const [openedAt] = useState(() => Date.now());
+  const [selected, setSelected] = useState(() => toLocalDate(openedAt));
+  const dayPlans = plansForLocalDate(plans, localDateToDate(selected));
   if (status === 'loading') return <StateCard icon="calendar" title="저장된 계획을 불러오고 있어요" body="확정한 계획을 시간순으로 정리합니다." />;
   return <>
     {status === 'error' ? <StateCard icon="error" title="저장된 계획을 불러오지 못했어요" body="앱을 다시 열어 확인해 주세요. 새 계획은 입력 화면에 자동 저장됩니다." /> : null}
     {!plans.length && status !== 'error' ? <StateCard icon="calendar" title="확정된 계획이 없어요" body="계획을 만든 뒤 계획 확정을 누르면 이곳에 저장됩니다." /> : null}
-    {plans.map((item) => <View key={item.id} style={styles.planGroup}>
-      {/* Derived from the confirmed timestamp rather than the free text someone dictated, which
-          could still be sitting there as a raw `2026-08-17`. */}
-      <Text style={styles.date}>{formatConfirmedPlanDate(item.appointmentAt)}</Text>
+    <PlanCalendar plans={plans} selected={selected} onSelect={setSelected} />
+    <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={styles.date}>{describeAppointmentDate(selected, openedAt)} · 일정 {dayPlans.length}개</Text>
+    {!dayPlans.length && plans.length ? <Card style={styles.dayEmpty}><Text style={type.bodyMuted}>이 날에는 확정된 일정이 없어요. 달력에서 점이 있는 날을 눌러 보세요.</Text></Card> : null}
+    {dayPlans.map((item) => <View key={item.id} style={styles.planGroup}>
       <Pressable accessibilityRole="button" accessibilityHint="저장된 준비 계획을 엽니다" onPress={() => onSelect(item.id)}>
         <Card style={styles.schedule}><View style={styles.timeRail}><Text style={styles.time}>{item.schedule.appointmentTime}</Text><View style={styles.line} /></View><View style={styles.flexContent}><StatusPill label={item.state === 'active' ? '자동 실행 중' : `${item.plan.prepStart} 자동 시작`} tone={item.state === 'active' ? 'success' : 'info'} /><Text style={type.heading}>{item.schedule.title}</Text><View style={styles.locationRow}><AppIcon name="location" size={16} /><Text style={type.bodyMuted}>{item.schedule.destination}</Text></View>{normalizeRepeatWeekdays(item.schedule.repeatWeekdays).length ? <View style={styles.locationRow}><AppIcon name="routine" size={16} /><Text style={type.bodyMuted}>{describeRepeatWeekdays(item.schedule.repeatWeekdays ?? [])} 반복</Text></View> : null}<Text style={styles.meta}>{item.plan.prepStart} 준비 시작 · {item.plan.departure} 출발</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.textMuted} style={styles.arrow} /></Card>
       </Pressable>
     </View>)}
-    <Button label="말로 새 일정 만들기" onPress={() => router.push('/voice-schedule')} />
   </>;
 }
 
@@ -284,11 +293,13 @@ const createStyles = (c: AppPalette) => {
   tabActive: { backgroundColor: c.surface },
   tabText: { color: c.textMuted, fontSize: 13, fontWeight: '700' },
   tabTextActive: { color: c.deepBlue, fontWeight: '900' },
+  tabDescriptionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   tabDescription: { ...type.caption, marginTop: -space.md },
   planGroup: { gap: space.sm }, date: { fontSize: 14, color: c.textMuted, fontWeight: '800', marginTop: space.sm },
   schedule: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
   closedConfirm: { gap: space.sm, marginTop: space.sm }, closedActions: { flexDirection: 'row', gap: space.sm, marginTop: space.sm }, closedAction: { flex: 1 },
   timeRail: { width: 54, gap: 4 }, closedRail: { width: 88, gap: 4, alignItems: 'flex-start' }, time: { fontSize: 17, color: c.navy, fontWeight: '900' }, closedDate: { fontSize: 12, lineHeight: 17, color: c.textMuted, fontWeight: '700' }, line: { width: 2, height: 70, backgroundColor: c.cyan, marginTop: 8, marginLeft: 18 },
+  dayEmpty: { padding: space.lg },
   flexContent: { flex: 1, gap: 5 }, meta: { fontSize: 12, color: c.deepBlue, fontWeight: '700', marginTop: 4 }, locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, arrow: { alignSelf: 'center' },
   stateCard: { alignItems: 'center', gap: space.md }, stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.ice, alignItems: 'center', justifyContent: 'center' },
   calendarHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm }, textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm }, textButtonLabel: { color: c.deepBlue, fontSize: 13, fontWeight: '800' },

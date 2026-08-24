@@ -174,7 +174,7 @@ describe('voice schedule assistant domain', () => {
     const requiredConfirmed = mergeVoiceRequiredConfirmations(unconfirmed, {
       appointmentTime: '15:00',
       destination: '강남 세브란스병원',
-      transport: '지하철',
+      transport: '대중교통',
     });
     expect(canConfirmVoiceSchedule(located, true, null, requiredConfirmed)).toBe(true);
   });
@@ -196,23 +196,25 @@ describe('voice schedule assistant domain', () => {
     expect(nextRequiredVoiceClarification(confirmedTimeAndPlace)).toEqual({
       field: 'transport',
       prompt: '어떻게 이동할까요?',
-      options: ['도보', '버스', '지하철', '자가용', '택시'],
+      options: ['대중교통', '승용차(택시)', '도보'],
     });
     expect(canConfirmVoiceSchedule(draft, true, null, confirmedTimeAndPlace)).toBe(false);
   });
 
-  it('lays the five transport options out on a single row and keeps long options wrapped', () => {
+  it('keeps the three combined transport options on full-width rows', () => {
     const transportOptions = nextRequiredVoiceClarification(
       mergeVoiceRequiredConfirmations(createVoiceRequiredConfirmations(), { appointmentTime: '15:00', destination: '강남역' }),
     )?.options as string[];
 
-    expect(shouldUseCompactClarificationOptions(transportOptions)).toBe(true);
+    // Three options, one of them six characters wide, read better as rows than as a squeezed line.
+    expect(transportOptions).toEqual(['대중교통', '승용차(택시)', '도보']);
+    expect(shouldUseCompactClarificationOptions(transportOptions)).toBe(false);
     expect(shouldUseCompactClarificationOptions(['13:00', '15:00', '17:00', '직접 입력'])).toBe(false);
-    expect(shouldUseCompactClarificationOptions(['도보', '버스', '지하철'])).toBe(false);
+    expect(shouldUseCompactClarificationOptions(['오늘', '내일', '모레', '주말'])).toBe(true);
   });
 
   it('answers a quick choice locally so the screen does not wait for the assistant', () => {
-    expect(resolveVoiceClarificationChoice('transport', '버스')).toEqual({ transport: '버스' });
+    expect(resolveVoiceClarificationChoice('transport', '버스')).toEqual({ transport: '대중교통' });
     expect(resolveVoiceClarificationChoice('time', '15:00')).toEqual({ appointmentTime: '15:00' });
     expect(resolveVoiceClarificationChoice('recurrence', '매주')).toEqual({ recurrence: '매주' });
 
@@ -244,7 +246,7 @@ describe('voice schedule assistant domain', () => {
     const confirmedPlace = mergeVoiceRequiredConfirmations(confirmedTime, { destination: '강남역' });
     expect(nextVoiceClarification(dated, confirmedPlace)?.field).toBe('transport');
 
-    const confirmedAll = mergeVoiceRequiredConfirmations(confirmedPlace, { transport: '버스' });
+    const confirmedAll = mergeVoiceRequiredConfirmations(confirmedPlace, { transport: '대중교통' });
     expect(nextVoiceClarification(dated, confirmedAll)).toBeNull();
   });
 
@@ -314,12 +316,12 @@ describe('voice schedule assistant domain', () => {
     const draft = { ...createDefaultScheduleDraft(), appointmentTime: '14:00' };
     const applied = applyVoiceSchedulePatch(draft, {
       appointmentTime: '15:20',
-      transport: '지하철',
+      transport: '대중교통',
     });
 
     expect(describeVoiceScheduleChanges(draft, applied)).toEqual(expect.arrayContaining([
       { label: '약속 시간', before: '14:00', after: '15:20' },
-      { label: '이동수단', before: 'AI 추천', after: '지하철' },
+      { label: '이동수단', before: 'AI 추천', after: '대중교통' },
     ]));
   });
 
@@ -341,7 +343,7 @@ describe('voice schedule assistant domain', () => {
     expect(isGuidedVoiceFieldCaptured('dateTime', { date: '2026-08-11' })).toBe(false);
     expect(isGuidedVoiceFieldCaptured('dateTime', { appointmentTime: '10:30' })).toBe(true);
     expect(isGuidedVoiceFieldCaptured('destination', { destination: '연산동 치과' })).toBe(true);
-    expect(isGuidedVoiceFieldCaptured('transport', { transport: '지하철' })).toBe(true);
+    expect(isGuidedVoiceFieldCaptured('transport', { transport: '대중교통' })).toBe(true);
   });
 
   it('detects speech followed by sustained silence for hands-free turn completion', () => {
@@ -653,7 +655,7 @@ describe('what counts as the speaker choosing a way to get there', () => {
   it('does not treat the draft default as an answer', () => {
     const none = createVoiceRequiredConfirmations();
     expect(mergeVoiceRequiredConfirmations(none, { transport: 'AI 추천' }).transport).toBe(false);
-    expect(mergeVoiceRequiredConfirmations(none, { transport: '지하철' }).transport).toBe(true);
+    expect(mergeVoiceRequiredConfirmations(none, { transport: '대중교통' }).transport).toBe(true);
   });
 
   it('keeps an answer already given, whatever arrives next', () => {

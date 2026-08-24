@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomNav } from '@/components/bottom-nav';
 import { Card, Header, Screen, StatusPill, useAppType } from '@/components/app-ui';
 import { AppIcon } from '@/components/app-icon';
+import { WeatherCard } from '@/components/weather-card';
 import { space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { buildAlertFeed } from '@/lib/alert-feed';
@@ -32,6 +33,8 @@ export default function AlertsScreen() {
     <View style={{ flex: 1 }}>
       <Screen>
         <Header title="알림" eyebrow="필요한 순간만 알려드려요" />
+        {/* Weather is a message about the day, so it lives with the other messages. */}
+        <WeatherCard />
         {confirmedPlansStatus === 'loading' ? <Card><Text style={type.bodyMuted}>알림을 불러오는 중이에요.</Text></Card> : null}
         {confirmedPlansStatus !== 'loading' && !alerts.length ? (
           <Card style={styles.empty}>

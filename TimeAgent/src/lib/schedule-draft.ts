@@ -5,7 +5,7 @@ export const SCHEDULE_DRAFT_STORAGE_KEY = '@on-time/schedule-draft';
 const SCHEDULE_DRAFT_VERSION = 1;
 
 export type ScheduleDraftStep = 0 | 1 | 2;
-export type TransportMode = 'AI 추천' | '도보' | '버스' | '지하철' | '자가용' | '택시';
+export type TransportMode = 'AI 추천' | '도보' | '대중교통' | '승용차(택시)';
 
 /**
  * Route labels shown to the user are richer than the stored mode — "다음 버스", "TMAP 도보 경로".
@@ -13,13 +13,21 @@ export type TransportMode = 'AI 추천' | '도보' | '버스' | '지하철' | '�
  * travel time, and every clock computed from it turns into NaN.
  */
 export function resolveTransportMode(label: string): TransportMode {
+  return parseTransportModeText(label) ?? 'AI 추천';
+}
+
+/**
+ * The transport a piece of text names, or null when it names none. Bus and subway fold into
+ * 대중교통, taxi and one's own car into 승용차(택시) — the choice people make is "public transport
+ * or a car", and the router still compares the detailed ways underneath.
+ */
+export function parseTransportModeText(label: string): TransportMode | null {
   if (isTransportMode(label)) return label;
-  if (label.includes('지하철')) return '지하철';
-  if (label.includes('버스')) return '버스';
-  if (label.includes('택시')) return '택시';
+  if (/지하철|버스|대중\s*교통|전철/.test(label)) return '대중교통';
+  if (/택시|자가용|자차|승용차|운전/.test(label)) return '승용차(택시)';
   if (label.includes('도보') || label.includes('걸어')) return '도보';
-  if (label.includes('자가용') || label.includes('자차')) return '자가용';
-  return 'AI 추천';
+  if (label.includes('AI') || label.includes('추천')) return 'AI 추천';
+  return null;
 }
 
 export type RoutineDraft = {
@@ -140,6 +148,7 @@ export async function loadScheduleDraft(storage: StorageLike): Promise<ScheduleD
     return isScheduleDraft(parsed)
       ? {
           ...parsed,
+          transport: resolveTransportMode(parsed.transport),
           destinationCoordinate: isCoordinate(parsed.destinationCoordinate)
             ? parsed.destinationCoordinate
             : null,
@@ -172,7 +181,7 @@ function isScheduleDraft(value: unknown): value is ScheduleDraft {
     && (draft.destinationCoordinate === undefined
       || draft.destinationCoordinate === null
       || isCoordinate(draft.destinationCoordinate))
-    && isTransportMode(draft.transport)
+    && isStoredTransportMode(draft.transport)
     && (draft.priority === 'on-time' || draft.priority === 'cost')
     && Array.isArray(draft.routines)
     && draft.routines.every(isRoutineDraft)
@@ -197,10 +206,14 @@ function isCoordinate(value: unknown): value is { latitude: number; longitude: n
 function isTransportMode(value: unknown): value is TransportMode {
   return value === 'AI 추천'
     || value === '도보'
-    || value === '버스'
-    || value === '지하철'
-    || value === '자가용'
-    || value === '택시';
+    || value === '대중교통'
+    || value === '승용차(택시)';
+}
+
+/** Drafts saved before buses and taxis were folded into the two combined modes still load. */
+function isStoredTransportMode(value: unknown): value is string {
+  return isTransportMode(value)
+    || value === '버스' || value === '지하철' || value === '자가용' || value === '택시';
 }
 
 function isRoutineDraft(value: unknown): value is RoutineDraft {

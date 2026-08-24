@@ -1,5 +1,5 @@
 import { TimelineStep } from '@/data/demo';
-import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import { resolveTransportMode, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 
 /**
  * What each mode is worth in time before anything is known about the trip. These are the answers
@@ -9,10 +9,8 @@ import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft
 const defaultTravelMinutes: Record<TransportMode, number> = {
   'AI 추천': 24,
   '도보': 35,
-  '버스': 32,
-  '지하철': 24,
-  '자가용': 20,
-  '택시': 18,
+  '대중교통': 26,
+  '승용차(택시)': 19,
 };
 
 /**
@@ -22,10 +20,8 @@ const defaultTravelMinutes: Record<TransportMode, number> = {
 const travelSpeeds: Record<TransportMode, { kmPerHour: number; accessMinutes: number }> = {
   'AI 추천': { kmPerHour: 24, accessMinutes: 8 },
   '도보': { kmPerHour: 4.5, accessMinutes: 0 },
-  '버스': { kmPerHour: 18, accessMinutes: 10 },
-  '지하철': { kmPerHour: 32, accessMinutes: 9 },
-  '자가용': { kmPerHour: 28, accessMinutes: 6 },
-  '택시': { kmPerHour: 26, accessMinutes: 4 },
+  '대중교통': { kmPerHour: 28, accessMinutes: 9 },
+  '승용차(택시)': { kmPerHour: 27, accessMinutes: 5 },
 };
 
 /**
@@ -33,8 +29,8 @@ const travelSpeeds: Record<TransportMode, { kmPerHour: number; accessMinutes: nu
  * 지하철 whether the appointment was two stops away or in another city, and that number is what the
  * departure time — and every preparation step before it — is counted back from.
  */
-export function estimateTravelMinutes(transport: TransportMode, distanceMeters: number) {
-  const speed = travelSpeeds[transport] ?? travelSpeeds['AI 추천'];
+export function estimateTravelMinutes(transport: TransportMode | string, distanceMeters: number) {
+  const speed = travelSpeeds[resolveTransportMode(String(transport))] ?? travelSpeeds['AI 추천'];
   return Math.max(1, Math.round(distanceMeters / 1_000 / speed.kmPerHour * 60 + speed.accessMinutes));
 }
 
@@ -58,7 +54,7 @@ function travelMinutesFor(draft: ScheduleDraft) {
   if (typeof distance === 'number' && Number.isFinite(distance) && distance >= 0) {
     return estimateTravelMinutes(draft.transport, distance);
   }
-  return defaultTravelMinutes[draft.transport] ?? defaultTravelMinutes['AI 추천'];
+  return defaultTravelMinutes[resolveTransportMode(draft.transport)] ?? defaultTravelMinutes['AI 추천'];
 }
 
 export type PlanStatus = {
@@ -289,6 +285,9 @@ function minutesToClock(totalMinutes: number) {
 }
 
 function departureTitle(transport: TransportMode) {
-  if (transport === '도보') return '걸어서 출발';
-  return transport === 'AI 추천' ? '추천 경로로 출발' : `${transport}로 출발`;
+  const resolved = resolveTransportMode(transport);
+  if (resolved === '도보') return '걸어서 출발';
+  if (resolved === '대중교통') return '대중교통으로 출발';
+  if (resolved === '승용차(택시)') return '승용차로 출발';
+  return '추천 경로로 출발';
 }

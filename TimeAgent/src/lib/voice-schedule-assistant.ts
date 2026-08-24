@@ -1,5 +1,5 @@
 import { pronunciationKey } from '@/lib/place-transcription';
-import { RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import { parseTransportModeText, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
 
 export type VoiceSchedulePatch = Partial<Pick<ScheduleDraft,
   | 'title'
@@ -129,7 +129,10 @@ export function resolveVoiceClarificationChoice(
 ): VoiceSchedulePatch | null {
   const answer = option.trim();
   if (!answer || answer === '직접 입력') return null;
-  if (field === 'transport') return transportModes.includes(answer as TransportMode) ? { transport: answer as TransportMode } : null;
+  if (field === 'transport') {
+    const mode = parseTransportModeText(answer);
+    return mode ? { transport: mode } : null;
+  }
   if (field === 'time') return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(answer) ? { appointmentTime: answer } : null;
   if (field === 'recurrence') return { recurrence: answer };
   if (field === 'date') {
@@ -171,7 +174,7 @@ export function nextVoiceClarification(
 export function nextRequiredVoiceClarification(confirmations: VoiceRequiredConfirmations): VoiceScheduleClarification | null {
   if (!confirmations.time) return { field: 'time', prompt: '약속 시간은 몇 시인가요?', options: ['직접 입력'] };
   if (!confirmations.destination) return { field: 'destination', prompt: '어디에서 만나나요?', options: ['직접 입력'] };
-  if (!confirmations.transport) return { field: 'transport', prompt: '어떻게 이동할까요?', options: ['도보', '버스', '지하철', '자가용', '택시'] };
+  if (!confirmations.transport) return { field: 'transport', prompt: '어떻게 이동할까요?', options: ['대중교통', '승용차(택시)', '도보'] };
   return null;
 }
 
@@ -521,7 +524,7 @@ export function shouldSubmitVoiceRecording(
     || (explicitlyFinished && durationMillis >= 350);
 }
 
-const transportModes: TransportMode[] = ['AI 추천', '도보', '버스', '지하철', '자가용', '택시'];
+const transportModes: TransportMode[] = ['AI 추천', '도보', '대중교통', '승용차(택시)'];
 
 /** How much of a name has to be shared before it counts as the one that was said. */
 const SPOKEN_PLACE_EVIDENCE_SYLLABLES = 2;
@@ -681,8 +684,10 @@ function normalizePatch(value: Record<string, unknown>): VoiceSchedulePatch {
 
   const transport = value.transport;
   if (transport !== null && transport !== undefined) {
-    if (typeof transport !== 'string' || !transportModes.includes(transport as TransportMode)) throw invalidResponse();
-    patch.transport = transport as TransportMode;
+    // The model may answer with the words people used — 지하철, 택시 — which fold into the modes.
+    const mode = typeof transport === 'string' ? parseTransportModeText(transport) : null;
+    if (!mode) throw invalidResponse();
+    patch.transport = mode;
   }
 
   const priority = value.priority;

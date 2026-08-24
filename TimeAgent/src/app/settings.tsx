@@ -45,7 +45,7 @@ import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context'
 
 type DetailKey = 'location' | 'transport' | 'buffer' | 'routine' | 'tone' | 'gender' | 'metrics';
 
-const transports: PreferredTransport[] = ['도보', '버스', '지하철', '자가용', '택시'];
+const transports: PreferredTransport[] = ['대중교통', '승용차(택시)', '도보'];
 const bufferOptions: AppSettings['bufferMinutes'][] = [3, 5, 10];
 const routineOptions: RoutinePreset[] = ['기본 외출 준비', '빠른 준비', '여유있는 준비'];
 const toneOptions: CoachTone[] = ['친근하게', '간결하게', '단호하게'];

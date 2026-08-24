@@ -31,7 +31,7 @@ describe('schedule draft persistence', () => {
       title: '부모님 저녁 식사',
       appointmentTime: '18:30',
       destination: '광안리 식당',
-      transport: '버스' as const,
+      transport: '대중교통' as const,
     };
 
     await saveScheduleDraft(storage, draft);
@@ -103,14 +103,17 @@ describe('schedule draft persistence', () => {
 
 describe('resolveTransportMode', () => {
   it('keeps a value that is already a transport mode', () => {
-    expect(resolveTransportMode('지하철')).toBe('지하철');
+    expect(resolveTransportMode('대중교통')).toBe('대중교통');
+    expect(resolveTransportMode('승용차(택시)')).toBe('승용차(택시)');
     expect(resolveTransportMode('AI 추천')).toBe('AI 추천');
   });
 
   it('maps the richer route labels shown on the plan B screen back to a mode', () => {
-    expect(resolveTransportMode('다음 버스')).toBe('버스');
+    expect(resolveTransportMode('다음 버스')).toBe('대중교통');
+    expect(resolveTransportMode('지하철')).toBe('대중교통');
     expect(resolveTransportMode('TMAP 도보 경로')).toBe('도보');
-    expect(resolveTransportMode('택시 호출')).toBe('택시');
+    expect(resolveTransportMode('택시 호출')).toBe('승용차(택시)');
+    expect(resolveTransportMode('자가용으로 갈게')).toBe('승용차(택시)');
     expect(resolveTransportMode('걸어서 이동')).toBe('도보');
   });
 
@@ -134,5 +137,15 @@ describe('repeat weekdays in a saved draft', () => {
   test('a new draft is a one-off', () => {
     expect(createDefaultScheduleDraft().repeatWeekdays).toEqual([]);
     expect(createDefaultScheduleDraft().recurrence).toBe('반복 없음');
+  });
+});
+
+describe('drafts saved before the combined transport modes', () => {
+  test('loads 버스/지하철 as 대중교통 and 택시/자가용 as 승용차(택시)', async () => {
+    const subway = createMemoryStorage(JSON.stringify({ ...createDefaultScheduleDraft(), transport: '지하철' }));
+    await expect(loadScheduleDraft(subway)).resolves.toEqual(expect.objectContaining({ transport: '대중교통' }));
+
+    const taxi = createMemoryStorage(JSON.stringify({ ...createDefaultScheduleDraft(), transport: '자가용' }));
+    await expect(loadScheduleDraft(taxi)).resolves.toEqual(expect.objectContaining({ transport: '승용차(택시)' }));
   });
 });

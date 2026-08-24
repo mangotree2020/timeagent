@@ -1,4 +1,4 @@
-import { TransportMode } from './schedule-draft';
+import { resolveTransportMode, TransportMode } from './schedule-draft';
 import { PreparationGender, RoutinePresetName } from './preparation-profile';
 
 export const APP_SETTINGS_STORAGE_KEY = '@on-time/app-settings';
@@ -52,7 +52,7 @@ export function createDefaultAppSettings(): AppSettings {
   return {
     version: APP_SETTINGS_VERSION,
     defaultLocation: '부산진구 부전동',
-    preferredTransport: '지하철',
+    preferredTransport: '대중교통',
     bufferMinutes: 5,
     routinePreset: '기본 외출 준비',
     preparationGender: 'unspecified',
@@ -70,7 +70,7 @@ export async function loadAppSettings(storage: StorageLike): Promise<AppSettings
   if (!raw) return createDefaultAppSettings();
 
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = normalizeStoredSettings(JSON.parse(raw));
     if (isAppSettings(parsed)) return parsed;
     if (isVersionFourSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, language: 'ko' };
     if (isVersionThreeSettings(parsed)) return { ...parsed, version: APP_SETTINGS_VERSION, language: 'ko', stepCoaching: true };
@@ -80,6 +80,15 @@ export async function loadAppSettings(storage: StorageLike): Promise<AppSettings
   } catch {
     return createDefaultAppSettings();
   }
+}
+
+/** Settings saved before buses and taxis were folded into the combined modes still load. */
+function normalizeStoredSettings(parsed: unknown) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const settings = parsed as { preferredTransport?: unknown };
+  if (typeof settings.preferredTransport !== 'string' || isPreferredTransport(settings.preferredTransport)) return parsed;
+  const resolved = resolveTransportMode(settings.preferredTransport);
+  return { ...parsed, preferredTransport: resolved === 'AI 추천' ? '대중교통' : resolved };
 }
 
 export async function saveAppSettings(storage: StorageLike, settings: AppSettings) {
@@ -171,8 +180,6 @@ function isPreparationGender(value: unknown): value is PreparationGender {
 
 function isPreferredTransport(value: unknown): value is PreferredTransport {
   return value === '도보'
-    || value === '버스'
-    || value === '지하철'
-    || value === '자가용'
-    || value === '택시';
+    || value === '대중교통'
+    || value === '승용차(택시)';
 }
