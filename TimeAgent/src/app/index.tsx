@@ -215,7 +215,8 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   alarmTop: { minHeight: 120, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingTop: space.sm },
   startArrow: { minWidth: 64, minHeight: 64, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   startArrowText: { color: c.deepBlue, fontSize: 14, lineHeight: 18, fontWeight: '900', marginTop: -6 },
-  addRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  // One extra line of air above the +, twice the screen's usual gap.
+  addRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.lg },
   alarmCopy: { flex: 1, gap: 6, paddingVertical: space.sm, borderRadius: radius.md },
   alarmHeadline: { color: c.navy, fontSize: 26, lineHeight: 34, fontWeight: '900', letterSpacing: -0.6 },
   alarmAt: { color: c.textMuted, fontSize: 15, lineHeight: 21, fontWeight: '700' },
