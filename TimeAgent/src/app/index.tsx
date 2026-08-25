@@ -212,11 +212,11 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   nowTaskLabel: { color: c.cyan, fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
   nowTaskAction: { color: c.onInverse, fontSize: 24, lineHeight: 31, fontWeight: '900' },
   nowTaskNext: { color: c.onInverseMuted, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  alarmTop: { minHeight: 120, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingTop: space.sm },
+  alarmTop: { minHeight: 120, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingTop: space.sm + space.lg },
   startArrow: { minWidth: 64, minHeight: 64, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   startArrowText: { color: c.deepBlue, fontSize: 14, lineHeight: 18, fontWeight: '900', marginTop: -6 },
   // One extra line of air above the +, twice the screen's usual gap.
-  addRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.lg },
+  addRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.xl + space.md + space.lg },
   alarmCopy: { flex: 1, gap: 6, paddingVertical: space.sm, borderRadius: radius.md },
   alarmHeadline: { color: c.navy, fontSize: 26, lineHeight: 34, fontWeight: '900', letterSpacing: -0.6 },
   alarmAt: { color: c.textMuted, fontSize: 15, lineHeight: 21, fontWeight: '700' },
