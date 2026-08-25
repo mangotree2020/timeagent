@@ -106,7 +106,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const screens = [
-  { id: 'home', path: '/?e2eCalendar=today', ready: '오늘의 준비 계획' },
+  { id: 'home', path: '/?e2eCalendar=today', ready: '오늘 목요일 약속 1개 · 내일 0개' },
   { id: 'home-on-time-streak', path: '/?e2eCalendar=today&e2eStreak=5', ready: '연속 5회 정시 도착 중' },
   { id: 'alerts', path: '/alerts?e2eWeather=ready', ready: '필요한 순간만 알려드려요' },
   { id: 'create-step-3', path: '/create', ready: '무엇을 준비해야 하나요?' },
@@ -138,7 +138,7 @@ const darkSettings = {
 };
 
 const darkScreens = [
-  { id: 'dark-home', path: '/?e2eCalendar=today', ready: '오늘의 준비 계획' },
+  { id: 'dark-home', path: '/?e2eCalendar=today', ready: '오늘 목요일 약속 1개 · 내일 0개' },
   { id: 'dark-plan', path: '/plan', ready: '확정된 준비 계획' },
   { id: 'dark-schedules', path: '/schedules', ready: '내 일정' },
   { id: 'dark-settings', path: '/settings', ready: '내 생활에 맞게 TimeAgent를 조정하세요' },
@@ -615,7 +615,7 @@ test('음성 정리 결과에 확인한 이동수단을 표시함', async ({ pag
 
 test('음성 일정 버튼이 내비게이션 가운데에 반쯤 걸쳐 고정됨', async ({ page }) => {
   await page.goto('/');
-  await page.getByText('오늘의 준비 계획', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('오늘 목요일 약속 1개 · 내일 0개', { exact: true }).waitFor({ state: 'visible' });
   const floatingAction = page.getByRole('button', { name: '음성으로 새 일정 만들기' });
   const homeTab = page.getByRole('tab', { name: '홈' });
   const settingsTab = page.getByRole('tab', { name: '설정' });
@@ -650,7 +650,8 @@ test('음성 일정 버튼이 내비게이션 가운데에 반쯤 걸쳐 고정�
 
 test('홈은 오늘·내일 캘린더 약속 카테고리를 표시하지 않음', async ({ page }) => {
   await page.goto('/?e2eCalendar=today');
-  await expect(page.getByText('오늘의 준비 계획', { exact: true })).toBeVisible();
+  await expect(page.getByText('오늘 목요일 약속 1개 · 내일 0개', { exact: true })).toBeVisible();
+  await expect(page.getByText('오늘의 준비 계획', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /날씨 상세 보기/ })).toHaveCount(0);
   await expect(page.getByText('재택근무', { exact: true })).toHaveCount(0);
   await expect(page.getByText('팀 점검 회의', { exact: true })).toHaveCount(0);
@@ -684,31 +685,37 @@ test('홈 일정 끝의 연속 정시 도착 배지에서 지난 일정으로 �
   await expect(page.getByText('지난 일정 화면입니다.', { exact: true })).toBeVisible();
 });
 
-test('홈 약속 상자는 준비 시작/약속 시간을 한 줄로 보여주고 상자·시작 버튼이 실시간 준비 화면을 엶', async ({ page }) => {
+test('홈 상단은 좌측 삼각형 시작 버튼과 두 줄 알람 문구, 약속 개수를 보여줌', async ({ page }) => {
   await page.goto('/?e2eCalendar=today');
-  // 제목 영역과 시간 줄 전체가 실시간 준비 화면으로 가는 손잡이다.
-  const titleBox = page.getByRole('button', { name: '서면 볼링장 친구 약속, 실시간 준비 화면 열기', exact: true });
-  await expect(titleBox).toBeVisible();
-  const times = page.getByRole('button', { name: /^준비 시작 12:55.*약속 14:00/ });
-  await expect(times).toBeVisible();
-  await expect(times.getByText('/', { exact: false })).toBeVisible();
+  // 픽스처의 준비 시작(12:55)은 이미 지나 자동 실행 중이므로 진행 문구가 큰 글씨가 된다.
+  const notice = page.getByRole('button', { name: /서면 볼링장 친구 약속 진행하고 있어요, 7월 23일 \(목\) 오후 12:55/ });
+  await expect(notice).toBeVisible();
+  await expect(notice.getByText('오늘 목요일 약속 1개 · 내일 0개', { exact: true })).toBeVisible();
 
   const start = page.getByRole('button', { name: /^시작\./ });
   await expect(start).toBeVisible();
   const startBox = await start.boundingBox();
-  expect(startBox.height, '시작 버튼의 터치 영역은 44px 이상이어야 합니다').toBeGreaterThanOrEqual(44);
-  expect(Math.abs(startBox.width - startBox.height), '시작 버튼은 원형이어야 합니다').toBeLessThanOrEqual(1);
+  const noticeBox = await notice.boundingBox();
+  expect(startBox.x, '시작 버튼은 좌측 끝에 있어야 합니다').toBeLessThan(60);
+  expect(noticeBox.x, '문구는 시작 버튼 오른쪽에 있어야 합니다').toBeGreaterThan(startBox.x + startBox.width - 4);
 
-  // 연필이 준비 계획 상세로 가는 유일한 출구다.
-  await page.getByRole('button', { name: '준비 계획 상세 보기', exact: true }).click();
-  await expect(page).toHaveURL(/\/plan$/);
-  await expect(page.getByText('확정된 준비 계획', { exact: true })).toBeVisible();
-  await page.goBack();
-
-  await titleBox.click();
+  await notice.click();
   await expect(page).toHaveURL(/\/progress/);
 });
-test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 보여줌', async ({ page }) => {
+test('약속 목록의 알람 스위치는 계획별로 끄고 켤 수 있음', async ({ page }) => {
+  await page.goto('/?e2eCalendar=today');
+  const toggle = page.getByRole('switch', { name: '서면 볼링장 친구 약속 준비 알람 끄기', exact: true });
+  await expect(toggle).toBeVisible();
+
+  await toggle.click();
+  await expect(page.getByText('알람 꺼짐', { exact: true })).toBeVisible();
+  await expect(page.getByText('켜진 준비 알람이 없어요', { exact: true })).toBeVisible();
+  await page.waitForFunction(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans[0].alarmEnabled === false);
+
+  await page.getByRole('switch', { name: '서면 볼링장 친구 약속 준비 알람 켜기', exact: true }).click();
+  await expect(page.getByText('알람 꺼짐', { exact: true })).toHaveCount(0);
+  await page.waitForFunction(() => JSON.parse(window.localStorage.getItem('@on-time/confirmed-plans')).plans[0].alarmEnabled !== false);
+});test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 보여줌', async ({ page }) => {
   await page.addInitScript(({ firstPlan }) => {
     const secondPlan = {
       ...firstPlan,
@@ -730,7 +737,7 @@ test('홈은 확정한 일정 중 오늘·내일 약속만 등록 목록으로 �
     window.localStorage.setItem('@on-time/confirmed-plans', JSON.stringify({ version: 1, plans: [firstPlan, secondPlan, tomorrowPlan] }));
   }, { firstPlan: confirmedPlanFixture });
   await page.goto('/?e2eCalendar=today&e2eWeather=ready');
-  const registeredHeading = page.getByText('오늘·내일 등록 약속 3개', { exact: true });
+  const registeredHeading = page.getByText('오늘 목요일 약속 2개 · 내일 1개', { exact: true });
   await expect(registeredHeading).toBeVisible();
   await expect(page.getByRole('button', { name: /등록 일정, 서면 볼링장 친구 약속/ })).toBeVisible();
   await expect(page.getByText('내일 일정', { exact: true })).toBeVisible();

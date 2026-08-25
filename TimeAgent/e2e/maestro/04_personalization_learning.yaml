@@ -13,7 +13,7 @@ tags:
     timeout: 15000
 - openLink: "ontime://progress"
 - extendedWaitUntil:
-    visible: "실시간 준비"
+    visible: "단계 완료"
     timeout: 10000
 - scrollUntilVisible:
     element:

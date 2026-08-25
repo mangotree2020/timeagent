@@ -172,5 +172,5 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   button_surface: { backgroundColor: c.surface },
   button_plain: { backgroundColor: 'transparent' },
   button_primary: { backgroundColor: c.deepBlue },
-  pressed: { opacity: 0.68, transform: [{ scale: 0.96 }] },
+  pressed: { opacity: 0.68 },
 });

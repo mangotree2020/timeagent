@@ -54,7 +54,16 @@ function RootLayoutContent() {
     <OnboardingGate>
       <AuthGate>
         <TaskProvider><ScheduleProvider>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: 'slide_from_right' }} />
+          {/* A sliding screen rasterises its native box shadows into a rectangular layer on
+              Android, which shows as a brief grey flash on every navigation. Tabs switch with no
+              animation, the way tab bars do; pushes cross-fade, which moves the whole screen as
+              one layer and leaves no seam for the shadow rectangle to show through. */}
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: 'fade', animationDuration: 150 }}>
+            <Stack.Screen name="index" options={{ animation: 'none' }} />
+            <Stack.Screen name="schedules" options={{ animation: 'none' }} />
+            <Stack.Screen name="alerts" options={{ animation: 'none' }} />
+            <Stack.Screen name="settings" options={{ animation: 'none' }} />
+          </Stack>
         </ScheduleProvider></TaskProvider>
       </AuthGate>
     </OnboardingGate>

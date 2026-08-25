@@ -51,6 +51,7 @@ export function BottomNav() {
       <View pointerEvents="box-none" style={styles.actionHolder}>
         <View style={styles.actionWell} />
         <VoicePulseButton label="음성으로 새 일정 만들기" size={BOTTOM_NAV_ACTION_SIZE} onPress={() => router.push('/voice-schedule')} />
+        <Text accessible={false} style={styles.actionLabel}>약속</Text>
       </View>
     </View>
   );
@@ -63,7 +64,8 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   actionSlot: { width: BOTTOM_NAV_ACTION_SIZE + space.lg },
   // Centred on the bar's top edge: half of the button rises above it, half sits on the bar. The
   // pulse button is drawn inside a ring box (button + VOICE_PULSE_RING), so the box is centred.
-  actionHolder: { position: 'absolute', left: 0, right: 0, top: -(BOTTOM_NAV_ACTION_SIZE + VOICE_PULSE_RING) / 2, height: BOTTOM_NAV_ACTION_SIZE + VOICE_PULSE_RING, alignItems: 'center', justifyContent: 'center' },
+  actionHolder: { position: 'absolute', left: 0, right: 0, top: -(BOTTOM_NAV_ACTION_SIZE + VOICE_PULSE_RING) / 2, alignItems: 'center' },
+  actionLabel: { marginTop: 1, fontSize: 11, color: c.deepBlue, fontWeight: '800' },
   actionWell: { position: 'absolute', width: BOTTOM_NAV_ACTION_SIZE + 8, height: BOTTOM_NAV_ACTION_SIZE + 8, borderRadius: (BOTTOM_NAV_ACTION_SIZE + 8) / 2, backgroundColor: c.background },
   iconPill: { width: 52, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   iconPillActive: { backgroundColor: c.primarySoft },

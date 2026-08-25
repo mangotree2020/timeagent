@@ -180,7 +180,7 @@ export default function ProgressScreen() {
 
   return (
     <Screen>
-      <Header title="실시간 준비" eyebrow={`${schedule.appointmentTime} · ${schedule.destination}`} right={<IconButton name="close" label="진행 최소화" variant="plain" onPress={() => router.replace('/')} />} />
+      <Header title={schedule.title} eyebrow={`${schedule.appointmentTime} · ${schedule.destination}`} right={<IconButton name="close" label="진행 최소화" variant="plain" onPress={() => router.replace('/')} />} />
       <View style={styles.statusRow}><View><Text style={styles.statusLabel}>예상 도착</Text><Text style={styles.arrival}>{delayedArrival}</Text></View><StatusPill label={delayMinutes ? `${delayMinutes}분 지연` : '정시 도착 가능'} tone={delayMinutes ? 'warning' : 'success'} /></View>
 
       {delayMinutes > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={`정시 도착 가능한 대안 경로 비교하기. 현재 ${delayMinutes}분 지연.`} onPress={() => router.push('/plan-b')} style={styles.solution}><View style={styles.solutionIcon}><AppIcon name="coach" size={20} iconColor={c.warning} /></View><View style={{ flex: 1 }}><Text style={styles.solutionTitle}>정시 도착 가능한 방법이 있어요</Text><Text style={styles.solutionBody}>{delayMinutes}분 지연됐어요. {withDirectionParticle(route)} 이동하는 지금 경로 대신 더 빠른 대안을 비교해 보세요.</Text></View><AppIcon name="chevronRight" size={22} iconColor={c.warning} /></Pressable> : null}

@@ -6,12 +6,14 @@ import {
   currentOnTimeArrivalStreak,
   findDueConfirmedPlan,
   formatConfirmedPlanDate,
+  isPlanAlarmEnabled,
   loadConfirmedPlans,
   markConfirmedPlanState,
   plansForLocalDate,
   plansForLocalDateRange,
   removeConfirmedPlan,
   replaceConfirmedPlan,
+  setPlanAlarmEnabled,
   settlePastConfirmedPlans,
   spawnNextRecurringPlans,
   saveConfirmedPlans,
@@ -257,5 +259,31 @@ describe('repeating confirmed plans', () => {
     await saveConfirmedPlans(storage, spawned);
     const loaded = await loadConfirmedPlans(storage);
     expect(loaded.map((plan) => plan.seriesId)).toEqual([monday.id, monday.id]);
+  });
+});
+
+describe('per-plan alarm switch', () => {
+  const morning = new Date('2026-08-08T09:00:00+09:00').getTime();
+
+  test('off silences scheduling and forgets the notification ids; on restores it', () => {
+    const plan = { ...planAt('치과', '14:00', morning), notificationIdentifier: 'n1', reminderNotificationIdentifier: 'r1' };
+    expect(isPlanAlarmEnabled(plan)).toBe(true);
+
+    const off = setPlanAlarmEnabled([plan], plan.id, false)[0];
+    expect(off.alarmEnabled).toBe(false);
+    expect(isPlanAlarmEnabled(off)).toBe(false);
+    expect(off.notificationIdentifier).toBeUndefined();
+    expect(off.reminderNotificationIdentifier).toBeUndefined();
+
+    const on = setPlanAlarmEnabled([off], plan.id, true)[0];
+    expect(isPlanAlarmEnabled(on)).toBe(true);
+  });
+
+  test('the switch survives a save and load', async () => {
+    const off = setPlanAlarmEnabled([planAt('치과', '14:00', morning)], `${planAt('치과', '14:00', morning).id}`, false);
+    const storage = createMemoryStorage();
+    await saveConfirmedPlans(storage, off);
+    const loaded = await loadConfirmedPlans(storage);
+    expect(loaded[0].alarmEnabled).toBe(false);
   });
 });

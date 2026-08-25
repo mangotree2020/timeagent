@@ -72,7 +72,7 @@ export default function AlertsScreen() {
 const createStyles = (c: AppPalette) => StyleSheet.create({
   action: { minHeight: 44 },
   empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.lg },
-  pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
+  pressed: { opacity: 0.7 },
   alert: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1 },

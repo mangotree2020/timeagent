@@ -1,3 +1,30 @@
+export type NextAlarmNotice = {
+  /** How far away, on its own line: `31분 후`, `1시간 6분 후`, `1일 3시간 후`, or `지금`. */
+  remaining: string;
+  /** When exactly, the way the clock app says it: `8월 24일 (일) 오후 4:02`. */
+  at: string;
+};
+
+/** The home top line, Galaxy-clock style: how long until the preparation alarm rings, and when. */
+export function describeNextAlarm(prepStartAt: number, now = Date.now()): NextAlarmNotice {
+  const alarm = new Date(prepStartAt);
+  const weekday = ['일', '월', '화', '수', '목', '금', '토'][alarm.getDay()];
+  const hours = alarm.getHours();
+  const clock = `${hours < 12 ? '오전' : '오후'} ${hours % 12 === 0 ? 12 : hours % 12}:${String(alarm.getMinutes()).padStart(2, '0')}`;
+  const at = `${alarm.getMonth() + 1}월 ${alarm.getDate()}일 (${weekday}) ${clock}`;
+  const remaining = Math.floor((prepStartAt - now) / MINUTE);
+  if (remaining < 1) return { remaining: '지금', at };
+  const days = Math.floor(remaining / 1440);
+  const hoursLeft = Math.floor((remaining % 1440) / 60);
+  const minutesLeft = remaining % 60;
+  const span = days > 0
+    ? `${days}일 ${hoursLeft}시간`
+    : hoursLeft > 0
+      ? minutesLeft > 0 ? `${hoursLeft}시간 ${minutesLeft}분` : `${hoursLeft}시간`
+      : `${minutesLeft}분`;
+  return { remaining: `${span} 후`, at };
+}
+
 export type PreparationCountdown = {
   /** Short enough to read at a glance on the home card. */
   label: string;

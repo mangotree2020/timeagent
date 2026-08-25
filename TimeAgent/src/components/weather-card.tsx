@@ -107,7 +107,7 @@ function weatherIconName(weather: WeatherSnapshot): AppIconName {
 
 const createStyles = (c: AppPalette) => StyleSheet.create({
   weatherPressable: { minHeight: 44, borderRadius: radius.lg },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.995 }] },
+  pressed: { opacity: 0.85 },
   weatherCard: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
   weatherIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.ice, flexShrink: 0 },
   weatherCopy: { flex: 1, gap: 2 },

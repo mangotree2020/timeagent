@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     shadowColor: '#102A56', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12,
     shadowRadius: 12, elevation: 4,
   },
-  pressed: { backgroundColor: '#EDF3FC', transform: [{ scale: 0.99 }] },
+  pressed: { backgroundColor: '#EDF3FC' },
   disabled: { backgroundColor: '#F9FAFC', borderColor: '#E0E5EC', opacity: 0.7, elevation: 0, shadowOpacity: 0 },
   logo: { width: 28, alignItems: 'flex-start', justifyContent: 'center' },
   label: { flex: 1, color: '#172033', fontSize: 16, lineHeight: 22, fontWeight: '700', letterSpacing: -0.1, textAlign: 'center' },

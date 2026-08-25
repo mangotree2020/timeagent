@@ -23,6 +23,11 @@ export type ConfirmedSchedulePlan = {
     delayMinutes: number;
   };
   notificationIdentifier?: string;
+  /**
+   * The alarm switch on the home list. Absent means on; false silences this plan — no scheduled
+   * notifications, no automatic start — until it is switched back on.
+   */
+  alarmEnabled?: boolean;
   /** The five-minutes-before message, so it can be cancelled with the plan. */
   reminderNotificationIdentifier?: string;
   /**
@@ -209,6 +214,23 @@ export function resolveScheduleDateTime(dateText: string, clock: string, now = D
   return new Date(year, month, day, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
 }
 
+export function isPlanAlarmEnabled(plan: Pick<ConfirmedSchedulePlan, 'alarmEnabled'>) {
+  return plan.alarmEnabled !== false;
+}
+
+/**
+ * Flips one plan's alarm switch. Turning it off also forgets the scheduled notification ids —
+ * they are cancelled by the caller and must not be cancelled twice or reused.
+ */
+export function setPlanAlarmEnabled(plans: ConfirmedSchedulePlan[], id: string, enabled: boolean) {
+  return plans.map((plan) => {
+    if (plan.id !== id) return plan;
+    if (enabled) return { ...plan, alarmEnabled: true };
+    const { notificationIdentifier: _n, reminderNotificationIdentifier: _r, ...rest } = plan;
+    return { ...rest, alarmEnabled: false };
+  });
+}
+
 /** Five minutes' warning, in one sentence, for both the notification and the spoken reminder. */
 export function describePrepStartReminder(plan: ConfirmedSchedulePlan) {
   return `5분 뒤 ${plan.plan.prepStart}에 ${plan.schedule.title} 준비를 시작해요.`;
@@ -264,6 +286,7 @@ function isConfirmedSchedulePlan(value: unknown): value is ConfirmedSchedulePlan
     ))
     && (value.notificationIdentifier === undefined || typeof value.notificationIdentifier === 'string')
     && (value.reminderNotificationIdentifier === undefined || typeof value.reminderNotificationIdentifier === 'string')
+    && (value.alarmEnabled === undefined || typeof value.alarmEnabled === 'boolean')
     && (value.seriesId === undefined || typeof value.seriesId === 'string');
 }
 

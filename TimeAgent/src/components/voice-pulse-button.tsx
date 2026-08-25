@@ -53,6 +53,6 @@ const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute', backgroundColor: '#3183F7' },
   staticRing: { opacity: 0.14, transform: [{ scale: 1.28 }] },
-  button: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2F80ED', boxShadow: '0 8px 22px rgba(47,128,237,0.38)', elevation: 9 },
-  pressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
+  button: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2F80ED', boxShadow: '0 8px 22px rgba(47,128,237,0.38)' },
+  pressed: { opacity: 0.78 },
 });

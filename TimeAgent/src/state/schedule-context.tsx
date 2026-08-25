@@ -20,10 +20,12 @@ import {
   findDueConfirmedPlan,
   loadConfirmedPlans,
   PREP_START_REMINDER_MINUTES,
+  isPlanAlarmEnabled,
   markConfirmedPlanState,
   removeConfirmedPlan,
   replaceConfirmedPlan,
   saveConfirmedPlans,
+  setPlanAlarmEnabled,
   settlePastConfirmedPlans,
   spawnNextRecurringPlans,
 } from '@/lib/confirmed-plans';
@@ -125,6 +127,8 @@ type ScheduleContextValue = {
   selectConfirmedPlan: (id: string) => void;
   beginEditConfirmedPlan: (id: string) => void;
   deleteConfirmedPlan: (id: string) => Promise<void>;
+  /** The per-plan alarm switch on the home list: off cancels its notifications and automatic start. */
+  setPlanAlarmEnabled: (id: string, enabled: boolean) => Promise<void>;
   useStandardPlan: () => void;
   setPersonalizationEnabled: (enabled: boolean) => Promise<void>;
   resetPersonalization: () => Promise<void>;
@@ -572,7 +576,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
   const spokenReminders = useRef(new Set<string>());
   useEffect(() => {
     if (Platform.OS === 'web' || confirmedPlansStatus === 'loading') return;
-    const next = confirmedPlans.find((plan) => plan.state === 'scheduled');
+    const next = confirmedPlans.find((plan) => plan.state === 'scheduled' && isPlanAlarmEnabled(plan));
     if (!next || spokenReminders.current.has(next.id)) return;
     const reminderAt = next.prepStartAt - PREP_START_REMINDER_MINUTES * 60_000;
     const speakWarning = async () => {
@@ -596,7 +600,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (confirmedPlansStatus === 'loading' || progressStatus === 'loading' || progressSession?.state === 'active') return;
-    const next = confirmedPlans.find((plan) => plan.state === 'scheduled');
+    const next = confirmedPlans.find((plan) => plan.state === 'scheduled' && isPlanAlarmEnabled(plan));
     if (!next) return;
     const startWhenDue = () => void startProgress('auto', next.id);
     const delay = Math.max(0, Math.min(next.prepStartAt - Date.now(), 2_147_000_000));
@@ -788,6 +792,27 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     setDraftStatus('saved');
   }, []);
 
+  const togglePlanAlarm = useCallback(async (id: string, enabled: boolean) => {
+    const selected = confirmedPlansRef.current.find((plan) => plan.id === id);
+    if (!selected || isPlanAlarmEnabled(selected) === enabled) return;
+    if (!enabled) {
+      // Cancel first, then forget the ids: a switch that looks off must not ring later.
+      await cancelConfirmedPlanStart(selected);
+      await commitConfirmedPlans(setPlanAlarmEnabled(confirmedPlansRef.current, id, false));
+      return;
+    }
+    const enabledPlan = setPlanAlarmEnabled(confirmedPlansRef.current, id, true)
+      .find((plan) => plan.id === id)!;
+    const notification = await scheduleConfirmedPlanStart(enabledPlan);
+    const stored = {
+      ...enabledPlan,
+      ...(notification.identifier ? { notificationIdentifier: notification.identifier } : {}),
+      ...(notification.reminderIdentifier ? { reminderNotificationIdentifier: notification.reminderIdentifier } : {}),
+    };
+    await commitConfirmedPlans(replaceConfirmedPlan(confirmedPlansRef.current, id, stored));
+    setNotificationStatus(notification.status);
+  }, [commitConfirmedPlans]);
+
   const deleteConfirmedPlan = useCallback(async (id: string) => {
     const selected = confirmedPlansRef.current.find((plan) => plan.id === id);
     if (!selected) return;
@@ -894,6 +919,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     },
     beginEditConfirmedPlan,
     deleteConfirmedPlan,
+    setPlanAlarmEnabled: togglePlanAlarm,
     useStandardPlan() {
       const schedule = pendingSchedule ?? activeSchedule ?? draft;
       const nextPlan = createSchedulePlan(schedule, {
@@ -947,7 +973,7 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
       setProgressStatus('saved');
       await removePersistedProgress();
     },
-  }), [activeConfirmedPlanId, activePlan, activeSchedule, answerStepAlarm, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline, travelEstimateFor]);
+  }), [activeConfirmedPlanId, activePlan, activeSchedule, answerStepAlarm, applyDelayProposal, applyPersonalizationProfile, applyRoute, beginDraft, beginEditConfirmedPlan, commitConfirmedPlans, completeCurrent, confirmScheduleDirectly, confirmedPlans, confirmedPlansStatus, delayMinutes, deleteConfirmedPlan, togglePlanAlarm, draft, draftStatus, editingConfirmedPlanId, finalizeSchedule, lastPersonalizationLearnedCount, notificationStatus, pendingDelayProposal, pendingPlan, pendingSchedule, personalizationProfile, personalizationStatus, progressSession, progressStatus, proposeDelay, rejectDelayProposal, removePersistedProgress, route, startNewDraft, startProgress, timeline, travelEstimateFor]);
 
   return <ScheduleContext.Provider value={value}>{children}</ScheduleContext.Provider>;
 }

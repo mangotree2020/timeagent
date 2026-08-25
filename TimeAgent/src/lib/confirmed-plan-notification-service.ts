@@ -10,7 +10,7 @@ export async function scheduleConfirmedPlanStart(
   plan: ConfirmedSchedulePlan,
   now = Date.now(),
 ): Promise<{ identifier?: string; reminderIdentifier?: string; status: Exclude<ProgressNotificationStatus, 'idle'> }> {
-  if (Platform.OS === 'web' || plan.prepStartAt <= now) return { status: 'disabled' };
+  if (Platform.OS === 'web' || plan.prepStartAt <= now || plan.alarmEnabled === false) return { status: 'disabled' };
   try {
     const [settings, permission] = await Promise.all([
       loadAppSettings(AsyncStorage),

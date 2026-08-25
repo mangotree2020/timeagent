@@ -814,5 +814,5 @@ const styles = StyleSheet.create({
   taskOrderText: { fontSize: 11, fontWeight: '900' },
   taskActionInput: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md, fontSize: 14, fontWeight: '800' },
   taskMinutes: { width: 28, fontSize: 12, fontWeight: '900', textAlign: 'right' },
-  error: { gap: space.md, padding: space.lg, borderRadius: radius.md, borderWidth: 1 }, errorText: { color: '#C2413A', fontSize: 14, lineHeight: 21, fontWeight: '800' }, errorActions: { gap: space.sm }, pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
+  error: { gap: space.md, padding: space.lg, borderRadius: radius.md, borderWidth: 1 }, errorText: { color: '#C2413A', fontSize: 14, lineHeight: 21, fontWeight: '800' }, errorActions: { gap: space.sm }, pressed: { opacity: 0.76 },
 });
