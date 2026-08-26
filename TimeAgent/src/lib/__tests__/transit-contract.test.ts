@@ -4,6 +4,7 @@ import {
   parseLinestring,
   routeNameOf,
   tmapSearchDttm,
+  tmapTransitEndpoint,
   transitCacheKey,
 } from '../../../supabase/functions/mobility/transit-contract';
 
@@ -56,6 +57,16 @@ const payload = {
 };
 
 describe('TMAP transit normalization', () => {
+  it('uses the cheaper summary endpoint for planning and the full endpoint only for detail', () => {
+    expect(tmapTransitEndpoint('summary')).toBe('https://apis.openapi.sk.com/transit/routes/sub');
+    expect(tmapTransitEndpoint('detail')).toBe('https://apis.openapi.sk.com/transit/routes');
+  });
+
+  it('keeps a summary-only itinerary useful without inventing its missing boarding detail', () => {
+    const routes = normalizeTmapItineraries({ metaData: { plan: { itineraries: [{ pathType: 2, totalTime: 1800, totalDistance: 5200, totalWalkTime: 420, transferCount: 0 }] } } }, { calculatedAt });
+    expect(routes[0]).toMatchObject({ mode: '버스', minutes: 30, distanceMeters: 5200, walkMinutes: 7, firstBoarding: null, legs: [] });
+  });
+
   it('turns itineraries into the route contract with legs, walk time, fare, transfers and first boarding', () => {
     const routes = normalizeTmapItineraries(payload, { calculatedAt, departureAt: '2026-08-26T09:00:00.000Z' });
 

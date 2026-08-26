@@ -164,6 +164,8 @@ export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchP
         destination: request.destination,
         modes: request.modes,
         departureAt: request.departureAt,
+        // This client resolves legs only when a map or near-departure arrival actually needs them.
+        transitSummaryOnly: true,
       }),
     }, request.signal);
     return parseTravelEstimates(payload);

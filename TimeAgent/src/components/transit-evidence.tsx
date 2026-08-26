@@ -6,6 +6,7 @@ import { AppIcon } from '@/components/app-icon';
 import { Button, Card, StatusPill, useAppType } from '@/components/app-ui';
 import { radius, space } from '@/constants/design';
 import { resolveScheduleDateTime } from '@/lib/confirmed-plans';
+import { ExpoLocationProvider } from '@/lib/device-location-provider';
 import { externalMapLinks, ExternalMapLinks, openExternalMap } from '@/lib/external-maps';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { SchedulePlan } from '@/lib/planning';
@@ -26,7 +27,8 @@ import {
   proposeDepartureFromArrivals,
   shouldAskArrival,
 } from '@/lib/transit-arrival';
-import { describeTravelEstimate, formatEstimateClock, TravelEstimate, travelEstimateLabel } from '@/lib/travel-estimate';
+import { describeTravelEstimate, formatEstimateClock, TransitBoarding, TravelEstimate, travelEstimateLabel } from '@/lib/travel-estimate';
+import { pickTransitRouteDetail } from '@/lib/transit-route';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 
 /**
@@ -46,9 +48,8 @@ export function TransitEvidence({
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
-  const boarding = estimate?.firstBoarding ?? null;
-  const askable = canAskForArrival(boarding);
   const [state, setState] = useState<ArrivalPollerState>(createArrivalPollerState);
+  const [resolvedBoarding, setResolvedBoarding] = useState<{ key: string; boarding: TransitBoarding | null }>({ key: '', boarding: null });
   const [checking, setChecking] = useState(false);
   const [dismissedProposal, setDismissedProposal] = useState<string | null>(null);
   const [mapMessage, setMapMessage] = useState('');
@@ -59,10 +60,45 @@ export function TransitEvidence({
   // the plan says to leave at 23:40 for 00:20.
   const appointmentAt = useMemo(() => resolveScheduleDateTime(schedule.date, schedule.appointmentTime), [schedule.appointmentTime, schedule.date]);
   const departureAt = useMemo(() => plannedDepartureAt(appointmentAt, plan.departure, schedule.appointmentTime), [appointmentAt, plan.departure, schedule.appointmentTime]);
+  const windowOpen = isArrivalWindowOpen({ departureAt, appointmentAt });
+  const detailKey = `${estimate?.mode ?? ''}/${estimate?.calculatedAt ?? ''}/${estimate?.departureAt ?? ''}/${schedule.destinationCoordinate?.latitude ?? ''}/${schedule.destinationCoordinate?.longitude ?? ''}`;
+  const boarding = estimate?.firstBoarding ?? (resolvedBoarding.key === detailKey ? resolvedBoarding.boarding : null);
+  const askable = canAskForArrival(boarding);
   const boardingKey = boarding ? `${boarding.mode}/${boarding.routeName}/${boarding.stop.name}` : '';
   /** The boarding as of the latest render, so an answer for a previous stop is thrown away. */
   const boardingKeyRef = useRef(boardingKey);
   useEffect(() => { boardingKeyRef.current = boardingKey; }, [boardingKey]);
+
+  // The low-cost summary route has no legs. Resolve its first boarding from the full route only
+  // when realtime arrivals can matter, keeping ordinary planning on the cheaper endpoint.
+  useEffect(() => {
+    if (
+      estimate?.firstBoarding
+      || (estimate?.mode !== '버스' && estimate?.mode !== '지하철')
+      || !windowOpen
+      || !schedule.destinationCoordinate
+    ) return;
+
+    const transitMode = estimate.mode;
+    const destination = schedule.destinationCoordinate;
+    const requestedDepartureAt = estimate.departureAt;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const origin = (await new ExpoLocationProvider().getCurrentLocation()).coordinate;
+        const details = await createConfiguredMobilityProvider().getTransitRouteDetails({
+          origin,
+          destination,
+          departureAt: requestedDepartureAt,
+        });
+        const chosen = pickTransitRouteDetail(details, { mode: transitMode, firstBoarding: null });
+        if (!cancelled) setResolvedBoarding({ key: detailKey, boarding: chosen?.firstBoarding ?? null });
+      } catch {
+        if (!cancelled) setResolvedBoarding({ key: detailKey, boarding: null });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [detailKey, estimate, schedule.destinationCoordinate, windowOpen]);
 
   // A new boarding — another route, another stop — starts from nothing: the last valid arrivals
   // belonged to a stop the person is no longer going to. Reset during render, not in an effect,
@@ -137,7 +173,6 @@ export function TransitEvidence({
     if (outcome === 'failed') setMapMessage('지도를 열지 못했어요. 브라우저에서 다시 시도해 주세요.');
   };
 
-  const windowOpen = isArrivalWindowOpen({ departureAt, appointmentAt });
   const arrivals = state.snapshot.status === 'realtime' || state.snapshot.status === 'last-known' ? state.snapshot.arrivals.slice(0, 2) : [];
 
   return (

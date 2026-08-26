@@ -186,7 +186,10 @@ describe('journey estimates against the timetable', () => {
 
     const [url, request] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`${baseUrl}/v1/routes/estimates`);
-    expect(JSON.parse(String(request.body)).departureAt).toBe('2026-08-26T09:00:00.000Z');
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      departureAt: '2026-08-26T09:00:00.000Z',
+      transitSummaryOnly: true,
+    });
     expect(estimates['버스']).toMatchObject({ basis: 'timetable', walkMinutes: 7, departureAt: '2026-08-26T09:00:00.000Z', fareWon: 1550, transferCount: 0 });
     expect(estimates['버스']?.firstBoarding).toEqual({
       mode: '버스', routeName: '101', routeId: 'r1', stop: { name: '서면 정류장', coordinate: { latitude: 35.152, longitude: 129.052 }, stationId: '1001' }, walkMinutesToStop: 5,

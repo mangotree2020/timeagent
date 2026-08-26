@@ -198,6 +198,17 @@ export type NormalizeOptions = {
   withShape?: boolean;
 };
 
+const TMAP_TRANSIT_DETAIL_URL = "https://apis.openapi.sk.com/transit/routes";
+const TMAP_TRANSIT_SUMMARY_URL = "https://apis.openapi.sk.com/transit/routes/sub";
+
+/**
+ * Planning needs only time, distance, transfers and fare, so it uses TMAP's cheaper summary API.
+ * Stops, shapes and the first boarding are fetched only for a screen that actually needs detail.
+ */
+export function tmapTransitEndpoint(kind: "summary" | "detail"): string {
+  return kind === "detail" ? TMAP_TRANSIT_DETAIL_URL : TMAP_TRANSIT_SUMMARY_URL;
+}
+
 /**
  * Every itinerary TMAP answered with, in the normalized contract, quickest first. Itineraries
  * without a usable total time are dropped rather than repaired.

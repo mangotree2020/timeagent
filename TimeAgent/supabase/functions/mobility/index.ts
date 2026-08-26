@@ -13,6 +13,7 @@ import {
   Coordinate,
   normalizeTmapItineraries,
   tmapSearchDttm,
+  tmapTransitEndpoint,
   transitCacheKey,
   TransitRoute,
 } from "./transit-contract.ts";
@@ -50,7 +51,6 @@ const NAVER_REVERSE_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-reversege
 const TMAP_POI_URL = "https://apis.openapi.sk.com/tmap/pois";
 const TMAP_PEDESTRIAN_URL = "https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1";
 const TMAP_CAR_URL = "https://apis.openapi.sk.com/tmap/routes?version=1";
-const TMAP_TRANSIT_URL = "https://apis.openapi.sk.com/transit/routes";
 const TAGO_NEARBY_STATIONS_URL = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList";
 const TAGO_STATION_ARRIVALS_URL = "https://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList";
 
@@ -695,13 +695,15 @@ async function transitRoutes(
   origin: Coordinate,
   destination: Coordinate,
   departureAt: string | undefined,
-  { detail }: { detail: boolean },
+  { detail, summaryOnly = false }: { detail: boolean; summaryOnly?: boolean },
 ): Promise<TransitRoute[]> {
   const cache = detail ? transitDetailCache : transitSummaryCache;
   return cache.getOrCreate(transitCacheKey(origin, destination, departureAt, detail ? "detail" : "summary"), ROUTE_CACHE_TTL_MS, () =>
     measured("TMAP", detail ? "transit-detail" : "transit", async () => {
       const searchDttm = departureAt ? tmapSearchDttm(departureAt) : null;
-      const upstream = await fetch(TMAP_TRANSIT_URL, {
+      // Clients released before the summary contract still need legs and firstBoarding in this
+      // response. Only a client that opts in after learning how to fetch detail on demand uses /sub.
+      const upstream = await fetch(tmapTransitEndpoint(!detail && summaryOnly ? "summary" : "detail"), {
         method: "POST",
         headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
         body: JSON.stringify({
@@ -726,8 +728,8 @@ async function transitRoutes(
     }));
 }
 
-async function transitEstimates(origin: Coordinate, destination: Coordinate, departureAt: string | undefined): Promise<TravelEstimate[]> {
-  const best = bestTransitRoutePerMode(await transitRoutes(origin, destination, departureAt, { detail: false }));
+async function transitEstimates(origin: Coordinate, destination: Coordinate, departureAt: string | undefined, summaryOnly: boolean): Promise<TravelEstimate[]> {
+  const best = bestTransitRoutePerMode(await transitRoutes(origin, destination, departureAt, { detail: false, summaryOnly }));
   return (["버스", "지하철"] as const).flatMap((mode) => {
     const route = best[mode];
     if (!route) return [];
@@ -786,6 +788,7 @@ async function travelEstimates(request: Request): Promise<Response> {
   }
   const { origin, destination } = pair;
   const departureAt = departureAtOf(body);
+  const transitSummaryOnly = body.transitSummaryOnly === true;
 
   const requested = Array.isArray(body.modes)
     ? (body.modes as unknown[]).filter((mode): mode is TravelMode => TRAVEL_MODES.includes(mode as TravelMode))
@@ -795,7 +798,7 @@ async function travelEstimates(request: Request): Promise<Response> {
   const [walk, driving, transit] = await Promise.all([
     wanted.has("도보") ? walkingEstimate(origin, destination).catch(() => null) : Promise.resolve(null),
     wanted.has("자가용") || wanted.has("택시") ? drivingEstimates(origin, destination).catch(() => []) : Promise.resolve([]),
-    wanted.has("버스") || wanted.has("지하철") ? transitEstimates(origin, destination, departureAt).catch(() => []) : Promise.resolve([]),
+    wanted.has("버스") || wanted.has("지하철") ? transitEstimates(origin, destination, departureAt, transitSummaryOnly).catch(() => []) : Promise.resolve([]),
   ]);
 
   const estimates: Record<string, TravelEstimate> = {};

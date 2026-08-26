@@ -157,6 +157,8 @@ npm run release:android
 - 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK(`191c2607…`)로 좌우 드럼(12→15분)과 네이버 지도·카카오맵 연결을 확인했다. 이 2-ABI AAB/APK 자체의 기기 설치는 하지 않았다.
 - Play 업로드는 사람이 직접 한다(AAB 68MB가 브라우저 업로드 도구 한도를 넘음). 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.10-versionCode10.aab`다. → 2026-08-26 사용자 보고: 개발자 계정을 사업자 계정으로 전환해 비공개 테스트 12명·14일 요건이 사라졌고, `1.0.9 (9)`가 프로덕션에 출시된 상태다. `1.0.10 (10)` AAB는 프로덕션 트랙에 업로드되어 Play 검토 중이다. 검토 통과 후 `이동 시간 근거` 카드의 `TMAP 시간표 기준` 근거를 프로덕션 설치본에서 확인한다.
 - 2026-08-26 23:01 KST 재확인: `/health` ok, `/v1/routes/estimates` 200, `/v1/routes/transit` 503 — TMAP 대중교통 API 직접 호출도 `429 QUOTA_EXCEEDED`(도보·자동차 API는 정상). 한도 초기화(KST 자정 추정) 뒤 다시 확인한다. `TAGO_SERVICE_KEY` 발급 절차는 `docs/EXECUTION_PLAN.md` 2026-08-26 마지막 항목.
+- 2026-08-27 01:10 KST: `TimeAgent Premium`의 TMAP 대중교통 Premium과 자동결제를 활성화하고 새 appKey를 Supabase `TMAP_APP_KEY`에 적용해 `mobility`를 재배포했다. 운영 `/v1/routes/estimates`는 새 클라이언트의 `transitSummaryOnly: true` 요청에서 저비용 `/transit/routes/sub` 기반 버스·지하철 요약을 HTTP 200으로 반환했고, 플래그 없는 기존 설치본에는 상세 첫 탑승을 유지했다. `/v1/routes/transit`은 상세 10개 경로·첫 탑승·구간을 HTTP 200으로 반환했다. `npm run verify` 56스위트·576/576 및 Deno check가 통과했다. 기존 TimeAgent의 대중교통 Free는 새 경로 검증 뒤 해지 대기 중이다.
+- 2026-08-27 01:42 KST: 포털 일 정산 제한 종료 후 기존 `TimeAgent`의 `TMAP 대중교통 Free`만 해지 완료했다. 기존 앱은 5개 상품 사용 중이며 일반 `TMAP Free`와 PUZZLE 상품은 유지된다. 해지 직후 Premium 운영 `/v1/routes/transit`이 HTTP 200, 10개 경로·첫 탑승·5개 구간을 반환했다.
 - Play 데이터 안전 섹션 변경 없음(경로·도착 조회는 좌표만 서버로 보내며 원문 위치·검색어를 저장·집계하지 않는다, `docs/PRODUCT.md` 오류·비용·데이터 기준).
 
 ## 2026-08-22 비공개 테스트 1.0.9 제출본 (업로드 대기)
