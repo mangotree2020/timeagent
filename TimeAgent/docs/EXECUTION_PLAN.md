@@ -1373,3 +1373,19 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Verify: `npm run verify` 50개 스위트·524/524 통과, 시각 회귀 전체 통과(수치는 로그 — elevation은 웹에 없어 기준선 무변화). 기기 확인은 사용자가 폰을 실사용 중이어서(화면 녹화 프레임에 런처 검색·키보드가 찍힘) 원격 조작을 중단하고 보류했다 — 새 APK(SHA-256 `d3f42f2493d14afd2e3dc40e6e7737054e30c9e78b5baee7f9bc25f6e0152783`)를 설치해 두었고, 카드 터치로 잔상이 사라졌는지는 사용자가 확인한다.
 - 추가(같은 날): 눌림 스타일이 없는 내비게이션 탭에서도 같은 잔상이 보고돼 진짜 공통 원인을 확정했다 — 스택 전환이 `slide_from_right`여서 모든 네비게이션에서 화면 전체가 슬라이드되며, 이때 네이티브 boxShadow 레이어가 직사각형으로 래스터돼 비쳤다. `_layout.tsx`에서 탭 화면 4곳(index·schedules·alerts·settings)은 `animation: none`(탭 UX대로 즉시 전환), 나머지 푸시는 150ms `fade`로 바꿨다. 반영 APK를 폰에 설치해 두었고, 잔상 소멸 확인은 사용자가 한다(테스트 완료 확인됨). 이후 홈 + 버튼과 상단 약속 정보 사이 여백을 두 배(marginTop space.lg 추가)로 늘려 기준선을 갱신했고, 최종 APK SHA-256은 `5aae5b15d27013722080028e606d388707a0de789ba35867e329be42b548efcb`.
 - Evidence: `src/components/app-ui.tsx`, `src/components/voice-pulse-button.tsx`, `src/app/index.tsx` 외 눌림 스타일 일괄 수정 파일들, `src/app/_layout.tsx`, `android/app/build/outputs/apk/release/app-release.apk`.
+
+## 2026-08-25 대중교통 공급자·실시간 도착정보 PRD 결정 (계획)
+
+- Accept: NAVER Maps는 지도·주소/좌표, TMAP은 장소·도보·자동차·택시·대중교통 경로, TAGO·지역 공공 API는 선택 경로 첫 탑승 구간의 실시간 도착정보를 담당한다. 미래 약속은 예상 출발 시각의 운행시간표로 계산하고, 실시간·시간표·최근 저장값과 확인 시각을 텍스트로 구분한다. 공급자 장애 시 일정은 유지되며 재시도와 외부 지도 확인을 제공하고, 변경은 사용자 적용 전까지 확정하지 않는다.
+- Select: 기존 Supabase mobility adapter와 NAVER/TMAP 실기기 검증 자산을 유지한다. 카카오맵은 기본 공급자로 중복 도입하지 않고 품질·장애·비용 지표가 필요할 때 보조 adapter로 평가한다. ODsay는 공공 API의 지역별 유지비가 단일 공급자 계약보다 커지거나 SLA가 필요할 때 재검토한다.
+- Implement: (1) TMAP 대중교통 요청에 일정의 예상 출발 날짜·시각을 전달하고 정규화 계약에 경로 근거·도보·탑승 노선·정류장 식별정보를 추가, (2) 계획 생성은 요약 우선·상세 화면은 상세 조회로 분리, (3) 선택 경로 첫 탑승 구간용 TAGO adapter와 20초 캐시·출발 30분 전 활성화·마지막 유효값 fallback 구현, (4) NAVER·카카오맵 외부 길찾기 복구 행동과 공급자별 비식별 운영 지표 추가.
+- Verify: 미래 날짜/운행 종료 시각, 목적지 변경, 혼합 버스·지하철, TAGO 성공·미지원·timeout·429, 캐시·polling 제한, 마지막 유효값, 사용자 적용 전 계획 불변을 단위·계약 테스트로 먼저 고정한다. `npm run verify`, 360×800·390×844·430×932 시각 회귀, Android 실기기에서 시간표→실시간 전환과 외부 지도 fallback을 확인한다.
+- Evidence: PRD 기준은 `docs/PRODUCT.md`의 `대중교통 경로와 실시간 도착정보` 절에 기록했다. 구현 증거는 작업 완료 후 코드·테스트·운영 endpoint·실기기 결과로 이 항목을 갱신한다.
+
+## 2026-08-26 스플래시 아이콘 모서리 잘림 수정 (완료)
+
+- Accept: 로딩(스플래시) 화면의 아이콘 모서리가 잘리지 않고 온전히 보인다. 아이콘 이미지 크기만 20% 줄이고 배경색·이미지 파일은 유지한다.
+- Implement: `app.json`의 `expo-splash-screen` 플러그인 `imageWidth`를 288 → 230(20% 축소)으로 변경. 이미지 자산(`assets/images/splash-icon.png`, 512px)은 그대로 둠.
+- Verify: `npm run verify` 통과(50 suites / 524 tests). `expo prebuild` + `gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a` `BUILD SUCCESSFUL in 8m 5s`, 772 tasks. APK SHA-256 `744dbb6bb183390e97ead0a10d2019b7019fc6f0cca150095470d565399a7573`. 2026-08-26 09:56 SM-N971N(USB)에 `adb install -r` 성공, versionName 1.0.9 / versionCode 9. 생성된 `drawable-*/splashscreen_logo.png`는 288dp 캔버스(xxxhdpi 1152px) 안에 로고를 230dp로 그린 것으로 확인.
+- Observe: Android 12 스플래시는 아이콘을 원형 마스크로 자르므로 정사각 로고는 마스크 안에 들어갈 만큼 작아야 한다.
+- Evidence: `app.json` diff (`imageWidth` 230), `tmp/splash-tile2.png`(런처 실행 녹화 프레임 — 충전 오버레이가 중앙을 가려 녹화 확인 불가). 2026-08-26 사용자가 실기기에서 직접 아이콘이 잘리지 않음을 확인.
