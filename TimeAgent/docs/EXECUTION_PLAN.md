@@ -1407,3 +1407,11 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Verify: `npm run verify` 통과(위와 동일 실행). 시각 회귀·실기기 관찰은 아래.
 - Observe: 세로 스크롤 화면 안의 가로 드럼은 `nestedScrollEnabled`로 동작하며 세로 끌림이 없는지 실기기에서 확인한다.
 - Evidence: `npm run visual:update` 기준 `create-step-3.png` 360×800·390×844·430×932에서 카드 2행(아이콘·이름·삭제 / `준비 시간` + `17분 18분 19분` 드럼)이 잘림 없이 렌더됨. 실기기 APK는 위 항목과 동일(SHA-256 `191c2607…2cf7`), 실기기 관찰(12:19): 새 일정 3단계에서 `샤워 시간, 12분` 드럼을 좌로 밀자 `15분`으로 스냅되고 총 준비 시간이 22분→25분, `내가 정한 시간` 표시로 바뀜. 세로 화면은 끌리지 않음(`tmp/tr-drum-1.png`, `tmp/tr-drum-2.png`). maestro 계층에서 각 드럼이 `샤워 시간, 12분`처럼 하나의 adjustable 노드로 읽힘.
+
+## 2026-08-26 1.0.10 (versionCode 10) 프로덕션 후보 빌드 (완료)
+
+- Accept: 앞선 작업(스플래시 축소, 대중교통 공급자 분리·시간표 경로·실시간 도착, 준비 행동 좌우 드럼)을 모두 담은 `1.0.10 (10)` 서명 AAB/APK가 `artifacts/`에 있고 체크리스트에 크기·SHA-256·서명·권한이 기록돼 있다.
+- Implement: `app.json` `version` 1.0.9→1.0.10, `android.versionCode` 9→10. `npm run release:android`(prebuild + `bundleRelease`·`assembleRelease`, armeabi-v7a·arm64-v8a).
+- Verify: Gradle 797 tasks `BUILD SUCCESSFUL in 9m 44s`(12:36~12:46). AAB 68,721,854 bytes SHA-256 `bfc53ae9cf9e559a8e09aa5b4d26430f688bc846001b39c671e9aed7778ae983`, APK 117,731,349 bytes SHA-256 `8cf2ce8df48c152079bc8fcb500c15923aa167ef891ae7ea23e4e9c35327622c`. `apksigner`/`jarsigner` 모두 `CN=TimeAgent Upload` SHA-1 `05:0B:…:8E:B1`. `aapt dump badging`: `com.timeagent.app` `1.0.10 (10)`, minSdk 24, targetSdk 36, 권한 변동 없음.
+- Observe: Play 업로드와 프로덕션 승격은 사람이 Console에서 진행한다(`docs/RELEASE_CHECKLIST.md` 2026-08-26 항목). 출시 전 TMAP 대중교통 쿼터 초기화 후 근거 카드 확인, `TAGO_SERVICE_KEY` 등록이 남아 있다.
+- Evidence: `artifacts/TimeAgent-1.0.10-versionCode10.{aab,apk}`(gitignore), `docs/RELEASE_CHECKLIST.md`.

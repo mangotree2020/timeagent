@@ -140,6 +140,23 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-26 프로덕션 후보 1.0.10 제출본 (업로드 대기)
+
+앞의 8/22 `1.0.9 (9)` 제출본을 대체한다. 커밋 `ab57cef`(스플래시 아이콘 20% 축소), `3fbd838`(대중교통 공급자 분리·약속 시각 기준 TMAP 시간표 경로·TAGO 첫 탑승 실시간 도착·NAVER/카카오맵 연결·`이동 시간 근거` 카드, 준비 행동 시간 좌우 드럼), `289cd2e`(mobility Edge Function 배포 기록)가 포함됐다.
+
+- 버전 `1.0.10 (10)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.10-versionCode10.aab` (68,721,854 bytes)
+- AAB SHA-256: `bfc53ae9cf9e559a8e09aa5b4d26430f688bc846001b39c671e9aed7778ae983`
+- APK: `artifacts/TimeAgent-1.0.10-versionCode10.apk` (117,731,349 bytes)
+- APK SHA-256: `8cf2ce8df48c152079bc8fcb500c15923aa167ef891ae7ea23e4e9c35327622c`
+- 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB(`jarsigner` verified)·APK(`apksigner`) 동일
+- 권한: 1.0.9와 동일 — `READ_CALENDAR`, `SCHEDULE_EXACT_ALARM`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, 위치(전경·백그라운드·FGS), `RECORD_AUDIO`, 알림. 새 권한 없음(외부 지도 연결은 `Linking.openURL`로 앱 스킴을 시도하고 실패 시 웹으로 넘어가므로 `<queries>` 선언 불필요). `WRITE_CALENDAR`·외부 저장소·화면 오버레이 없음.
+- 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL`(9분 44초, 12:36~12:46), `npm run verify` 56스위트·574/574, 시각 회귀 237 passed
+- 서버: mobility Edge Function은 12:31에 배포 완료(`docs/EXECUTION_PLAN.md` 2026-08-26 항목). `TAGO_SERVICE_KEY` 미등록이라 실시간 도착은 `시간표 기준`으로 동작하며, 배포 시점에 TMAP 대중교통 API가 일일 쿼터 초과(429)였다 — 프로덕션 출시 전 쿼터 초기화 후 `이동 시간 근거` 카드에 `TMAP 시간표 기준` 근거가 뜨는지 확인한다.
+- 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK(`191c2607…`)로 좌우 드럼(12→15분)과 네이버 지도·카카오맵 연결을 확인했다. 이 2-ABI AAB/APK 자체의 기기 설치는 하지 않았다.
+- Play 업로드는 사람이 직접 한다(AAB 68MB가 브라우저 업로드 도구 한도를 넘음). 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.10-versionCode10.aab`다. 프로덕션 트랙 승격은 `프로덕션 액세스 진행 상황` 항목의 조건(12명 이상 14일 연속 참여 후 액세스 승인)이 충족된 뒤 가능하다.
+- Play 데이터 안전 섹션 변경 없음(경로·도착 조회는 좌표만 서버로 보내며 원문 위치·검색어를 저장·집계하지 않는다, `docs/PRODUCT.md` 오류·비용·데이터 기준).
+
 ## 2026-08-22 비공개 테스트 1.0.9 제출본 (업로드 대기)
 
 앞의 8/20 `1.0.8 (8)` 빌드를 대체한다. 커밋 `c098800`이 포함됐다: 준비 단계 종료 알람(끌 때까지 울리고 끄면 완료)·1분 전 예고·자동 시작 시 진행 화면 열림·음성 이동수단 탭 후 안내, 그리고 정확한 시각 알람(`SCHEDULE_EXACT_ALARM`)과 배터리 최적화 예외(`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) 상태를 보여 주는 `준비 알람 정확도` 카드, 종료 알람이 다음 단계 안내보다 4초 먼저 울리는 예약 순서다.
