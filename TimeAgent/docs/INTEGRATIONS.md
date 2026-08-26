@@ -70,11 +70,12 @@ UI와 일정 계산 엔진은 TMAP 원시 필드가 아니라 `RoutePlan`만 사
 - `NAVER_CLIENT_ID`: mobility 서버 전용 Geocoding 인증값
 - `NAVER_CLIENT_SECRET`: mobility 서버 전용 비밀값
 - `TMAP_APP_KEY`: 서버 전용 비밀값. React Native 코드에서 참조 금지
+- `TAGO_SERVICE_KEY`: mobility 서버 전용 국토교통부 버스 도착정보(TAGO) Decoding 인증키. 미등록 시 실시간 도착은 `not-configured`로 응답하고 앱은 시간표 기준을 유지한다
 - `EXPO_PUBLIC_MOBILITY_API_BASE_URL`: 앱이 호출할 HTTPS mobility proxy 기준 URL
 - `KMA_SERVICE_KEY`: weather 서버 전용 기상청 단기예보 조회서비스 Decoding 인증키
 - `EXPO_PUBLIC_WEATHER_API_BASE_URL`: 앱이 호출할 HTTPS weather proxy URL
 
-운영 proxy는 Supabase Edge Function `mobility`이며 기준 URL은 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/mobility`이다. API endpoint는 이 주소 아래의 `/v1/places`, `/v1/geocode`, `/v1/reverse-geocode`, `/v1/routes/walk` 계약으로 제공한다. Supabase 기본 도메인과 관리형 HTTPS를 사용하므로 `timeagent.mangonw.com` DNS·인증서 설정은 현재 범위에서 필요하지 않다.
+운영 proxy는 Supabase Edge Function `mobility`이며 기준 URL은 `https://chpsoncuxjpgugowrydb.supabase.co/functions/v1/mobility`이다. API endpoint는 이 주소 아래의 `/v1/places`, `/v1/geocode`, `/v1/reverse-geocode`, `/v1/routes/walk`, `/v1/routes/estimates`(약속 출발 시각 `departureAt` 기준 요약, 60초 캐시), `/v1/routes/transit`(구간·정류장·경로선 상세), `/v1/arrivals`(선택 경로 첫 탑승 정류장의 TAGO 실시간 도착, 20초 캐시) 계약으로 제공한다. `/health`는 공급자별 호출 수·성공률·지연시간을 원문 위치·검색어 없이 집계해 돌려준다. Supabase 기본 도메인과 관리형 HTTPS를 사용하므로 `timeagent.mangonw.com` DNS·인증서 설정은 현재 범위에서 필요하지 않다.
 
 앱은 장소 검색 결과 또는 지도에서 확정한 목적지의 이름·주소·좌표를 최근 사용 순서로 기기에 최대 8개 저장한다. 동일 좌표나 같은 이름·주소는 중복 저장하지 않으며 일반 일정 등록과 음성 일정 제안이 같은 선택기를 사용한다. 장소 검색·지도 역지오코딩에 실패해도 사용자가 지도에서 누른 좌표는 `지도에서 지정한 위치`로 선택할 수 있다.
 

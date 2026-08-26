@@ -19,7 +19,7 @@ export type RouteManeuver = {
 
 export type RoutePlan = {
   provider: 'tmap' | 'fixture';
-  mode: 'walk';
+  mode: 'walk' | 'transit';
   origin: Coordinate;
   destination: Coordinate;
   durationSeconds: number;

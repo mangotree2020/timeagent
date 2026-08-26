@@ -156,3 +156,118 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   colon: { fontSize: 32, lineHeight: 40, fontWeight: '900', color: c.navy, marginBottom: 6 },
   readout: { marginTop: space.sm, textAlign: 'center', fontSize: 14, lineHeight: 20, color: c.textMuted, fontWeight: '700' },
 });
+
+export const MINUTE_WHEEL_ITEM_WIDTH = 52;
+const MINUTE_WHEEL_VISIBLE = 3;
+export const MINUTE_WHEEL_MAX = 120;
+const MINUTE_ITEMS = Array.from({ length: MINUTE_WHEEL_MAX }, (_, index) => `${index + 1}분`);
+
+/**
+ * The same drum laid on its side for a preparation step's minutes: swipe left or right, the value
+ * under the band is the choice. One adjustable control for assistive tech, every visible value
+ * tappable, and the band itself is the 44 pt touch target.
+ */
+export function MinuteWheel({ label, value, onChange, testID }: {
+  label: string;
+  value: number;
+  onChange: (minutes: number) => void;
+  testID?: string;
+}) {
+  const styles = useThemedStyles(createMinuteStyles);
+  const scrollRef = useRef<ScrollView>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragging = useRef(false);
+  const selectedIndex = Math.min(MINUTE_WHEEL_MAX - 1, Math.max(0, Math.round(value) - 1));
+  const offset = useRef(selectedIndex * MINUTE_WHEEL_ITEM_WIDTH);
+  const selected = useRef(selectedIndex);
+  const lastItem = MINUTE_ITEMS.length - 1;
+  useEffect(() => { selected.current = selectedIndex; }, [selectedIndex]);
+
+  const scrollToIndex = useCallback((index: number, animated = true) => {
+    scrollRef.current?.scrollTo({ x: index * MINUTE_WHEEL_ITEM_WIDTH, animated });
+  }, []);
+  useEffect(() => { scrollToIndex(selected.current, false); }, [scrollToIndex]);
+  useEffect(() => {
+    if (Math.abs(offset.current - selectedIndex * MINUTE_WHEEL_ITEM_WIDTH) < 0.5) return;
+    scrollToIndex(selectedIndex, false);
+  }, [scrollToIndex, selectedIndex]);
+  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
+
+  const commit = useCallback((x: number) => {
+    const index = Math.min(lastItem, Math.max(0, Math.round(x / MINUTE_WHEEL_ITEM_WIDTH)));
+    if (index !== selected.current) onChange(index + 1);
+    if (Math.abs(x - index * MINUTE_WHEEL_ITEM_WIDTH) > 0.5) scrollToIndex(index);
+  }, [lastItem, onChange, scrollToIndex]);
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offset.current = event.nativeEvent.contentOffset.x;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      if (!dragging.current) commit(offset.current);
+    }, SETTLE_DELAY_MS);
+  };
+  const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    offset.current = event.nativeEvent.contentOffset.x;
+    commit(offset.current);
+  };
+  const select = (index: number) => {
+    if (index !== selected.current) onChange(index + 1);
+    scrollToIndex(index);
+  };
+
+  return (
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      accessibilityValue={{ text: MINUTE_ITEMS[selectedIndex] }}
+      aria-valuetext={MINUTE_ITEMS[selectedIndex]}
+      accessibilityHint="좌우로 밀어서 시간을 고르세요"
+      accessibilityActions={[{ name: 'increment', label: '1분 늘리기' }, { name: 'decrement', label: '1분 줄이기' }]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'increment' && selectedIndex < lastItem) select(selectedIndex + 1);
+        if (event.nativeEvent.actionName === 'decrement' && selectedIndex > 0) select(selectedIndex - 1);
+      }}
+      testID={testID}
+      style={styles.wheel}>
+      <View pointerEvents="none" style={styles.band} />
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        importantForAccessibility="no-hide-descendants"
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={MINUTE_WHEEL_ITEM_WIDTH}
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        contentOffset={{ x: selectedIndex * MINUTE_WHEEL_ITEM_WIDTH, y: 0 }}
+        contentContainerStyle={styles.content}
+        onScroll={onScroll}
+        onScrollBeginDrag={() => { dragging.current = true; }}
+        onScrollEndDrag={(event) => { dragging.current = false; onScroll(event); }}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        style={styles.scroll}>
+        {MINUTE_ITEMS.map((item, index) => {
+          const distance = Math.abs(index - selectedIndex);
+          return (
+            <Pressable key={item} onPress={() => select(index)} style={styles.item}>
+              <Text numberOfLines={1} style={[styles.itemText, distance === 0 ? styles.itemTextSelected : distance === 1 ? styles.itemTextNear : styles.itemTextFar]}>{item}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const createMinuteStyles = (c: AppPalette) => StyleSheet.create({
+  wheel: { width: MINUTE_WHEEL_ITEM_WIDTH * MINUTE_WHEEL_VISIBLE, height: 48, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, overflow: 'hidden' },
+  band: { position: 'absolute', top: 2, bottom: 2, left: MINUTE_WHEEL_ITEM_WIDTH, width: MINUTE_WHEEL_ITEM_WIDTH, borderRadius: radius.md, backgroundColor: c.selectedSoft, borderWidth: 1, borderColor: c.primarySoft },
+  scroll: { flexGrow: 0 },
+  content: { paddingHorizontal: MINUTE_WHEEL_ITEM_WIDTH },
+  item: { width: MINUTE_WHEEL_ITEM_WIDTH, height: 48, alignItems: 'center', justifyContent: 'center' },
+  itemText: { textAlign: 'center', fontVariant: ['tabular-nums'] },
+  itemTextSelected: { fontSize: 17, lineHeight: 22, fontWeight: '900', color: c.navy },
+  itemTextNear: { fontSize: 14, lineHeight: 18, fontWeight: '700', color: c.textMuted, opacity: 0.55 },
+  itemTextFar: { fontSize: 13, lineHeight: 18, fontWeight: '700', color: c.textMuted, opacity: 0.25 },
+});

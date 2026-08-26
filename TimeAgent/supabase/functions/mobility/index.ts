@@ -1,9 +1,21 @@
 import { corsHeaders, jsonResponse, upstreamError } from "../_shared/http.ts";
-
-type Coordinate = {
-  latitude: number;
-  longitude: number;
-};
+import {
+  matchTagoStation,
+  normalizeTagoArrivals,
+  normalizeTagoStations,
+  tagoOutcome,
+  TransitArrivalResult,
+} from "./arrivals-contract.ts";
+import { createProviderMetrics, outcomeForStatus, ProviderOutcome } from "./provider-metrics.ts";
+import { createShortCache } from "./short-cache.ts";
+import {
+  bestTransitRoutePerMode,
+  Coordinate,
+  normalizeTmapItineraries,
+  tmapSearchDttm,
+  transitCacheKey,
+  TransitRoute,
+} from "./transit-contract.ts";
 
 type TmapFeature = {
   geometry?: {
@@ -39,6 +51,43 @@ const TMAP_POI_URL = "https://apis.openapi.sk.com/tmap/pois";
 const TMAP_PEDESTRIAN_URL = "https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1";
 const TMAP_CAR_URL = "https://apis.openapi.sk.com/tmap/routes?version=1";
 const TMAP_TRANSIT_URL = "https://apis.openapi.sk.com/transit/routes";
+const TAGO_NEARBY_STATIONS_URL = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList";
+const TAGO_STATION_ARRIVALS_URL = "https://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList";
+
+/** The same journey asked again within a minute is answered from memory, calculated-at intact. */
+const ROUTE_CACHE_TTL_MS = 60_000;
+/** Realtime arrivals are reused for twenty seconds so a screen left open respects provider limits. */
+const ARRIVALS_CACHE_TTL_MS = 20_000;
+
+const transitSummaryCache = createShortCache<TransitRoute[]>();
+const transitDetailCache = createShortCache<TransitRoute[]>();
+const drivingCache = createShortCache<TravelEstimate[]>();
+const walkingCache = createShortCache<TravelEstimate | null>();
+const arrivalsCache = createShortCache<TransitArrivalResult>();
+const metrics = createProviderMetrics();
+
+/** An upstream answer that is not an answer: never cached, filed under its status. */
+class UpstreamStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`upstream ${status}`);
+  }
+}
+
+/** Runs one upstream call and files its outcome and latency under the provider, nothing else. */
+async function measured<T>(provider: string, operation: string, call: () => Promise<{ status: number; value: T }>): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    const { status, value } = await call();
+    metrics.record(provider, operation, outcomeForStatus(status), Date.now() - startedAt);
+    return value;
+  } catch (error) {
+    const outcome: ProviderOutcome = error instanceof UpstreamStatusError
+      ? outcomeForStatus(error.status)
+      : error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "unavailable";
+    metrics.record(provider, operation, outcome, Date.now() - startedAt);
+    throw error;
+  }
+}
 
 function requiredSecret(name: string): string {
   const value = Deno.env.get(name);
@@ -513,9 +562,20 @@ type TravelEstimate = {
   distanceMeters: number;
   fareWon?: number;
   transferCount?: number;
+  /** Minutes on foot inside the journey — to the stop, between transfers, from the last stop. */
+  walkMinutes?: number;
   source: "route";
   provider: string;
   calculatedAt: string;
+  /**
+   * What the number rests on: 'traffic' is the road as it is now, 'timetable' is the service at
+   * the departure time asked for, 'measured' is a walking route with neither.
+   */
+  basis: "traffic" | "timetable" | "measured";
+  /** The ISO instant a timetable answer was asked for. */
+  departureAt?: string;
+  /** The first bus or subway boarded, when the mode has one — the leg realtime arrivals are for. */
+  firstBoarding?: TransitRoute["firstBoarding"];
 };
 
 function minutesFromSeconds(seconds: number) {
@@ -524,24 +584,31 @@ function minutesFromSeconds(seconds: number) {
 
 /** The walking leg of the journey, from the same TMAP route the turn-by-turn guidance uses. */
 async function walkingEstimate(origin: Coordinate, destination: Coordinate): Promise<TravelEstimate | null> {
-  const upstream = await fetch(TMAP_PEDESTRIAN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
-    body: JSON.stringify({
-      startX: origin.longitude,
-      startY: origin.latitude,
-      endX: destination.longitude,
-      endY: destination.latitude,
-      startName: "출발지",
-      endName: "도착지",
-      reqCoordType: "WGS84GEO",
-      resCoordType: "WGS84GEO",
-    }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!upstream.ok) return null;
-  const payload = await upstream.json();
-  const features: TmapFeature[] = Array.isArray(payload?.features) ? payload.features : [];
+  return walkingCache.getOrCreate(transitCacheKey(origin, destination, undefined, "walk"), ROUTE_CACHE_TTL_MS, () =>
+    measured("TMAP", "pedestrian", async () => {
+      const upstream = await fetch(TMAP_PEDESTRIAN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
+        body: JSON.stringify({
+          startX: origin.longitude,
+          startY: origin.latitude,
+          endX: destination.longitude,
+          endY: destination.latitude,
+          startName: "출발지",
+          endName: "도착지",
+          reqCoordType: "WGS84GEO",
+          resCoordType: "WGS84GEO",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!upstream.ok) throw new UpstreamStatusError(upstream.status);
+      return { status: upstream.status, value: parseWalkingEstimate(await upstream.json()) };
+    }));
+}
+
+function parseWalkingEstimate(payload: unknown): TravelEstimate | null {
+  const source = payload as { features?: unknown } | null;
+  const features: TmapFeature[] = Array.isArray(source?.features) ? source.features as TmapFeature[] : [];
   const summary = features.find((feature) => Number.isFinite(Number(feature.properties?.totalTime)))?.properties;
   const seconds = Number(summary?.totalTime);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
@@ -549,9 +616,11 @@ async function walkingEstimate(origin: Coordinate, destination: Coordinate): Pro
     mode: "도보",
     minutes: minutesFromSeconds(seconds),
     distanceMeters: Math.max(0, Math.round(Number(summary?.totalDistance) || 0)),
+    walkMinutes: minutesFromSeconds(seconds),
     source: "route",
     provider: "TMAP",
     calculatedAt: new Date().toISOString(),
+    basis: "measured",
   };
 }
 
@@ -560,24 +629,31 @@ async function walkingEstimate(origin: Coordinate, destination: Coordinate): Pro
  * is the road — and TMAP prices the taxi ride while it is at it.
  */
 async function drivingEstimates(origin: Coordinate, destination: Coordinate): Promise<TravelEstimate[]> {
-  const upstream = await fetch(TMAP_CAR_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
-    body: JSON.stringify({
-      startX: origin.longitude,
-      startY: origin.latitude,
-      endX: destination.longitude,
-      endY: destination.latitude,
-      reqCoordType: "WGS84GEO",
-      resCoordType: "WGS84GEO",
-      searchOption: "0",
-      trafficInfo: "Y",
-    }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!upstream.ok) return [];
-  const payload = await upstream.json();
-  const features: TmapFeature[] = Array.isArray(payload?.features) ? payload.features : [];
+  return drivingCache.getOrCreate(transitCacheKey(origin, destination, undefined, "car"), ROUTE_CACHE_TTL_MS, () =>
+    measured("TMAP", "car", async () => {
+      const upstream = await fetch(TMAP_CAR_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
+        body: JSON.stringify({
+          startX: origin.longitude,
+          startY: origin.latitude,
+          endX: destination.longitude,
+          endY: destination.latitude,
+          reqCoordType: "WGS84GEO",
+          resCoordType: "WGS84GEO",
+          searchOption: "0",
+          trafficInfo: "Y",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!upstream.ok) throw new UpstreamStatusError(upstream.status);
+      return { status: upstream.status, value: parseDrivingEstimates(await upstream.json()) };
+    }));
+}
+
+function parseDrivingEstimates(payload: unknown): TravelEstimate[] {
+  const source = payload as { features?: unknown } | null;
+  const features: TmapFeature[] = Array.isArray(source?.features) ? source.features as TmapFeature[] : [];
   const summary = features.find((feature) => Number.isFinite(Number(feature.properties?.totalTime)))?.properties as
     | Record<string, unknown>
     | undefined;
@@ -588,82 +664,100 @@ async function drivingEstimates(origin: Coordinate, destination: Coordinate): Pr
   const taxiFare = Number(summary?.taxiFare);
   const calculatedAt = new Date().toISOString();
   return [
-    { mode: "자가용", minutes, distanceMeters, source: "route", provider: "TMAP", calculatedAt },
+    { mode: "자가용", minutes, distanceMeters, walkMinutes: 0, source: "route", provider: "TMAP", calculatedAt, basis: "traffic" },
     {
       mode: "택시",
       minutes,
       distanceMeters,
+      walkMinutes: 0,
       fareWon: Number.isFinite(taxiFare) && taxiFare > 0 ? Math.round(taxiFare) : undefined,
       source: "route",
       provider: "TMAP",
       calculatedAt,
+      basis: "traffic",
     },
   ];
 }
 
 /**
- * Bus and subway from the timetables. TMAP answers with whole journeys rather than per-mode times,
- * so each itinerary is filed under what it mostly is: pathType 1 is subway, 2 is bus, 3 is both and
- * is offered as either only when that mode has nothing of its own.
+ * Bus and subway from the timetables, for the departure time the schedule implies rather than for
+ * now: a 09:00 appointment next Tuesday is answered with Tuesday morning's service. The summary
+ * carries the legs without their drawn shapes; the detail lookup keeps the shapes for the map.
  */
-async function transitEstimates(origin: Coordinate, destination: Coordinate): Promise<TravelEstimate[]> {
-  const upstream = await fetch(TMAP_TRANSIT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
-    body: JSON.stringify({
-      startX: String(origin.longitude),
-      startY: String(origin.latitude),
-      endX: String(destination.longitude),
-      endY: String(destination.latitude),
-      count: 10,
-      lang: 0,
-      format: "json",
-    }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!upstream.ok) return [];
-  const payload = await upstream.json();
-  const itineraries = payload?.metaData?.plan?.itineraries;
-  if (!Array.isArray(itineraries)) return [];
-  const calculatedAt = new Date().toISOString();
-
-  const best = new Map<TravelMode, TravelEstimate>();
-  const mixed: { pathType: number; estimate: TravelEstimate }[] = [];
-  for (const itinerary of itineraries as Record<string, unknown>[]) {
-    const seconds = Number(itinerary.totalTime);
-    if (!Number.isFinite(seconds) || seconds <= 0) continue;
-    const pathType = Number(itinerary.pathType);
-    const mode: TravelMode | null = pathType === 1 ? "지하철" : pathType === 2 ? "버스" : null;
-    const estimate: TravelEstimate = {
-      mode: mode ?? "지하철",
-      minutes: minutesFromSeconds(seconds),
-      distanceMeters: Math.max(0, Math.round(Number(itinerary.totalDistance) || 0)),
-      fareWon: fareOf(itinerary),
-      transferCount: Number.isFinite(Number(itinerary.transferCount)) ? Number(itinerary.transferCount) : undefined,
-      source: "route",
-      provider: "TMAP",
-      calculatedAt,
-    };
-    if (!mode) {
-      mixed.push({ pathType, estimate });
-      continue;
-    }
-    const current = best.get(mode);
-    if (!current || estimate.minutes < current.minutes) best.set(mode, estimate);
-  }
-  // A journey that uses both is still a real answer for whichever of the two has none of its own.
-  for (const mode of ["지하철", "버스"] as TravelMode[]) {
-    if (best.has(mode)) continue;
-    const fallback = mixed.sort((left, right) => left.estimate.minutes - right.estimate.minutes)[0];
-    if (fallback) best.set(mode, { ...fallback.estimate, mode });
-  }
-  return [...best.values()];
+async function transitRoutes(
+  origin: Coordinate,
+  destination: Coordinate,
+  departureAt: string | undefined,
+  { detail }: { detail: boolean },
+): Promise<TransitRoute[]> {
+  const cache = detail ? transitDetailCache : transitSummaryCache;
+  return cache.getOrCreate(transitCacheKey(origin, destination, departureAt, detail ? "detail" : "summary"), ROUTE_CACHE_TTL_MS, () =>
+    measured("TMAP", detail ? "transit-detail" : "transit", async () => {
+      const searchDttm = departureAt ? tmapSearchDttm(departureAt) : null;
+      const upstream = await fetch(TMAP_TRANSIT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
+        body: JSON.stringify({
+          startX: String(origin.longitude),
+          startY: String(origin.latitude),
+          endX: String(destination.longitude),
+          endY: String(destination.latitude),
+          count: 10,
+          lang: 0,
+          format: "json",
+          ...(searchDttm ? { searchDttm } : {}),
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!upstream.ok) throw new UpstreamStatusError(upstream.status);
+      const routes = normalizeTmapItineraries(await upstream.json(), {
+        calculatedAt: new Date().toISOString(),
+        departureAt: searchDttm ? departureAt : undefined,
+        withShape: detail,
+      });
+      return { status: upstream.status, value: routes };
+    }));
 }
 
-function fareOf(itinerary: Record<string, unknown>): number | undefined {
-  const fare = (itinerary.fare as Record<string, unknown> | undefined)?.regular as Record<string, unknown> | undefined;
-  const total = Number(fare?.totalFare);
-  return Number.isFinite(total) && total > 0 ? Math.round(total) : undefined;
+async function transitEstimates(origin: Coordinate, destination: Coordinate, departureAt: string | undefined): Promise<TravelEstimate[]> {
+  const best = bestTransitRoutePerMode(await transitRoutes(origin, destination, departureAt, { detail: false }));
+  return (["버스", "지하철"] as const).flatMap((mode) => {
+    const route = best[mode];
+    if (!route) return [];
+    const estimate: TravelEstimate = {
+      mode,
+      minutes: route.minutes,
+      distanceMeters: route.distanceMeters,
+      fareWon: route.fareWon,
+      transferCount: route.transferCount,
+      walkMinutes: route.walkMinutes,
+      source: "route",
+      provider: "TMAP",
+      calculatedAt: route.calculatedAt,
+      basis: "timetable",
+      firstBoarding: route.firstBoarding,
+    };
+    if (route.departureAt) estimate.departureAt = route.departureAt;
+    return [estimate];
+  });
+}
+
+/** The ISO departure instant the client asked about, or undefined when it asked about now. */
+function departureAtOf(body: Record<string, unknown>): string | undefined {
+  const value = body.departureAt;
+  if (typeof value !== "string") return undefined;
+  const instant = Date.parse(value);
+  if (!Number.isFinite(instant)) return undefined;
+  // A departure already behind us is answered for now: TMAP has no timetable for the past.
+  return instant < Date.now() ? undefined : new Date(instant).toISOString();
+}
+
+function coordinatePair(body: Record<string, unknown>): { origin: Coordinate; destination: Coordinate } | null {
+  const origin = body.origin as Coordinate | undefined;
+  const destination = body.destination as Coordinate | undefined;
+  const values = [origin?.latitude, origin?.longitude, destination?.latitude, destination?.longitude];
+  if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) return null;
+  return { origin: origin!, destination: destination! };
 }
 
 /**
@@ -679,12 +773,12 @@ async function travelEstimates(request: Request): Promise<Response> {
     return jsonResponse({ error: { code: "INVALID_BODY", message: "경로 요청 형식이 올바르지 않습니다." } }, 400);
   }
 
-  const origin = body.origin as Coordinate | undefined;
-  const destination = body.destination as Coordinate | undefined;
-  const values = [origin?.latitude, origin?.longitude, destination?.latitude, destination?.longitude];
-  if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) {
+  const pair = coordinatePair(body);
+  if (!pair) {
     return jsonResponse({ error: { code: "INVALID_COORDINATES", message: "출발지와 도착지 좌표를 확인해 주세요." } }, 400);
   }
+  const { origin, destination } = pair;
+  const departureAt = departureAtOf(body);
 
   const requested = Array.isArray(body.modes)
     ? (body.modes as unknown[]).filter((mode): mode is TravelMode => TRAVEL_MODES.includes(mode as TravelMode))
@@ -692,16 +786,149 @@ async function travelEstimates(request: Request): Promise<Response> {
   const wanted = new Set<TravelMode>(requested.length ? requested : TRAVEL_MODES);
 
   const [walk, driving, transit] = await Promise.all([
-    wanted.has("도보") ? walkingEstimate(origin!, destination!).catch(() => null) : Promise.resolve(null),
-    wanted.has("자가용") || wanted.has("택시") ? drivingEstimates(origin!, destination!).catch(() => []) : Promise.resolve([]),
-    wanted.has("버스") || wanted.has("지하철") ? transitEstimates(origin!, destination!).catch(() => []) : Promise.resolve([]),
+    wanted.has("도보") ? walkingEstimate(origin, destination).catch(() => null) : Promise.resolve(null),
+    wanted.has("자가용") || wanted.has("택시") ? drivingEstimates(origin, destination).catch(() => []) : Promise.resolve([]),
+    wanted.has("버스") || wanted.has("지하철") ? transitEstimates(origin, destination, departureAt).catch(() => []) : Promise.resolve([]),
   ]);
 
   const estimates: Record<string, TravelEstimate> = {};
   for (const estimate of [walk, ...driving, ...transit]) {
     if (estimate && wanted.has(estimate.mode)) estimates[estimate.mode] = estimate;
   }
-  return jsonResponse({ estimates });
+  return jsonResponse({ estimates, departureAt: departureAt ?? null });
+}
+
+/** The full transit itineraries — legs, stops, drawn shapes — for the screens that show them. */
+async function transitRouteDetails(request: Request): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: { code: "INVALID_BODY", message: "경로 요청 형식이 올바르지 않습니다." } }, 400);
+  }
+  const pair = coordinatePair(body);
+  if (!pair) {
+    return jsonResponse({ error: { code: "INVALID_COORDINATES", message: "출발지와 도착지 좌표를 확인해 주세요." } }, 400);
+  }
+  const departureAt = departureAtOf(body);
+  try {
+    const routes = await transitRoutes(pair.origin, pair.destination, departureAt, { detail: true });
+    return jsonResponse({ routes, departureAt: departureAt ?? null });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Missing required secret:")) throw error;
+    if (error instanceof UpstreamStatusError) return upstreamError("tmap", error.status);
+    return upstreamError("tmap", error instanceof DOMException && error.name === "TimeoutError" ? 504 : 503);
+  }
+}
+
+function tagoUrl(base: string, params: Record<string, string>): URL {
+  const url = new URL(base);
+  // The secret is the portal's *Decoding* key, like KMA_SERVICE_KEY; searchParams encodes it once.
+  url.searchParams.set("serviceKey", requiredSecret("TAGO_SERVICE_KEY"));
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url;
+}
+
+function arrivalOutcome(error: unknown): Extract<TransitArrivalResult, { status: "unavailable" }> {
+  const checkedAt = new Date().toISOString();
+  if (error instanceof DOMException && error.name === "TimeoutError") return { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "timeout" };
+  if (error instanceof UpstreamStatusError && error.status === 429) return { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "rate-limited" };
+  return { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "upstream" };
+}
+
+/**
+ * Realtime arrivals at the stop the chosen route boards first. Subway is not TAGO's to answer, a
+ * stop it cannot find is reported as unsupported rather than guessed, and a provider that does not
+ * answer is reported as unavailable so the app keeps its last valid answer with its own timestamp.
+ */
+async function transitArrivals(request: Request): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: { code: "INVALID_BODY", message: "도착정보 요청 형식이 올바르지 않습니다." } }, 400);
+  }
+  const boarding = body.boarding as Record<string, unknown> | undefined;
+  const stop = boarding?.stop as Record<string, unknown> | undefined;
+  const coordinateValue = stop?.coordinate as Record<string, unknown> | undefined;
+  const latitude = Number(coordinateValue?.latitude);
+  const longitude = Number(coordinateValue?.longitude);
+  const routeName = typeof boarding?.routeName === "string" ? boarding.routeName.trim() : "";
+  const stopName = typeof stop?.name === "string" ? stop.name.trim() : "";
+  const mode = boarding?.mode;
+  if (!routeName || !stopName || !Number.isFinite(latitude) || !Number.isFinite(longitude) || (mode !== "버스" && mode !== "지하철")) {
+    return jsonResponse({ error: { code: "INVALID_BODY", message: "도착정보 요청 형식이 올바르지 않습니다." } }, 400);
+  }
+  const checkedAt = new Date().toISOString();
+  if (mode === "지하철") {
+    return jsonResponse({ arrival: { status: "unsupported", provider: "TAGO", checkedAt, reason: "subway" } satisfies TransitArrivalResult });
+  }
+  if (!Deno.env.get("TAGO_SERVICE_KEY")) {
+    return jsonResponse({ arrival: { status: "unsupported", provider: "TAGO", checkedAt, reason: "not-configured" } satisfies TransitArrivalResult });
+  }
+
+  const near = { latitude, longitude };
+  const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${stopName}|${routeName}`;
+  const cached = arrivalsCache.get(key);
+  if (cached) {
+    metrics.record("TAGO", "arrivals", "cached");
+    return jsonResponse({ arrival: cached });
+  }
+  const arrival = await arrivalsCache.getOrCreate(key, ARRIVALS_CACHE_TTL_MS, async (): Promise<TransitArrivalResult> => {
+    let station;
+    try {
+      station = await measured("TAGO", "stations", async () => {
+        const upstream = await fetch(tagoUrl(TAGO_NEARBY_STATIONS_URL, {
+          gpsLati: String(latitude),
+          gpsLong: String(longitude),
+          numOfRows: "30",
+          pageNo: "1",
+          _type: "json",
+        }), { signal: AbortSignal.timeout(8_000) });
+        if (!upstream.ok) throw new UpstreamStatusError(upstream.status);
+        const payload = await upstream.json();
+        const outcome = tagoOutcome(payload);
+        if (outcome !== "ok") throw new UpstreamStatusError(outcome === "rate-limited" ? 429 : 502);
+        return { status: 200, value: matchTagoStation(normalizeTagoStations(payload, near), stopName) };
+      });
+    } catch (error) {
+      return arrivalOutcome(error);
+    }
+    if (station === null) return { status: "unsupported", provider: "TAGO", checkedAt, reason: "no-station" };
+    const found = station;
+    try {
+      return await measured("TAGO", "arrivals", async () => {
+        const upstream = await fetch(tagoUrl(TAGO_STATION_ARRIVALS_URL, {
+          cityCode: found.cityCode,
+          nodeId: found.nodeId,
+          numOfRows: "50",
+          pageNo: "1",
+          _type: "json",
+        }), { signal: AbortSignal.timeout(8_000) });
+        if (upstream.status === 429) return { status: 429, value: { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "rate-limited" } as TransitArrivalResult };
+        if (!upstream.ok) return { status: upstream.status, value: { status: "unavailable", provider: "TAGO", checkedAt, retryable: upstream.status >= 500, reason: "upstream" } as TransitArrivalResult };
+        const payload = await upstream.json();
+        const outcome = tagoOutcome(payload);
+        if (outcome === "rate-limited") return { status: 429, value: { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "rate-limited" } as TransitArrivalResult };
+        if (outcome === "failed") return { status: 502, value: { status: "unavailable", provider: "TAGO", checkedAt, retryable: true, reason: "upstream" } as TransitArrivalResult };
+        const arrivals = normalizeTagoArrivals(payload, { routeName, checkedAt });
+        if (!arrivals.length) return { status: 200, value: { status: "unsupported", provider: "TAGO", checkedAt, reason: "no-route" } as TransitArrivalResult };
+        return {
+          status: 200,
+          value: {
+            status: "realtime",
+            provider: "TAGO",
+            checkedAt,
+            stop: { name: found.name, nodeId: found.nodeId, cityCode: found.cityCode },
+            arrivals,
+          } as TransitArrivalResult,
+        };
+      });
+    } catch (error) {
+      return arrivalOutcome(error);
+    }
+  });
+  return jsonResponse({ arrival });
 }
 
 async function walkingRoute(request: Request): Promise<Response> {
@@ -791,8 +1018,16 @@ Deno.serve(async (request) => {
     if (request.method === "GET" && path.endsWith("/v1/reverse-geocode")) return await reverseGeocode(url);
     if (request.method === "POST" && path.endsWith("/v1/routes/walk")) return await walkingRoute(request);
     if (request.method === "POST" && path.endsWith("/v1/routes/estimates")) return await travelEstimates(request);
+    if (request.method === "POST" && path.endsWith("/v1/routes/transit")) return await transitRouteDetails(request);
+    if (request.method === "POST" && path.endsWith("/v1/arrivals")) return await transitArrivals(request);
     if (request.method === "GET" && path.endsWith("/health")) {
-      return jsonResponse({ status: "ok", service: "timeagent-mobility" });
+      // Per-provider outcomes and latency since the instance started, with nothing that was asked.
+      return jsonResponse({
+        status: "ok",
+        service: "timeagent-mobility",
+        providers: metrics.snapshot(),
+        realtimeArrivals: Deno.env.get("TAGO_SERVICE_KEY") ? "configured" : "not-configured",
+      });
     }
 
     return jsonResponse({ error: { code: "NOT_FOUND", message: "지원하지 않는 endpoint입니다." } }, 404);

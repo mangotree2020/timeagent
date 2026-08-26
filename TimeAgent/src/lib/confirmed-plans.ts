@@ -92,7 +92,9 @@ export function spawnNextRecurringPlans(plans: ConfirmedSchedulePlan[], now = Da
       version: CONFIRMED_PLANS_VERSION,
       id: `${seriesId}@${appointmentAt}`,
       schedule: { ...plan.schedule, date: dateText, routines: plan.schedule.routines.map((routine) => ({ ...routine })) },
-      plan: { ...plan.plan, timeline: plan.plan.timeline.map((step) => ({ ...step })) },
+      // The next occurrence keeps the minutes but not the lookup behind them: the timetable, the
+      // first boarding, and the calculated-at stamp belonged to this week, and are looked up again.
+      plan: { ...withoutTravelEstimate(plan.plan), timeline: plan.plan.timeline.map((step) => ({ ...step })) },
       appointmentAt,
       prepStartAt: appointmentAt - (plan.appointmentAt - plan.prepStartAt),
       confirmedAt: now,
@@ -296,4 +298,9 @@ function isRecord(value: unknown): value is Record<string, any> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function withoutTravelEstimate(plan: SchedulePlan): SchedulePlan {
+  const { travelEstimate: _lookup, ...rest } = plan;
+  return rest;
 }

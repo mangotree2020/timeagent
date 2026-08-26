@@ -24,6 +24,7 @@ import {
   markConfirmedPlanState,
   removeConfirmedPlan,
   replaceConfirmedPlan,
+  resolveScheduleDateTime,
   saveConfirmedPlans,
   setPlanAlarmEnabled,
   settlePastConfirmedPlans,
@@ -80,6 +81,22 @@ import {
 /** One destination, one set of measurements. The coordinate names it; the typed name does not. */
 function placeKey(coordinate: { latitude: number; longitude: number } | null | undefined) {
   return coordinate ? `${coordinate.latitude},${coordinate.longitude}` : null;
+}
+
+/**
+ * The instant the person is expected to set off, as an ISO string, for the timetable lookup. The
+ * journey time is what the lookup will tell us, so it is counted back with the distance arithmetic
+ * — close enough to land in the right part of the timetable, which is all the lookup needs.
+ * Rounded to five minutes so the answer's cache key stays the same while a time is being picked,
+ * and null while the appointment has no usable time.
+ */
+function expectedDepartureAt(schedule: ScheduleDraft): string | null {
+  if (!/^\d{1,2}:\d{2}$/.test(schedule.appointmentTime)) return null;
+  const appointmentAt = resolveScheduleDateTime(schedule.date, schedule.appointmentTime);
+  if (!Number.isFinite(appointmentAt)) return null;
+  const guess = travelMinutesForMode(schedule.transport, {}, schedule.destinationDistanceMeters)?.minutes ?? 30;
+  const slot = 5 * 60_000;
+  return new Date(Math.floor((appointmentAt - guess * 60_000) / slot) * slot).toISOString();
 }
 
 type ScheduleContextValue = {
@@ -207,17 +224,26 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
     personalizationRef.current = profile;
     setPersonalizationProfile(profile);
   }, []);
-  const createCurrentPlan = useCallback((schedule: ScheduleDraft) => createSchedulePlan(schedule, {
-    now: currentClock(),
-    personalization: createPlanPersonalization(personalizationRef.current, schedule),
+  const createCurrentPlan = useCallback((schedule: ScheduleDraft) => {
     // How long the journey takes, asked of the road and the timetables rather than assumed. Absent
     // until the lookup lands, and absent for good if the providers cannot answer; the planner then
-    // measures the distance itself.
-    travelMinutes: travelEstimateFor(schedule)?.minutes,
-  }), [travelEstimateFor]);
+    // measures the distance itself. The lookup rides along on the plan so a saved plan still shows
+    // its fare, transfers, and first boarding after a restart.
+    const estimate = travelEstimateFor(schedule);
+    return createSchedulePlan(schedule, {
+      now: currentClock(),
+      personalization: createPlanPersonalization(personalizationRef.current, schedule),
+      travelMinutes: estimate?.minutes,
+      travelEstimate: estimate?.source === 'route' ? estimate : undefined,
+    });
+  }, [travelEstimateFor]);
   useEffect(() => { pendingScheduleRef.current = pendingSchedule; }, [pendingSchedule]);
 
   const destinationKey = placeKey(draft.destinationCoordinate);
+  // Timetables answer for a moment, so the moment is part of the question: the appointment's date
+  // and time decide which departure the bus and subway times are looked up for, and a changed
+  // appointment time is a new question whose previous answer is thrown away.
+  const departureAt = expectedDepartureAt(draft);
   useEffect(() => {
     let active = true;
     const destination = draft.destinationCoordinate;
@@ -228,17 +254,20 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
         if (active) applyTravelEstimates(null, {});
         return;
       }
+      // A new destination starts from nothing. The same destination at a new time keeps its last
+      // valid answer while the timetable is asked again: a lookup that fails must not turn a plan
+      // that had real numbers back into a distance guess.
+      if (travelEstimatesRef.current.place !== destinationKey) applyTravelEstimates(destinationKey, {});
       const origin = await readCurrentCoordinate();
       if (!active) return;
-      if (!origin) {
-        applyTravelEstimates(destinationKey, {});
-        return;
-      }
+      if (!origin) return;
       try {
         const estimates = await createConfiguredMobilityProvider()
-          .getTravelEstimates({ origin, destination, modes: ROUTED_TRANSPORT_MODES });
+          .getTravelEstimates({ origin, destination, modes: ROUTED_TRANSPORT_MODES, departureAt: departureAt ?? undefined });
         if (!active) return;
-        applyTravelEstimates(destinationKey, estimates);
+        // Modes the providers could not answer for this time keep their previous answer, which is
+        // still the last valid route for this destination, stamped with when it was calculated.
+        applyTravelEstimates(destinationKey, { ...travelEstimatesRef.current.estimates, ...estimates });
         // A plan made before this landed was timed by distance arithmetic. It is made again now,
         // for the place it is actually to — otherwise the screen keeps the guess until someone
         // edits the schedule, which is exactly what nobody would think to do.
@@ -246,16 +275,20 @@ export function ScheduleProvider({ children }: PropsWithChildren) {
           const schedule = pendingScheduleRef.current;
           if (!current || !schedule || placeKey(schedule.destinationCoordinate) !== destinationKey) return current;
           const next = createCurrentPlan(schedule);
-          return next.travelMinutes === current.travelMinutes ? current : next;
+          // Same minutes is not the same answer: the lookup may add fare, transfers, and the first
+          // boarding to a plan that was timed by distance arithmetic with the same number.
+          const sameEvidence = next.travelEstimate?.calculatedAt === current.travelEstimate?.calculatedAt
+            && next.travelEstimate?.mode === current.travelEstimate?.mode;
+          return next.travelMinutes === current.travelMinutes && sameEvidence ? current : next;
         });
       } catch {
-        // Nothing to tell anyone: the planner measures the distance itself when this is empty.
-        if (active) applyTravelEstimates(destinationKey, {});
+        // Nothing to tell anyone: the last valid answer stays, and the planner measures the
+        // distance itself when there never was one.
       }
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyTravelEstimates, createCurrentPlan, destinationKey]);
+  }, [applyTravelEstimates, createCurrentPlan, destinationKey, departureAt]);
 
   const startNewDraft = useCallback((values: Partial<ScheduleDraft> = {}) => {
     const generation = ++draftRequestGeneration.current;

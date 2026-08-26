@@ -23,6 +23,7 @@ NAVER_CLIENT_SECRET=발급받은_Client_Secret
 TMAP_APP_KEY=발급받은_TMAP_App_Key
 GEMINI_API_KEY=발급받은_Gemini_API_Key
 KMA_SERVICE_KEY=공공데이터포털에서_받은_Decoding_인증키
+TAGO_SERVICE_KEY=공공데이터포털_버스도착정보_Decoding_인증키
 ```
 
 현재 `.gitignore`는 `.env.local`과 `.env.*`를 제외하고 `.env.example`만 추적하도록 설정돼 있다. 비밀값이 담긴 파일에 `git add -f`를 사용하지 않는다.
@@ -74,6 +75,7 @@ Supabase Edge Function Secrets에 다음을 암호화된 비밀값으로 등록�
 - `TMAP_APP_KEY`
 - `GEMINI_API_KEY`
 - `KMA_SERVICE_KEY`
+- `TAGO_SERVICE_KEY` (국토교통부 `BusSttnInfoInqireService`·`ArvlInfoInqireService` 활용신청 후 발급. 미등록이면 실시간 도착정보 없이 시간표 기준으로 동작)
 
 선택 설정:
 

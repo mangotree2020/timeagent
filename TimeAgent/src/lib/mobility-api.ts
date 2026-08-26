@@ -9,8 +9,18 @@ import {
   WalkingRouteRequest,
 } from '@/lib/journey';
 import {
+  TransitArrival,
+  TransitArrivalProvider,
+  TransitArrivalRequest,
+  TransitArrivalResult,
+} from '@/lib/transit-arrival';
+import { TransitLeg, TransitRouteDetail } from '@/lib/transit-route';
+import {
   isRoutedTransportMode,
+  TransitBoarding,
+  TransitStop,
   TravelEstimate,
+  TravelEstimateBasis,
   TravelEstimateRequest,
   TravelEstimates,
 } from '@/lib/travel-estimate';
@@ -50,7 +60,7 @@ export class MobilityApiError extends Error {
   }
 }
 
-export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchProvider, RouteProvider {
+export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchProvider, RouteProvider, TransitArrivalProvider {
   private readonly baseUrl: string;
   private readonly fetcher: MobilityFetcher;
   private readonly timeoutMs: number;
@@ -153,9 +163,45 @@ export class SupabaseMobilityProvider implements GeocodingProvider, PlaceSearchP
         origin: request.origin,
         destination: request.destination,
         modes: request.modes,
+        departureAt: request.departureAt,
       }),
     }, request.signal);
     return parseTravelEstimates(payload);
+  }
+
+  /**
+   * The full transit itineraries — legs, stops, drawn shapes — for the screens that show them.
+   * Asked only when such a screen opens; the plan itself is made from the summary.
+   */
+  async getTransitRouteDetails(request: TravelEstimateRequest): Promise<TransitRouteDetail[]> {
+    const payload = await this.requestJson('/v1/routes/transit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin: request.origin, destination: request.destination, departureAt: request.departureAt }),
+    }, request.signal);
+    const routes = isRecord(payload) && Array.isArray(payload.routes) ? payload.routes.flatMap((route) => parseTransitRouteDetail(route) ?? []) : null;
+    if (!routes) {
+      throw new MobilityApiError('대중교통 경로 응답 형식이 올바르지 않습니다.', 'INVALID_RESPONSE', false, 200);
+    }
+    return routes;
+  }
+
+  /**
+   * Live arrivals at the first stop of the chosen route. The answer is one of three shapes and all
+   * three are answers: live arrivals, "this provider has nothing here", or "the provider did not
+   * answer" — the caller keeps its last valid arrivals in that last case.
+   */
+  async getTransitArrival(request: TransitArrivalRequest): Promise<TransitArrivalResult> {
+    const payload = await this.requestJson('/v1/arrivals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ boarding: request.boarding }),
+    }, request.signal);
+    const arrival = isRecord(payload) ? parseTransitArrival(payload.arrival) : null;
+    if (!arrival) {
+      throw new MobilityApiError('도착정보 응답 형식이 올바르지 않습니다.', 'INVALID_RESPONSE', false, 200);
+    }
+    return arrival;
   }
 
   private async requestJson(path: string, init: RequestInit, externalSignal?: AbortSignal) {
@@ -267,9 +313,135 @@ function parseTravelEstimates(value: unknown): TravelEstimates {
     if (Number.isFinite(fareWon) && fareWon > 0) estimate.fareWon = Math.round(fareWon);
     const transferCount = Number(entry.transferCount);
     if (Number.isInteger(transferCount) && transferCount >= 0) estimate.transferCount = transferCount;
+    const walkMinutes = Number(entry.walkMinutes);
+    if (Number.isFinite(walkMinutes) && walkMinutes >= 0) estimate.walkMinutes = Math.round(walkMinutes);
+    if (isEstimateBasis(entry.basis)) estimate.basis = entry.basis;
+    if (typeof entry.departureAt === 'string' && Number.isFinite(Date.parse(entry.departureAt))) estimate.departureAt = entry.departureAt;
+    if (entry.firstBoarding !== undefined) estimate.firstBoarding = parseTransitBoarding(entry.firstBoarding);
     estimates[mode] = estimate;
   }
   return estimates;
+}
+
+function isEstimateBasis(value: unknown): value is TravelEstimateBasis {
+  return value === 'timetable' || value === 'traffic' || value === 'measured';
+}
+
+/** The first boarding as the server described it, or null when it is missing or malformed. */
+function parseTransitBoarding(value: unknown): TransitBoarding | null {
+  if (!isRecord(value)) return null;
+  const mode = value.mode;
+  const stop = value.stop;
+  if ((mode !== '버스' && mode !== '지하철') || typeof value.routeName !== 'string' || !value.routeName || !isRecord(stop)) return null;
+  if (typeof stop.name !== 'string' || !stop.name) return null;
+  const walkMinutesToStop = Number(value.walkMinutesToStop);
+  const boarding: TransitBoarding = {
+    mode,
+    routeName: value.routeName,
+    stop: { name: stop.name, coordinate: isCoordinate(stop.coordinate) ? stop.coordinate : null },
+    walkMinutesToStop: Number.isFinite(walkMinutesToStop) && walkMinutesToStop >= 0 ? Math.round(walkMinutesToStop) : 0,
+  };
+  if (typeof value.routeId === 'string' && value.routeId) boarding.routeId = value.routeId;
+  if (typeof stop.stationId === 'string' && stop.stationId) boarding.stop.stationId = stop.stationId;
+  return boarding;
+}
+
+function parseTransitStop(value: unknown): TransitStop | null {
+  if (!isRecord(value) || typeof value.name !== 'string' || !value.name) return null;
+  const stop: TransitStop = { name: value.name, coordinate: isCoordinate(value.coordinate) ? value.coordinate : null };
+  if (typeof value.stationId === 'string' && value.stationId) stop.stationId = value.stationId;
+  return stop;
+}
+
+function parseTransitLeg(value: unknown): TransitLeg | null {
+  if (!isRecord(value)) return null;
+  const mode = value.mode;
+  if (mode !== '도보' && mode !== '버스' && mode !== '지하철' && mode !== '기타') return null;
+  const from = parseTransitStop(value.from);
+  const to = parseTransitStop(value.to);
+  const minutes = Number(value.minutes);
+  const distanceMeters = Number(value.distanceMeters);
+  if (!from || !to || !Number.isFinite(minutes) || minutes < 0) return null;
+  const leg: TransitLeg = { mode, minutes: Math.round(minutes), distanceMeters: Number.isFinite(distanceMeters) && distanceMeters >= 0 ? Math.round(distanceMeters) : 0, from, to };
+  if (typeof value.routeName === 'string' && value.routeName) leg.routeName = value.routeName;
+  if (typeof value.routeId === 'string' && value.routeId) leg.routeId = value.routeId;
+  if (Array.isArray(value.stops)) {
+    const stops = value.stops.flatMap((stop) => parseTransitStop(stop) ?? []);
+    if (stops.length) leg.stops = stops;
+  }
+  if (Array.isArray(value.path)) {
+    const path = value.path.filter(isCoordinate);
+    if (path.length >= 2) leg.path = path;
+  }
+  return leg;
+}
+
+/** One detailed itinerary as the server sent it, or null when it cannot be trusted. */
+function parseTransitRouteDetail(value: unknown): TransitRouteDetail | null {
+  if (!isRecord(value)) return null;
+  const mode = value.mode;
+  const minutes = Number(value.minutes);
+  if ((mode !== '버스' && mode !== '지하철') || !Number.isFinite(minutes) || minutes <= 0 || !Array.isArray(value.legs)) return null;
+  if (typeof value.calculatedAt !== 'string' || !Number.isFinite(Date.parse(value.calculatedAt))) return null;
+  const legs = value.legs.flatMap((leg) => parseTransitLeg(leg) ?? []);
+  const distanceMeters = Number(value.distanceMeters);
+  const transferCount = Number(value.transferCount);
+  const walkMinutes = Number(value.walkMinutes);
+  const fareWon = Number(value.fareWon);
+  const route: TransitRouteDetail = {
+    mode,
+    pathType: Number.isFinite(Number(value.pathType)) ? Number(value.pathType) : 0,
+    minutes: Math.round(minutes),
+    distanceMeters: Number.isFinite(distanceMeters) && distanceMeters >= 0 ? Math.round(distanceMeters) : 0,
+    transferCount: Number.isInteger(transferCount) && transferCount >= 0 ? transferCount : 0,
+    walkMinutes: Number.isFinite(walkMinutes) && walkMinutes >= 0 ? Math.round(walkMinutes) : 0,
+    basis: 'timetable',
+    provider: 'TMAP',
+    calculatedAt: value.calculatedAt,
+    firstBoarding: parseTransitBoarding(value.firstBoarding),
+    legs,
+  };
+  if (Number.isFinite(fareWon) && fareWon > 0) route.fareWon = Math.round(fareWon);
+  if (typeof value.departureAt === 'string' && Number.isFinite(Date.parse(value.departureAt))) route.departureAt = value.departureAt;
+  return route;
+}
+
+function parseTransitArrival(value: unknown): TransitArrivalResult | null {
+  if (!isRecord(value) || typeof value.checkedAt !== 'string' || !Number.isFinite(Date.parse(value.checkedAt))) return null;
+  const provider = typeof value.provider === 'string' && value.provider ? value.provider : 'TAGO';
+  const checkedAt = value.checkedAt;
+  if (value.status === 'realtime') {
+    const stop = value.stop;
+    if (!isRecord(stop) || typeof stop.name !== 'string' || !Array.isArray(value.arrivals)) return null;
+    const arrivals = value.arrivals.flatMap((item): TransitArrival[] => {
+      if (!isRecord(item) || typeof item.routeName !== 'string' || !item.routeName) return [];
+      const arrivalInSeconds = Number(item.arrivalInSeconds);
+      if (!Number.isFinite(arrivalInSeconds) || arrivalInSeconds < 0 || typeof item.expectedAt !== 'string' || !Number.isFinite(Date.parse(item.expectedAt))) return [];
+      const arrival: TransitArrival = { routeName: item.routeName, arrivalInSeconds: Math.round(arrivalInSeconds), expectedAt: item.expectedAt };
+      const stopsAway = Number(item.stopsAway);
+      if (Number.isInteger(stopsAway) && stopsAway >= 0) arrival.stopsAway = stopsAway;
+      if (typeof item.vehicleType === 'string' && item.vehicleType) arrival.vehicleType = item.vehicleType;
+      return [arrival];
+    });
+    return {
+      status: 'realtime',
+      provider,
+      checkedAt,
+      stop: { name: stop.name, nodeId: String(stop.nodeId ?? ''), cityCode: String(stop.cityCode ?? '') },
+      arrivals,
+    };
+  }
+  if (value.status === 'unsupported') {
+    const reason = value.reason;
+    if (reason !== 'subway' && reason !== 'no-station' && reason !== 'no-route' && reason !== 'not-configured') return null;
+    return { status: 'unsupported', provider, checkedAt, reason };
+  }
+  if (value.status === 'unavailable') {
+    const reason = value.reason;
+    if (reason !== 'timeout' && reason !== 'rate-limited' && reason !== 'upstream') return null;
+    return { status: 'unavailable', provider, checkedAt, retryable: value.retryable !== false, reason };
+  }
+  return null;
 }
 
 function isRoutePlan(value: unknown): value is RoutePlan {

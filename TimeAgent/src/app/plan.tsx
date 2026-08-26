@@ -6,11 +6,13 @@ import { Button, Card, Header, Screen, StatusPill, useAppType } from '@/componen
 import { AppIcon, IconButton } from '@/components/app-icon';
 import { DestinationMap } from '@/components/destination-map';
 import { Timeline } from '@/components/timeline';
+import { TransitEvidence } from '@/components/transit-evidence';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { ExpoLocationProvider } from '@/lib/device-location-provider';
 
 import { createFallbackWalkingRoute, RoutePlan } from '@/lib/journey';
+import { pickTransitRouteDetail, routePlanFromTransit } from '@/lib/transit-route';
 import { createConfiguredMobilityProvider } from '@/lib/mobility-api';
 import { createPlanPersonalization } from '@/lib/personalization';
 import { createSchedulePlan, currentClock, isPlannableSchedule, PlanStatus, targetPrepStartClock } from '@/lib/planning';
@@ -36,8 +38,12 @@ export default function PlanScreen() {
   const plannable = isPlannableSchedule(schedule);
   // The same real journey time the rest of the app plans with. Computing it here without the
   // estimates would print a different departure time from the one that gets confirmed.
-  const travelMinutes = travelEstimateFor(schedule)?.minutes;
-  const plan = pendingPlan ?? activePlan ?? (plannable ? createSchedulePlan(schedule, { travelMinutes }) : null);
+  const liveEstimate = travelEstimateFor(schedule);
+  const travelMinutes = liveEstimate?.minutes;
+  const plan = pendingPlan ?? activePlan ?? (plannable ? createSchedulePlan(schedule, { travelMinutes, travelEstimate: liveEstimate?.source === 'route' ? liveEstimate : undefined }) : null);
+  // A saved plan carries the lookup it was timed with, so its evidence survives a restart; a plan
+  // still being made shows whatever the lookup has answered so far.
+  const estimate = plan?.travelEstimate ?? liveEstimate;
   const isPending = !!pendingPlan && !!pendingSchedule;
   // Same personalization and the same journey the plan itself used, or the hint quotes a different
   // arithmetic: a plan timed with a 19-minute taxi ride, told it should have started for a 43-minute
@@ -51,6 +57,10 @@ export default function PlanScreen() {
   const destinationLatitude = schedule.destinationCoordinate?.latitude;
   const destinationLongitude = schedule.destinationCoordinate?.longitude;
   const destinationName = schedule.destination;
+
+  const mapTransitMode = estimate?.mode === '버스' || estimate?.mode === '지하철' ? estimate.mode : null;
+  const mapDepartureAt = estimate?.departureAt;
+  const mapFirstBoarding = estimate?.firstBoarding ?? null;
 
   // The route is only fetched once the map is opened, and a failure leaves the destination-only map
   // in place rather than blocking the screen.
@@ -66,16 +76,32 @@ export default function PlanScreen() {
         return;
       }
       if (cancelled) return;
+      const mobility = createConfiguredMobilityProvider();
       try {
-        const walking = await createConfiguredMobilityProvider()
-          .getWalkingRoute({ origin, destination, endName: destinationName });
+        // A bus or subway plan draws the bus or subway route — the itinerary the plan was timed
+        // with, asked for in detail only now that the map is open. Anything else draws the walk.
+        if (mapTransitMode) {
+          // A bus or subway plan is never drawn as a walk: when the itinerary cannot be fetched,
+          // the map keeps the destination alone and the card below offers the external maps.
+          let drawn: RoutePlan | null = null;
+          try {
+            const details = await mobility.getTransitRouteDetails({ origin, destination, departureAt: mapDepartureAt });
+            const chosen = pickTransitRouteDetail(details, { mode: mapTransitMode, firstBoarding: mapFirstBoarding });
+            drawn = chosen ? routePlanFromTransit(chosen, { origin, destination }) : null;
+          } catch {
+            drawn = null;
+          }
+          if (!cancelled) setRoute(drawn);
+          return;
+        }
+        const walking = await mobility.getWalkingRoute({ origin, destination, endName: destinationName });
         if (!cancelled) setRoute(walking);
       } catch {
         if (!cancelled) setRoute(createFallbackWalkingRoute({ origin, destination }));
       }
     })();
     return () => { cancelled = true; };
-  }, [destinationLatitude, destinationLongitude, destinationName, fixtureOrigin, mapOpen]);
+  }, [destinationLatitude, destinationLongitude, destinationName, fixtureOrigin, mapDepartureAt, mapFirstBoarding, mapOpen, mapTransitMode]);
   const confirm = async () => {
     try {
       setConfirmError('');
@@ -148,6 +174,7 @@ export default function PlanScreen() {
         </Card>
       ) : null}
       <Card style={styles.coach}><View style={styles.coachIcon}><AppIcon name="coach" size={18} /></View><Text style={[type.bodyMuted, { flex: 1 }]}>{coachMessage(plan.status, plan.departure, plan.arrival)}</Text></Card>
+      <TransitEvidence schedule={schedule} plan={plan} estimate={estimate ?? null} />
       <Text style={type.heading}>전체 타임라인</Text>
       <Card><Timeline steps={plan.timeline} transport={schedule.transport} /></Card>
       <View style={styles.actions}>

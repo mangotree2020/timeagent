@@ -1,5 +1,6 @@
 import { TimelineStep } from '@/data/demo';
 import { resolveTransportMode, RoutineDraft, ScheduleDraft, TransportMode } from '@/lib/schedule-draft';
+import type { TravelEstimate } from '@/lib/travel-estimate';
 
 /**
  * What each mode is worth in time before anything is known about the trip. These are the answers
@@ -67,6 +68,8 @@ export type PlanStatus = {
 export type SchedulePlan = {
   preparationMinutes: number;
   travelMinutes: number;
+  /** Where travelMinutes came from — fare, transfers, first boarding — or absent for a distance guess. */
+  travelEstimate?: TravelEstimate;
   bufferMinutes: number;
   prepStart: string;
   departure: string;
@@ -103,6 +106,8 @@ export type PlanPersonalizationAdjustment = {
 type PlanningOptions = {
   now?: string;
   travelMinutes?: number;
+  /** The journey lookup behind travelMinutes, kept on the plan so a saved plan still shows its evidence. */
+  travelEstimate?: TravelEstimate;
   personalization?: PlanPersonalization;
 };
 
@@ -208,6 +213,7 @@ export function createSchedulePlan(draft: ScheduleDraft, options: PlanningOption
   return {
     preparationMinutes,
     travelMinutes,
+    ...(options.travelEstimate ? { travelEstimate: options.travelEstimate } : {}),
     bufferMinutes,
     prepStart: minutesToClock(prepStartMinutes),
     departure: minutesToClock(departureMinutes),

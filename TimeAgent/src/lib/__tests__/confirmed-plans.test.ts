@@ -231,6 +231,17 @@ describe('repeating confirmed plans', () => {
     expect(next.notificationIdentifier).toBeUndefined();
   });
 
+  test('the next occurrence keeps the minutes but not the timetable lookup', () => {
+    const looked = weeklyPlan([1, 3]);
+    const monday = { ...looked, plan: { ...looked.plan, travelEstimate: { mode: '버스' as const, minutes: 20, distanceMeters: 5000, source: 'route' as const, provider: 'TMAP', calculatedAt: '2026-08-10T09:00:00.000Z', basis: 'timetable' as const, departureAt: '2026-08-10T09:40:00.000Z', firstBoarding: { mode: '버스' as const, routeName: '101', stop: { name: '서면', coordinate: null }, walkMinutesToStop: 5 } } } };
+    const afterMonday = monday.appointmentAt + 60_000;
+    const spawned = spawnNextRecurringPlans(settlePastConfirmedPlans([monday], afterMonday), afterMonday);
+    const next = spawned.find((plan) => plan.id !== monday.id)!;
+    expect(next.plan.travelMinutes).toBe(20);
+    expect(next.plan.travelEstimate).toBeUndefined();
+    expect(spawned.find((plan) => plan.id === monday.id)?.plan.travelEstimate?.firstBoarding?.routeName).toBe('101');
+  });
+
   test('does not create a second occurrence while one is already waiting, and leaves one-offs alone', () => {
     const monday = weeklyPlan([1, 3]);
     const afterMonday = monday.appointmentAt + 60_000;

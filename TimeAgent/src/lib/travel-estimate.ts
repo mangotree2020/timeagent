@@ -10,6 +10,27 @@ export function isRoutedTransportMode(value: unknown): value is RoutedTransportM
   return ROUTED_TRANSPORT_MODES.includes(value as RoutedTransportMode);
 }
 
+/**
+ * What a routed number rests on. 'timetable' is the service at the departure time asked for,
+ * 'traffic' is the road as it was when asked, 'measured' is a walking route with neither.
+ */
+export type TravelEstimateBasis = 'timetable' | 'traffic' | 'measured';
+
+export type TransitStop = {
+  name: string;
+  coordinate: Coordinate | null;
+  stationId?: string;
+};
+
+/** The first bus or subway a transit journey boards: the only leg realtime arrivals are asked for. */
+export type TransitBoarding = {
+  mode: '버스' | '지하철';
+  routeName: string;
+  routeId?: string;
+  stop: TransitStop;
+  walkMinutesToStop: number;
+};
+
 export type TravelEstimate = {
   mode: RoutedTransportMode;
   minutes: number;
@@ -17,10 +38,16 @@ export type TravelEstimate = {
   /** Won as a fare figure from the provider, in KRW. Absent where the mode has no fare to quote. */
   fareWon?: number;
   transferCount?: number;
+  /** Minutes on foot inside the journey — to the stop, between transfers, from the last stop. */
+  walkMinutes?: number;
   /** 'route' came from a road or timetable lookup; 'distance' is this app doing arithmetic. */
   source: 'route' | 'distance';
   provider?: string;
   calculatedAt?: string;
+  basis?: TravelEstimateBasis;
+  /** The ISO instant a timetable answer was asked for; absent when it was answered for now. */
+  departureAt?: string;
+  firstBoarding?: TransitBoarding | null;
 };
 
 export type TravelEstimates = Partial<Record<RoutedTransportMode, TravelEstimate>>;
@@ -29,6 +56,8 @@ export type TravelEstimateRequest = {
   origin: Coordinate;
   destination: Coordinate;
   modes?: readonly RoutedTransportMode[];
+  /** When the person expects to set off, so timetables answer for that time rather than for now. */
+  departureAt?: string;
   signal?: AbortSignal;
 };
 
@@ -85,6 +114,31 @@ function quickestEstimate(estimates: TravelEstimates, distanceMeters: number | n
   };
 }
 
-export function travelEstimateLabel(estimate: Pick<TravelEstimate, 'source' | 'provider'>) {
-  return estimate.source === 'route' ? `${estimate.provider ?? 'TMAP'} 실시간 경로` : '거리 기반 예상';
+/**
+ * The words for where a number came from, so a timetable answer and a guess never look alike.
+ * Never a colour: the label is the status.
+ */
+export function travelEstimateLabel(estimate: Pick<TravelEstimate, 'source' | 'provider' | 'basis'>) {
+  if (estimate.source !== 'route') return '거리 기반 예상';
+  const provider = estimate.provider ?? 'TMAP';
+  if (estimate.basis === 'timetable') return `${provider} 시간표 기준`;
+  if (estimate.basis === 'traffic') return `${provider} 실시간 교통 기준`;
+  if (estimate.basis === 'measured') return `${provider} 도보 경로`;
+  return `${provider} 실시간 경로`;
+}
+
+/** "지하철 24분 · 1,450원 · 환승 1회 · 도보 8분" — the figures the acceptance criteria ask to see. */
+export function describeTravelEstimate(estimate: TravelEstimate) {
+  const parts = [`${estimate.mode} ${estimate.minutes}분`];
+  if (typeof estimate.fareWon === 'number') parts.push(`${estimate.fareWon.toLocaleString('ko-KR')}원`);
+  if (typeof estimate.transferCount === 'number') parts.push(estimate.transferCount === 0 ? '환승 없음' : `환승 ${estimate.transferCount}회`);
+  if (typeof estimate.walkMinutes === 'number' && estimate.mode !== '도보') parts.push(`도보 ${estimate.walkMinutes}분`);
+  return parts.join(' · ');
+}
+
+/** The clock a calculated-at stamp reads as, for "HH:MM 확인" text beside a number. */
+export function formatEstimateClock(value: string | undefined, now = new Date()) {
+  const date = value ? new Date(value) : now;
+  if (!Number.isFinite(date.getTime())) return '방금';
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
