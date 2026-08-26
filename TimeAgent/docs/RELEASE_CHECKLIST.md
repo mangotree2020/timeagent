@@ -33,7 +33,8 @@ TimeAgent가 있는 계정은 **`winddew71@gmail.com`의 개발자 계정 `신�
 
 1. `TimeAgent 내부 테스터` 목록에 유효한 이메일 24개가 저장됐다. 2026-08-16에 5명을 추가했으며 `dongyong5717@gmail.com`은 Play가 유효하지 않은 계정으로 판정해 제외했다. 기존 `statstar6095@gmail.com`과 `sbl2004pa@gmalil.com`도 존재하지 않는 주소로 판정돼 제외했다.
 2. Alpha가 활성화됐으며 2026-08-12 현재 Play 대시보드에서 참여를 선택한 테스터 7명이 확인됐다. Gmail에 준비된 초대 초안을 검토·발송하고 등록된 계정 중 5명 이상이 추가로 참여하도록 안내한다. 이메일 목록에 추가하는 것만으로는 참여 인원으로 집계되지 않는다.
-3. 12명 이상이 참여한 상태를 14일 연속 유지한 뒤 프로덕션 액세스를 신청한다.
+3. ~~12명 이상이 참여한 상태를 14일 연속 유지한 뒤 프로덕션 액세스를 신청한다.~~ 2026-08-26 사업자 계정 전환으로 요건 해소, 프로덕션 출시됨.
+7. Play Console 개인정보처리방침 URL은 `https://timeflow-landing-mangotree-4133s-projects.vercel.app/privacy`로 교체됐다(2026-08-26 사용자 확인).
 4. Play 심사용 계정 `mangonetwork@mangonw.com`의 비밀번호를 심사 완료 전까지 유지하고 2단계 인증을 다시 켜지 않는다. 로그인 정보와 접근 지침은 Console에 저장했다.
 5. Google 앱 검토는 완료됐으며 Alpha `1.0.0`이 활성 상태다. 후속 정책 또는 품질 알림이 발생하면 해당 항목을 수정한다.
 6. Google Play 웹에서 `Samsung SM-S931N` 설치 완료를 확인했다. USB 연결된 `Samsung SM-N971N`도 현재 Google Play 설치본 `1.0.0 (1)`이며 Android 12에 전달된 APK는 이전 앱 서명 키 `C3:A9:BA:67:0B:12:A2:C3:8B:9A:C9:49:AB:1A:DD:03:8C:D8:68:57`을 사용한다. 이전 키용 Android OAuth 클라이언트를 추가한 뒤 `mangotree@mangonw.com` 로그인, 홈 진입, 강제 종료·재실행 세션 복원, 설정 이메일 표시를 확인했다.
@@ -140,7 +141,7 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
-## 2026-08-26 프로덕션 후보 1.0.10 제출본 (업로드 대기)
+## 2026-08-26 프로덕션 후보 1.0.10 제출본 (업로드 완료·Play 검토 중)
 
 앞의 8/22 `1.0.9 (9)` 제출본을 대체한다. 커밋 `ab57cef`(스플래시 아이콘 20% 축소), `3fbd838`(대중교통 공급자 분리·약속 시각 기준 TMAP 시간표 경로·TAGO 첫 탑승 실시간 도착·NAVER/카카오맵 연결·`이동 시간 근거` 카드, 준비 행동 시간 좌우 드럼), `289cd2e`(mobility Edge Function 배포 기록)가 포함됐다.
 
@@ -152,9 +153,10 @@ npm run release:android
 - 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB(`jarsigner` verified)·APK(`apksigner`) 동일
 - 권한: 1.0.9와 동일 — `READ_CALENDAR`, `SCHEDULE_EXACT_ALARM`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, 위치(전경·백그라운드·FGS), `RECORD_AUDIO`, 알림. 새 권한 없음(외부 지도 연결은 `Linking.openURL`로 앱 스킴을 시도하고 실패 시 웹으로 넘어가므로 `<queries>` 선언 불필요). `WRITE_CALENDAR`·외부 저장소·화면 오버레이 없음.
 - 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL`(9분 44초, 12:36~12:46), `npm run verify` 56스위트·574/574, 시각 회귀 237 passed
-- 서버: mobility Edge Function은 12:31에 배포 완료(`docs/EXECUTION_PLAN.md` 2026-08-26 항목). `TAGO_SERVICE_KEY` 미등록이라 실시간 도착은 `시간표 기준`으로 동작하며, 배포 시점에 TMAP 대중교통 API가 일일 쿼터 초과(429)였다 — 프로덕션 출시 전 쿼터 초기화 후 `이동 시간 근거` 카드에 `TMAP 시간표 기준` 근거가 뜨는지 확인한다.
+- 서버: mobility Edge Function은 TAGO 공공데이터포털 계정키 폴백을 포함해 재배포됐다. 2026-08-27 버스도착정보·버스정류소정보 개발계정이 모두 승인됐고 `/health`는 `realtimeArrivals: configured`다. 00:13 KST `/v1/arrivals` 실호출에서 서면역 정류소·31번의 `realtime` 응답(정류소 ID, 도착예정 초, 남은 정류장 수)을 수신했다. 심야 값 9,973초·99정류장은 다음 운행편/공급자 센티널 가능성이 있어 주간 앱 표시를 추가 관찰한다. TMAP 대중교통 API는 00:02 KST 재확인에도 429라 한도 주기·사용량을 콘솔에서 확인해야 한다.
 - 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK(`191c2607…`)로 좌우 드럼(12→15분)과 네이버 지도·카카오맵 연결을 확인했다. 이 2-ABI AAB/APK 자체의 기기 설치는 하지 않았다.
-- Play 업로드는 사람이 직접 한다(AAB 68MB가 브라우저 업로드 도구 한도를 넘음). 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.10-versionCode10.aab`다. 프로덕션 트랙 승격은 `프로덕션 액세스 진행 상황` 항목의 조건(12명 이상 14일 연속 참여 후 액세스 승인)이 충족된 뒤 가능하다.
+- Play 업로드는 사람이 직접 한다(AAB 68MB가 브라우저 업로드 도구 한도를 넘음). 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.10-versionCode10.aab`다. → 2026-08-26 사용자 보고: 개발자 계정을 사업자 계정으로 전환해 비공개 테스트 12명·14일 요건이 사라졌고, `1.0.9 (9)`가 프로덕션에 출시된 상태다. `1.0.10 (10)` AAB는 프로덕션 트랙에 업로드되어 Play 검토 중이다. 검토 통과 후 `이동 시간 근거` 카드의 `TMAP 시간표 기준` 근거를 프로덕션 설치본에서 확인한다.
+- 2026-08-26 23:01 KST 재확인: `/health` ok, `/v1/routes/estimates` 200, `/v1/routes/transit` 503 — TMAP 대중교통 API 직접 호출도 `429 QUOTA_EXCEEDED`(도보·자동차 API는 정상). 한도 초기화(KST 자정 추정) 뒤 다시 확인한다. `TAGO_SERVICE_KEY` 발급 절차는 `docs/EXECUTION_PLAN.md` 2026-08-26 마지막 항목.
 - Play 데이터 안전 섹션 변경 없음(경로·도착 조회는 좌표만 서버로 보내며 원문 위치·검색어를 저장·집계하지 않는다, `docs/PRODUCT.md` 오류·비용·데이터 기준).
 
 ## 2026-08-22 비공개 테스트 1.0.9 제출본 (업로드 대기)
@@ -200,7 +202,9 @@ npm run release:android
 - 실기기: SM-N971N에 설치해 `1.0.8 (8)`로 올라가고 앱이 실행되며 로그인 세션과 홈 화면이 복원되는 것을 확인했다.
 - 빌드 판정은 `npm`의 종료 코드가 아니라 로그의 `BUILD SUCCESSFUL`로 한다. Gradle 데몬이 중간에 `stop command received`로 죽어도 래퍼가 0을 반환해 성공처럼 보이는 경우가 있다. 이번 작업에서 실제로 한 번 발생했다.
 
-## 프로덕션 액세스 진행 상황 (2026-08-14 확인)
+## 프로덕션 액세스 진행 상황 (2026-08-14 확인 · 2026-08-26 종결)
+
+**2026-08-26 종결: 개발자 계정을 사업자 계정으로 전환해 이 요건이 더 이상 적용되지 않으며 `1.0.9 (9)`가 프로덕션에 출시됐다.** 아래는 개인 계정 시점의 기록이다.
 
 Play Console 대시보드 기준이며 이전 기록의 테스터 7명보다 진전됐다.
 

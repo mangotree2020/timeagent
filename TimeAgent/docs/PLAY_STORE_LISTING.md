@@ -41,7 +41,7 @@ TimeAgent의 제안은 언제든 적용하거나 거절할 수 있습니다.
 - 계정 삭제 안내: https://timeflow-landing-mangotree-4133s-projects.vercel.app/delete-account
 
 세 URL은 Vercel `timeflow-landing` 프로젝트의 프로덕션 도메인이며 배포마다 바뀌지 않는다.
-이전 ChatGPT Sites 주소(`timeflow-landing.wcshin.chatgpt.site`)는 갱신되지 않으므로 Play Console에 등록된 값을 위 주소로 교체해야 한다.
+이전 ChatGPT Sites 주소(`timeflow-landing.wcshin.chatgpt.site`)는 갱신되지 않으므로 Play Console에 등록된 값을 위 주소로 교체해야 한다. → 2026-08-26 교체 완료(사용자 확인).
 
 ## 그래픽 자산
 

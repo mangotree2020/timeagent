@@ -95,6 +95,13 @@ function requiredSecret(name: string): string {
   return value;
 }
 
+// data.go.kr issues one account-wide Decoding key that every applied-for service shares, so the
+// weather key already reaches TAGO once the account has applied for the bus services.
+// A dedicated TAGO_SERVICE_KEY still wins when the keys are meant to be kept apart.
+function tagoServiceKey(): string | undefined {
+  return Deno.env.get("TAGO_SERVICE_KEY")?.trim() || Deno.env.get("KMA_SERVICE_KEY")?.trim() || undefined;
+}
+
 function coordinate(value: unknown): Coordinate | null {
   if (!Array.isArray(value) || value.length < 2) return null;
   const longitude = Number(value[0]);
@@ -823,8 +830,10 @@ async function transitRouteDetails(request: Request): Promise<Response> {
 
 function tagoUrl(base: string, params: Record<string, string>): URL {
   const url = new URL(base);
-  // The secret is the portal's *Decoding* key, like KMA_SERVICE_KEY; searchParams encodes it once.
-  url.searchParams.set("serviceKey", requiredSecret("TAGO_SERVICE_KEY"));
+  // The secret is the portal's *Decoding* key; searchParams encodes it once.
+  const key = tagoServiceKey();
+  if (!key) throw new Error("Missing required secret: TAGO_SERVICE_KEY");
+  url.searchParams.set("serviceKey", key);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return url;
 }
@@ -863,7 +872,7 @@ async function transitArrivals(request: Request): Promise<Response> {
   if (mode === "지하철") {
     return jsonResponse({ arrival: { status: "unsupported", provider: "TAGO", checkedAt, reason: "subway" } satisfies TransitArrivalResult });
   }
-  if (!Deno.env.get("TAGO_SERVICE_KEY")) {
+  if (!tagoServiceKey()) {
     return jsonResponse({ arrival: { status: "unsupported", provider: "TAGO", checkedAt, reason: "not-configured" } satisfies TransitArrivalResult });
   }
 
@@ -1026,7 +1035,7 @@ Deno.serve(async (request) => {
         status: "ok",
         service: "timeagent-mobility",
         providers: metrics.snapshot(),
-        realtimeArrivals: Deno.env.get("TAGO_SERVICE_KEY") ? "configured" : "not-configured",
+        realtimeArrivals: tagoServiceKey() ? "configured" : "not-configured",
       });
     }
 

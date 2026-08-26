@@ -1270,7 +1270,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Accept: 계정 삭제 범위를 바로잡은 정책 문안이 공개 URL에 반영되고, `/privacy`·`/terms`·`/delete-account`가 로그인 없이 열린다. 공개 주소는 배포마다 바뀌지 않는다.
 - Implement: 기존 ChatGPT Sites 배포본은 이곳에서 재배포할 수 없고 Cloudflare 자격 증명도 없어 Vercel로 옮겼다. 사이트는 이미 Next.js 앱이지만 `npm run build`가 Cloudflare용 `vinext build`라 Vercel이 그대로 쓰면 배포가 깨지고, 순수 `next build`는 Cloudflare 전용 스캐폴딩에서 타입 검사가 실패했다(`db/`의 `cloudflare:workers` import, `worker/`의 `Fetcher`·`D1Database`). 정책 페이지가 쓰지 않는 세 디렉터리를 Next 타입 검사에서 제외하고 `vercel.json`으로 빌드를 `next build`에 고정했다. `vinext build`와 렌더 테스트가 그대로 통과해 Cloudflare 경로도 살아 있다. 새 프로젝트는 SSO 보호가 기본 활성이라 정책 URL이 302로 막혀 `vercel project protection disable --sso`로 해제했다.
 - Verify: 프로덕션 배포가 `READY`로 완료됐고 안정 도메인 `https://timeflow-landing-mangotree-4133s-projects.vercel.app`에서 세 페이지 모두 HTTP 200과 정상 제목(`개인정보처리방침`·`이용약관`·`계정 및 데이터 삭제`)을 확인했다. `/delete-account`에 `서버에는 로그인 계정별 최근 장소 목록만 저장합니다`와 `서버에 저장된 최근 장소 목록도 함께 삭제됩니다`가 반영된 것을 확인했다. 루트는 기존 동작대로 `/timeflow.html`로 307 후 200이다. 배포 URL(`...-8sizuwkrx-...`)은 배포마다 바뀌므로 문서에는 안정 도메인만 기록했다.
-- 남은 사람 작업: Play Console에 등록된 개인정보처리방침·계정 삭제 URL을 새 주소로 교체해야 한다. 이전 ChatGPT Sites 주소는 갱신되지 않은 옛 문안 상태로 남아 있다.
+- 남은 사람 작업: Play Console에 등록된 개인정보처리방침·계정 삭제 URL을 새 주소로 교체해야 한다. 이전 ChatGPT Sites 주소는 갱신되지 않은 옛 문안 상태로 남아 있다. → 2026-08-26 사용자 확인: Play Console 개인정보처리방침 URL이 `https://timeflow-landing-mangotree-4133s-projects.vercel.app/privacy`로 교체됐다(완료).
 - Evidence: `sites/timeflow-landing/vercel.json`, `sites/timeflow-landing/tsconfig.json`, `docs/PLAY_STORE_LISTING.md`, `docs/README.md`.
 
 ## 2026-08-16 준비 시간 수정 반영·준비 행동 삭제·홈 카운트다운 (완료)
@@ -1370,7 +1370,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 
 - Accept: 버튼·카드 상자를 눌러 화면을 전환할 때 사각형 음영이 잠깐 나타났다가 전환되는 잔상이 없어진다. 눌림 피드백(살짝 어두워짐)은 유지된다.
 - Implement: 원인은 Android에서 `elevation`·네이티브 `boxShadow`가 있는 뷰(카드·원형 버튼)를 감싼 Pressable에 눌림 스타일로 `opacity`+`transform: scale`을 함께 걸 때, 축소 프레임에서 그림자/래스터 레이어가 모서리 라운드를 따르지 못하고 직사각형으로 노출되는 조합이다. 전 화면의 눌림 스타일에서 `transform: [{ scale: … }]`을 일괄 제거하고(opacity 피드백은 유지, index·alerts·plan·voice-schedule·app-ui·app-icon·weather-card·voice-pulse·google-auth-button 등 10개 파일), `boxShadow`와 중복이던 `elevation`을 제거했다(공용 Card의 `elevation: 1`, 음성 버튼의 `elevation: 9` — RN 0.86의 네이티브 boxShadow가 라운드 모서리를 정확히 따른다).
-- Verify: `npm run verify` 50개 스위트·524/524 통과, 시각 회귀 전체 통과(수치는 로그 — elevation은 웹에 없어 기준선 무변화). 기기 확인은 사용자가 폰을 실사용 중이어서(화면 녹화 프레임에 런처 검색·키보드가 찍힘) 원격 조작을 중단하고 보류했다 — 새 APK(SHA-256 `d3f42f2493d14afd2e3dc40e6e7737054e30c9e78b5baee7f9bc25f6e0152783`)를 설치해 두었고, 카드 터치로 잔상이 사라졌는지는 사용자가 확인한다.
+- Verify: `npm run verify` 50개 스위트·524/524 통과, 시각 회귀 전체 통과(수치는 로그 — elevation은 웹에 없어 기준선 무변화). 기기 확인은 사용자가 폰을 실사용 중이어서(화면 녹화 프레임에 런처 검색·키보드가 찍힘) 원격 조작을 중단하고 보류했다 — 새 APK(SHA-256 `d3f42f2493d14afd2e3dc40e6e7737054e30c9e78b5baee7f9bc25f6e0152783`)를 설치해 두었고, 카드 터치로 잔상이 사라졌는지는 사용자가 확인한다. → 2026-08-26 사용자가 실기기에서 잔상이 사라진 것을 확인했다(완료).
 - 추가(같은 날): 눌림 스타일이 없는 내비게이션 탭에서도 같은 잔상이 보고돼 진짜 공통 원인을 확정했다 — 스택 전환이 `slide_from_right`여서 모든 네비게이션에서 화면 전체가 슬라이드되며, 이때 네이티브 boxShadow 레이어가 직사각형으로 래스터돼 비쳤다. `_layout.tsx`에서 탭 화면 4곳(index·schedules·alerts·settings)은 `animation: none`(탭 UX대로 즉시 전환), 나머지 푸시는 150ms `fade`로 바꿨다. 반영 APK를 폰에 설치해 두었고, 잔상 소멸 확인은 사용자가 한다(테스트 완료 확인됨). 이후 홈 + 버튼과 상단 약속 정보 사이 여백을 두 배(marginTop space.lg 추가)로 늘려 기준선을 갱신했고, 최종 APK SHA-256은 `5aae5b15d27013722080028e606d388707a0de789ba35867e329be42b548efcb`.
 - Evidence: `src/components/app-ui.tsx`, `src/components/voice-pulse-button.tsx`, `src/app/index.tsx` 외 눌림 스타일 일괄 수정 파일들, `src/app/_layout.tsx`, `android/app/build/outputs/apk/release/app-release.apk`.
 
@@ -1413,5 +1413,14 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Accept: 앞선 작업(스플래시 축소, 대중교통 공급자 분리·시간표 경로·실시간 도착, 준비 행동 좌우 드럼)을 모두 담은 `1.0.10 (10)` 서명 AAB/APK가 `artifacts/`에 있고 체크리스트에 크기·SHA-256·서명·권한이 기록돼 있다.
 - Implement: `app.json` `version` 1.0.9→1.0.10, `android.versionCode` 9→10. `npm run release:android`(prebuild + `bundleRelease`·`assembleRelease`, armeabi-v7a·arm64-v8a).
 - Verify: Gradle 797 tasks `BUILD SUCCESSFUL in 9m 44s`(12:36~12:46). AAB 68,721,854 bytes SHA-256 `bfc53ae9cf9e559a8e09aa5b4d26430f688bc846001b39c671e9aed7778ae983`, APK 117,731,349 bytes SHA-256 `8cf2ce8df48c152079bc8fcb500c15923aa167ef891ae7ea23e4e9c35327622c`. `apksigner`/`jarsigner` 모두 `CN=TimeAgent Upload` SHA-1 `05:0B:…:8E:B1`. `aapt dump badging`: `com.timeagent.app` `1.0.10 (10)`, minSdk 24, targetSdk 36, 권한 변동 없음.
-- Observe: Play 업로드와 프로덕션 승격은 사람이 Console에서 진행한다(`docs/RELEASE_CHECKLIST.md` 2026-08-26 항목). 출시 전 TMAP 대중교통 쿼터 초기화 후 근거 카드 확인, `TAGO_SERVICE_KEY` 등록이 남아 있다.
+- Observe: Play 업로드와 프로덕션 승격은 사람이 Console에서 진행한다(`docs/RELEASE_CHECKLIST.md` 2026-08-26 항목). 출시 전 TMAP 대중교통 쿼터 초기화 후 근거 카드 확인, `TAGO_SERVICE_KEY` 등록이 남아 있다. → 같은 날 밤 사용자 보고: 개발자 계정을 사업자 계정으로 전환해 비공개 테스트 12명·14일 요건 없이 `1.0.9 (9)`가 프로덕션에 출시됐고, `1.0.10 (10)` AAB는 업로드되어 Play 검토 중이다.
 - Evidence: `artifacts/TimeAgent-1.0.10-versionCode10.{aab,apk}`(gitignore), `docs/RELEASE_CHECKLIST.md`.
+
+## 2026-08-26 TMAP 대중교통 쿼터 재확인·TAGO 키 발급 준비·Play 상태 갱신 (진행 중)
+
+- Accept: 프로덕션 앱의 대중교통 계획이 `TMAP 시간표 기준` 근거를 보여 주고, TAGO 키 등록 뒤 첫 탑승 정류장의 실시간 도착이 뜬다. 문서의 이월 사람 작업이 실제 상태와 일치한다.
+- Implement: 정책 URL 교체·잔상 실기기 확인·사업자 전환·1.0.9 프로덕션 출시·1.0.10 검토 중 상태를 문서에 반영했다. `mobility/index.ts`는 `TAGO_SERVICE_KEY`가 없을 때 같은 공공데이터포털 계정의 `KMA_SERVICE_KEY`를 쓰도록 하고 전용 키가 있으면 우선하도록 변경했으며, 2026-08-26 23:36 `mobility`를 재배포했다.
+- Verify: 23:01 KST `GET /health` → `realtimeArrivals: not-configured`, `POST /v1/routes/estimates` 200, `POST /v1/routes/transit` 503; TMAP 직접 호출도 `429 QUOTA_EXCEEDED`였다. 폴백 배포 뒤 `/health`는 `realtimeArrivals: configured`로 바뀌었다. 2026-08-27 공공데이터포털에서 `국토교통부_(TAGO)_버스도착정보`와 `국토교통부_(TAGO)_버스정류소정보` 개발계정이 모두 자동 승인됐고 만료예정일은 2028-08-27이다. 승인 전 `/v1/arrivals`는 `unavailable/upstream`, 두 승인 뒤에는 `unsupported/no-route`를 거쳐 00:13 KST `서면역.롯데호텔백화점`·31번 실호출에서 `status: realtime`, TAGO 정류소 `BSB511400000`(cityCode 21), 도착예정 9,973초·99정류장 전 응답을 수신했다. 서비스키·정류소 조회·도착정보 게이트웨이와 정규화 계약이 운영에서 모두 동작한다. Deno 2.9.5 `check`와 `npm run verify` 56 suites / 574 tests가 통과했다.
+- Observe: 00:02 KST 자동 재확인에서도 TMAP 직접 호출은 429, `mobility /v1/routes/transit`은 503이어서 KST 자정 초기화 추정은 틀렸다(`tmp/tmap-quota-recheck-2026-08-27.log`). TMAP 콘솔에서 실제 한도 주기·사용량을 확인하고, 무료 한도가 실사용에 부족하면 유료 플랜 또는 캐시 TTL 연장을 검토한다. TAGO `realtime` 표본은 확보했지만 심야 응답의 9,973초·99정류장 값은 다음 운행편 또는 공급자 센티널일 가능성이 있어, 주간 실제 선택 경로에서 앱 표시 품질을 추가 관찰한다.
+- TAGO 키 발급·승인(완료): 공공데이터포털 동일 계정의 `KMA_SERVICE_KEY`를 공유해 별도 Supabase secret 등록 없이 동작한다. 버스도착정보와 버스정류소정보 모두 앱 개발·개발계정·일일 트래픽 10,000으로 승인됐고, 위치기반서비스 관련 증빙으로 사업자등록증을 첨부했다.
+- Evidence: 이 항목, `docs/RELEASE_CHECKLIST.md` 2026-08-26 항목, `docs/CLIENT_SECRET_SETUP.md`.
