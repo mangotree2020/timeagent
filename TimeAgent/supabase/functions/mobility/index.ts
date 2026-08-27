@@ -95,6 +95,13 @@ function requiredSecret(name: string): string {
   return value;
 }
 
+// TMAP sells transit routing as its own product on a separate app, so the key that answers
+// /transit/routes is not the one that answers POI search and pedestrian/car routing. The basic
+// APIs use TMAP_BASIC_APP_KEY when it is set and share TMAP_APP_KEY when one app has everything.
+function tmapBasicAppKey(): string {
+  return Deno.env.get("TMAP_BASIC_APP_KEY")?.trim() || requiredSecret("TMAP_APP_KEY");
+}
+
 // data.go.kr issues one account-wide Decoding key that every applied-for service shares, so the
 // weather key already reaches TAGO once the account has applied for the bus services.
 // A dedicated TAGO_SERVICE_KEY still wins when the keys are meant to be kept apart.
@@ -494,7 +501,7 @@ async function searchPlaces(requestUrl: URL): Promise<Response> {
     upstreamUrl.searchParams.set("radius", "20");
   }
   const upstream = await fetch(upstreamUrl, {
-    headers: { appKey: requiredSecret("TMAP_APP_KEY") },
+    headers: { appKey: tmapBasicAppKey() },
     signal: AbortSignal.timeout(8_000),
   });
   if (!upstream.ok) return upstreamError("tmap", upstream.status);
@@ -595,7 +602,7 @@ async function walkingEstimate(origin: Coordinate, destination: Coordinate): Pro
     measured("TMAP", "pedestrian", async () => {
       const upstream = await fetch(TMAP_PEDESTRIAN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
+        headers: { "Content-Type": "application/json", appKey: tmapBasicAppKey() },
         body: JSON.stringify({
           startX: origin.longitude,
           startY: origin.latitude,
@@ -640,7 +647,7 @@ async function drivingEstimates(origin: Coordinate, destination: Coordinate): Pr
     measured("TMAP", "car", async () => {
       const upstream = await fetch(TMAP_CAR_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", appKey: requiredSecret("TMAP_APP_KEY") },
+        headers: { "Content-Type": "application/json", appKey: tmapBasicAppKey() },
         body: JSON.stringify({
           startX: origin.longitude,
           startY: origin.latitude,
@@ -962,7 +969,7 @@ async function walkingRoute(request: Request): Promise<Response> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      appKey: requiredSecret("TMAP_APP_KEY"),
+      appKey: tmapBasicAppKey(),
     },
     body: JSON.stringify({
       startX: origin!.longitude,

@@ -73,6 +73,7 @@ Supabase Edge Function Secrets에 다음을 암호화된 비밀값으로 등록�
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
 - `TMAP_APP_KEY`
+- `TMAP_BASIC_APP_KEY` (선택. TMAP 대중교통 Premium을 별도 앱으로 계약해 `TMAP_APP_KEY`에 POI·보행자·자동차 상품이 없을 때, 그 기본 API용 Free 앱키. 없으면 `TMAP_APP_KEY`를 함께 쓴다)
 - `GEMINI_API_KEY`
 - `KMA_SERVICE_KEY`
 - `TAGO_SERVICE_KEY` (국토교통부 `BusSttnInfoInqireService`·`ArvlInfoInqireService` 활용신청 후 발급. 미등록이면 실시간 도착정보 없이 시간표 기준으로 동작)

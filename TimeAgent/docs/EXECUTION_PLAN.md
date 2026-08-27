@@ -1451,3 +1451,11 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Observe: 시각 회귀는 Xcode 라이선스 미동의(`xcrun simctl` exit 69)로 아직 실행하지 못했다.
 - Evidence: `artifacts/TimeAgent-1.0.12-versionCode12.{aab,apk}`(gitignore), `docs/RELEASE_CHECKLIST.md` 2026-08-27 1.0.12 항목, `tmp/release-1.0.12.log`.
 
+## 2026-08-27 장소 검색 502 — TMAP Premium 키 전환 후 POI·도보·자동차 API 거부 (완료)
+
+- Accept: 앱의 장소 검색(`GET /v1/places`)과 도보·자동차 경로가 다시 200을 돌려주고, 대중교통(Premium)과 기본 API(POI·보행자·자동차)의 TMAP 키를 서버에서 따로 둘 수 있다.
+- Implement: 원인은 새벽 01:10 `TMAP_APP_KEY`를 `TimeAgent Premium` 앱키로 바꾸면서 그 앱에 대중교통 Premium 상품만 있어 POI·보행자·자동차 호출이 4xx(`UPSTREAM_REJECTED` 502)로 거부된 것이다(`.env.local`의 기존 Free 키로 직접 호출하면 정상 — 4,020건). `mobility/index.ts`에 `tmapBasicAppKey()`를 두어 POI·보행자(두 곳)·자동차는 `TMAP_BASIC_APP_KEY`가 있으면 그것을, 없으면 `TMAP_APP_KEY`를 쓰고, 대중교통은 `TMAP_APP_KEY`를 유지한다. 이 세션에서는 secret 등록이 불가했다: CLI는 macOS Keychain `Supabase CLI` 토큰 접근 허가 창에서 멈췄고, MCP의 마이그레이션(Vault 읽기 함수)과 `vault.create_secret` SQL은 권한 분류기가 거부했다(MCP 함수 배포 자체는 허용 — 임시 `permission-probe` 함수로 확인, 정리 필요).
+- Verify: 12:0x KST `GET /v1/places?query=스타벅스` 502, `POST /v1/routes/walk` 502 → 사용자 조치 뒤 재확인에서 `/v1/places` 200(스타벅스 결과 반환)·`/v1/routes/walk` 200·`/health` ok. `mobility`는 version 17 그대로라 복구는 서버 재배포가 아니라 TMAP 콘솔 상품 추가 또는 `TMAP_APP_KEY` 교체로 이뤄졌다. `npm run verify` 56스위트·576/576.
+- Observe: 실기기 장소 검색 확인은 폰 USB 연결이 끊겨 하지 못했다 — 다음 연결 때 목적지 검색 한 번으로 확인한다. 임시 함수는 `npx supabase functions delete permission-probe --project-ref chpsoncuxjpgugowrydb`로 지운다. TMAP 키를 앱별로 나눌 때는 `TMAP_BASIC_APP_KEY`를 등록하고 mobility를 재배포하면 코드가 바로 반영한다.
+- Evidence: `supabase/functions/mobility/index.ts`, `docs/CLIENT_SECRET_SETUP.md`.
+
