@@ -154,7 +154,7 @@ npm run release:android
 - 권한: 1.0.10과 동일, 새 권한 없음(`aapt dump badging`으로 비교)
 - 빌드: `npm run release:android`. 1차는 `:app:mergeReleaseResources`에서 AAPT2 데몬이 PNG 컴파일 중 타임아웃돼 `BUILD FAILED in 7m 36s`(코드 무관 일시 오류), 같은 명령 재시도에서 Gradle 797 tasks `BUILD SUCCESSFUL in 15m 26s`(02:14~02:30). `npm run verify` 56스위트·576/576(커밋 `2a8c920` 기준).
 - 서버: mobility는 Premium 키·요약/상세 분기 코드로 배포된 상태(`/health` `realtimeArrivals: configured`, `/v1/routes/transit` 200, `transitSummaryOnly` 요약 200 — 01:51 KST 확인).
-- 실기기: 이 빌드의 기기 설치·요약→상세 전환·TAGO 도착 표시는 아직 확인하지 않았다(`docs/HARNESS.md` 50번 흐름). 업로드 전 또는 내부 테스트 트랙에서 확인한다.
+- 실기기(SM-N971N, Android 12): 이 2-ABI APK를 데이터 유지로 덮어 설치해 새 대중교통 계획에서 `TMAP 시간표 기준` 근거·출발 30분 이내 첫 탑승 상세 조회·지도 경로선·치명적 오류 0건을 확인했다(서버 로그 estimates→transit→arrivals 순서 포함, `docs/EXECUTION_PLAN.md` 2026-08-27 항목). 버스 첫 탑승의 TAGO `실시간` 표시는 이번 경로가 지하철이라 미관찰.
 - Play 업로드는 사람이 직접 한다. 1.0.10이 아직 검토 중이면 검토 완료 후 같은 프로덕션 트랙에 새 버전으로 올린다.
 
 ## 2026-08-26 프로덕션 후보 1.0.10 제출본 (업로드 완료·Play 검토 중)
