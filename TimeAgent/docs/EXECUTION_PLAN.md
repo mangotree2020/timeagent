@@ -1443,3 +1443,11 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Observe: 시각 회귀(`npm run visual:test`)는 이 Mac의 Xcode 라이선스 미동의로 Expo 웹 서버가 `xcrun simctl` 오류(exit 69)에 막혀 실행하지 못했다 — `sudo xcodebuild -license accept` 후 기준 이미지 갱신(`visual:update`)이 필요하다(계획 지도·이동수단 카드·드럼 폭이 바뀌어 기준선 갱신 대상). 이 변경은 클라이언트 코드라 다음 버전(1.0.12) 빌드에 포함된다.
 - Evidence: `src/components/destination-map.native.tsx`, `src/components/wheel-picker.tsx`, `src/app/plan.tsx`, `src/app/create.tsx`, `src/lib/external-maps.ts`, `tmp/ui-*.png`, `tmp/timeagent-ui-demo-2026-08-27.mp4`.
 
+## 2026-08-27 1.0.12 (versionCode 12) 프로덕션 후보 빌드 (완료)
+
+- Accept: UI 다듬기 커밋(`0404ad9`)을 담은 `1.0.12 (12)` 서명 AAB/APK가 `artifacts/`에 있고 체크리스트에 크기·SHA-256·서명·권한이 기록돼 있다. `deno.lock`을 저장소에서 추적한다.
+- Implement: `app.json` `version` 1.0.11→1.0.12, `android.versionCode` 11→12, `package.json` 동기화. Supabase 함수 배포가 만든 `deno.lock`을 추가했다. `npm run release:android`.
+- Verify: 797 tasks `BUILD SUCCESSFUL in 21m 13s`. AAB 68,723,792 bytes SHA-256 `be8d9fe0…05ec94`, APK 117,738,101 bytes SHA-256 `d2705ffb…622900`. `apksigner`/`jarsigner` 모두 `CN=TimeAgent Upload` SHA-1 `05:0B:…:8E:B1`. `aapt dump badging`: `com.timeagent.app` `1.0.12 (12)`, minSdk 24, targetSdk 36, 권한 38개로 1.0.11과 동일.
+- Observe: 시각 회귀는 Xcode 라이선스 미동의(`xcrun simctl` exit 69)로 아직 실행하지 못했다.
+- Evidence: `artifacts/TimeAgent-1.0.12-versionCode12.{aab,apk}`(gitignore), `docs/RELEASE_CHECKLIST.md` 2026-08-27 1.0.12 항목, `tmp/release-1.0.12.log`.
+

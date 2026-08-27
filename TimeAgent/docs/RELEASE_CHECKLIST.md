@@ -141,6 +141,22 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-27 프로덕션 후보 1.0.12 제출본 (업로드 대기)
+
+같은 날의 `1.0.11 (11)` 제출본을 대체한다. 커밋 `0404ad9`(준비 시간 드럼 먹통 수정·행 전체 폭, 지도 +/- 제거·핀치 확대·원형 전체보기/내 위치 버튼·계획 화면 지도 상자만, 이동수단 카드 4개 한 줄, `N분 여유` 배지 여백, 네이버 지도 버튼만, 하단 버튼 반반)가 추가됐다.
+
+- 버전 `1.0.12 (12)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.12-versionCode12.aab` (68,723,792 bytes)
+- AAB SHA-256: `be8d9fe00db8f9bb155340b91c48140885dc5871ad284ea6a9fcba81d305ec94`
+- APK: `artifacts/TimeAgent-1.0.12-versionCode12.apk` (117,738,101 bytes)
+- APK SHA-256: `d2705ffb69e4a4b1dfac299d759482a5918c83e7ee7a27e777d99ba466622900`
+- 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB(`jarsigner` verified)·APK(`apksigner`) 동일
+- 권한: 1.0.11과 동일 38개, 새 권한 없음(`aapt dump badging` 비교)
+- 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL in 21m 13s`. `npm run verify` 56스위트·576/576(커밋 `0404ad9` 기준).
+- 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK(`ced50927…`)로 11:06~11:09 KST 화면 녹화와 함께 지도·드럼·카드·버튼 변경을 확인했다(`docs/EXECUTION_PLAN.md` 2026-08-27 UI 항목). 이 2-ABI 산출물 자체의 기기 설치는 하지 않았다.
+- 시각 회귀: Xcode 라이선스 미동의로 미실행 — 동의 후 `npm run visual:update`로 기준선을 갱신한다.
+- Play 업로드는 사람이 직접 한다. 1.0.10 검토가 끝나면 1.0.11 대신 이 1.0.12를 프로덕션 트랙에 올린다.
+
 ## 2026-08-27 프로덕션 후보 1.0.11 제출본 (업로드 대기)
 
 앞의 8/26 `1.0.10 (10)` 제출본을 대체한다. 커밋 `f424175`(TAGO 실시간 도착 서버 폴백·1.0.9 프로덕션 기록)와 `2a8c920`(TMAP 대중교통 Premium 전환: 계획 계산은 저비용 요약 `/transit/routes/sub`를 `transitSummaryOnly: true`로 요청하고, 지도·출발 30분 이내 첫 탑승·TAGO 확인처럼 구간이 필요할 때만 상세 `/transit/routes`를 추가 조회)가 포함됐다. 클라이언트 변경은 `src/components/transit-evidence.tsx`·`src/lib/mobility-api.ts`뿐이며, 1.0.10 설치본은 서버가 상세 응답을 유지해 기능 회귀 없이 동작한다.
