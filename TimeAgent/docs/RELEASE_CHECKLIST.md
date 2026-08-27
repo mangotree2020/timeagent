@@ -143,17 +143,17 @@ npm run release:android
 
 ## 2026-08-27 프로덕션 후보 1.0.12 제출본 (업로드 대기)
 
-같은 날의 `1.0.11 (11)` 제출본을 대체한다. 커밋 `0404ad9`(준비 시간 드럼 먹통 수정·행 전체 폭, 지도 +/- 제거·핀치 확대·원형 전체보기/내 위치 버튼·계획 화면 지도 상자만, 이동수단 카드 4개 한 줄, `N분 여유` 배지 여백, 네이버 지도 버튼만, 하단 버튼 반반)가 추가됐다.
+같은 날의 `1.0.11 (11)` 제출본을 대체한다. 커밋 `0404ad9`(준비 시간 드럼 먹통 수정·행 전체 폭, 지도 +/- 제거·핀치 확대·원형 전체보기/내 위치 버튼·계획 화면 지도 상자만, 이동수단 카드 4개 한 줄, `N분 여유` 배지 여백, 네이버 지도 버튼만, 하단 버튼 반반)와 **2026-08-28 재빌드로 추가된** `8a98f52`(TMAP 기본 API용 `TMAP_BASIC_APP_KEY` 분리 — 서버 전용)·`abebb9d`(최근 선택한 장소 가로 스와이프 목록, 최대 30개)가 포함됐다. 아래 수치는 08-28 00:2x KST 재빌드본이며, 08-27 첫 빌드(AAB `be8d9fe0…`, APK `d2705ffb…`)를 대체한다.
 
 - 버전 `1.0.12 (12)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
-- AAB: `artifacts/TimeAgent-1.0.12-versionCode12.aab` (68,723,792 bytes)
-- AAB SHA-256: `be8d9fe00db8f9bb155340b91c48140885dc5871ad284ea6a9fcba81d305ec94`
-- APK: `artifacts/TimeAgent-1.0.12-versionCode12.apk` (117,738,101 bytes)
-- APK SHA-256: `d2705ffb69e4a4b1dfac299d759482a5918c83e7ee7a27e777d99ba466622900`
+- AAB: `artifacts/TimeAgent-1.0.12-versionCode12.aab` (68,723,924 bytes)
+- AAB SHA-256: `a4ceed82506b2cb795e53de6fc1cafd651d80705eb2d71c4be2b512d032a29c3`
+- APK: `artifacts/TimeAgent-1.0.12-versionCode12.apk` (117,738,061 bytes)
+- APK SHA-256: `babf8480a24b1d7f099665adf0df9a2287ca909325a03c0c42d0eb00d1ee6506`
 - 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB(`jarsigner` verified)·APK(`apksigner`) 동일
 - 권한: 1.0.11과 동일 38개, 새 권한 없음(`aapt dump badging` 비교)
-- 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL in 21m 13s`. `npm run verify` 56스위트·576/576(커밋 `0404ad9` 기준).
-- 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK(`ced50927…`)로 11:06~11:09 KST 화면 녹화와 함께 지도·드럼·카드·버튼 변경을 확인했다(`docs/EXECUTION_PLAN.md` 2026-08-27 UI 항목). 이 2-ABI 산출물 자체의 기기 설치는 하지 않았다.
+- 빌드: `npm run release:android`, Gradle 797 tasks `BUILD SUCCESSFUL in 9m 48s`(재빌드). `npm run verify` 56스위트·576/576(커밋 `abebb9d` 기준).
+- 실기기(SM-N971N, Android 12): 같은 코드의 arm64 APK로 UI 변경(`ced50927…`, 11:06~11:09 KST 녹화)과 최근 장소 가로 목록(`3b0c35c3…`, 11:54 KST)을 확인했다(`docs/EXECUTION_PLAN.md` 2026-08-27 항목). 이 2-ABI 산출물 자체의 기기 설치는 하지 않았다.
 - 시각 회귀: Xcode 라이선스 미동의로 미실행 — 동의 후 `npm run visual:update`로 기준선을 갱신한다.
 - Play 업로드는 사람이 직접 한다. 1.0.10 검토가 끝나면 1.0.11 대신 이 1.0.12를 프로덕션 트랙에 올린다.
 

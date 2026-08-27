@@ -1467,3 +1467,10 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Observe: 기존 설치본(1.0.9~1.0.12)은 서버가 30개를 돌려줘도 클라이언트가 8개로 잘라 쓰므로 회귀 없음. 임시 함수 `permission-probe`는 CLI 삭제가 Keychain에 막혀 아직 남아 있다(`npx supabase functions delete permission-probe --project-ref chpsoncuxjpgugowrydb`).
 - Evidence: `src/lib/saved-places.ts`, `src/components/destination-picker.tsx`, `src/lib/__tests__/saved-places.test.ts`, `supabase/functions/mobility/index.ts`.
 
+## 2026-08-28 1.0.12 재빌드 — 최근 장소 가로 목록·TMAP 키 분리 포함 (완료)
+
+- Accept: Play에 올릴 `1.0.12 (12)`에 최근 선택한 장소 가로 스와이프 목록(`abebb9d`)이 들어 있다. 버전 번호는 그대로다(1.0.12는 아직 업로드 전).
+- Implement: 코드 변경 없이 `npm run release:android` 재실행. `artifacts/TimeAgent-1.0.12-versionCode12.{aab,apk}`를 새 산출물로 덮어썼다.
+- Verify: 797 tasks `BUILD SUCCESSFUL in 9m 48s`. AAB 68,723,924 bytes SHA-256 `a4ceed82…a29c3`, APK 117,738,061 bytes SHA-256 `babf8480…e6506`. `apksigner`/`jarsigner` `CN=TimeAgent Upload` SHA-1 `05:0B:…:8E:B1`. `aapt dump badging` `1.0.12 (12)`, 권한 38개 동일. 임시 Edge Function `permission-probe`는 사용자가 삭제했고 함수 목록에 mobility·assistant·weather만 남은 것을 확인했다.
+- Evidence: `docs/RELEASE_CHECKLIST.md` 2026-08-27 1.0.12 항목(수치 갱신), `tmp/release-1.0.12-r2.log`.
+
