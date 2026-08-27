@@ -53,9 +53,9 @@ describe('saved places', () => {
     expect(saved[0]).toEqual(expect.objectContaining({ name: '서울시청', lastUsedAt: 200 }));
   });
 
-  test('keeps only the eight most recently selected places', async () => {
+  test('keeps only the thirty most recently selected places', async () => {
     const storage = createMemoryStorage();
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 32; index += 1) {
       await rememberPlace(storage, {
         ...cityHall,
         name: `장소 ${index}`,
@@ -65,8 +65,8 @@ describe('saved places', () => {
     }
 
     const saved = await loadSavedPlaces(storage);
-    expect(saved).toHaveLength(8);
-    expect(saved[0].name).toBe('장소 9');
+    expect(saved).toHaveLength(30);
+    expect(saved[0].name).toBe('장소 31');
     expect(saved.at(-1)?.name).toBe('장소 2');
   });
 
@@ -88,13 +88,13 @@ describe('saved places', () => {
     expect(merged.map((place) => place.name)).toEqual(['우리 집', '회사', '치과']);
   });
 
-  test('caps the merged list at the eight most recent places', () => {
-    const local = Array.from({ length: 6 }, (_, index) => savedPlace(`local ${index}`, 35 + index / 100, 100 + index));
-    const remote = Array.from({ length: 6 }, (_, index) => savedPlace(`remote ${index}`, 36 + index / 100, 200 + index));
+  test('caps the merged list at the thirty most recent places', () => {
+    const local = Array.from({ length: 20 }, (_, index) => savedPlace(`local ${index}`, 35 + index / 100, 100 + index));
+    const remote = Array.from({ length: 20 }, (_, index) => savedPlace(`remote ${index}`, 36 + index / 100, 200 + index));
 
     const merged = mergeSavedPlaces(local, remote);
-    expect(merged).toHaveLength(8);
-    expect(merged[0].name).toBe('remote 5');
+    expect(merged).toHaveLength(30);
+    expect(merged[0].name).toBe('remote 19');
   });
 
   test('persists the merged server list so the next launch starts from it', async () => {

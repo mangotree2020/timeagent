@@ -1459,3 +1459,11 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - Observe: 14:38 KST Samsung Android 12 `SM-N971N`(1.0.12 UI 빌드)의 새 일정 화면에서 장소명 `Starbucks`를 키보드 검색키로 제출하자 `10개의 장소를 찾았습니다`와 서면 인근 스타벅스 목록(서면중앙대로R점·부산서면점 등, 주소 포함)이 표시됐다. 서버 로그 `GET /v1/places?query=Starbucks&latitude=35.1531&longitude=129.0597` 200(14:38:23). 14:43 KST 같은 기기에서 `Lotte`를 입력하고 검색 **버튼**을 탭하자 `10개의 장소를 찾았습니다`(LOTTE전자서비스센터 부산점·롯데백화점 광복점아쿠아몰 등)가 나왔고(서버 `GET /v1/places?query=Lotte…` 200, 14:43:42), 두 번째 결과를 탭하자 `롯데백화점 광복점아쿠아몰 목적지를 선택했습니다`와 함께 확정 카드·최근 장소 목록에 반영되고 `POST /v1/saved-places` 200(14:44:08)이 남았다. 앞서 SM-S931N(Play 1.0.9)에서 버튼 탭이 요청을 남기지 않은 것은 adb 탭 좌표가 키보드 위로 간 조작 오류였다. 초안은 저장하지 않고 닫았다. 임시 함수는 `npx supabase functions delete permission-probe --project-ref chpsoncuxjpgugowrydb`로 지운다. TMAP 키를 앱별로 나눌 때는 `TMAP_BASIC_APP_KEY`를 등록하고 mobility를 재배포하면 코드가 바로 반영한다.
 - Evidence: `supabase/functions/mobility/index.ts`, `docs/CLIENT_SECRET_SETUP.md`.
 
+## 2026-08-27 최근 선택한 장소를 옆으로 밀어 보는 목록으로, 최대 30개 (완료)
+
+- Accept: 목적지 찾기의 `최근 선택한 장소`가 네 개에서 끊기지 않고 가로로 밀어 최근 30개까지 보인다. 기기 저장·서버 저장·병합 모두 30개를 유지한다.
+- Implement: `saved-places.ts`의 `MAX_SAVED_PLACES` 8→30(export), mobility의 `SAVED_PLACES_LIST_LIMIT` 8→30·`SAVED_PLACES_SERVER_CAP` 24→30(RPC `p_cap` 인자로 전달되므로 마이그레이션 불필요). `destination-picker.tsx`는 `slice(0, 4)` 줄바꿈 목록을 가로 `ScrollView`(스크롤바 숨김, `keyboardShouldPersistTaps`, 카드 패딩만큼 양쪽 bleed로 마지막 칩이 살짝 보여 더 있음을 암시)로 바꾸고 칩 최대 폭을 220으로 뒀다. 테스트는 32개 저장→30개 유지, 20+20 병합→30개로 갱신.
+- Verify: `npm run verify` 56스위트·576/576. 실기기 확인은 아래 Observe.
+- Observe: 서버 목록 한도 변경은 mobility 재배포가 필요하다(이 세션에서는 CLI가 Keychain에 막혀 있어 MCP 배포로 처리 예정). 기존 설치본은 서버가 30개를 돌려줘도 8개로 잘라 쓰므로 회귀 없음.
+- Evidence: `src/lib/saved-places.ts`, `src/components/destination-picker.tsx`, `src/lib/__tests__/saved-places.test.ts`, `supabase/functions/mobility/index.ts`.
+

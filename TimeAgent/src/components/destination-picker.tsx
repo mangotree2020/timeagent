@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Card, appType, useAppType } from '@/components/app-ui';
@@ -298,7 +298,7 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
     {savedPlaces.length ? <View style={styles.section}>
       <Text style={styles.label}>최근 선택한 장소</Text>
-      <View style={styles.savedList}>{savedPlaces.slice(0, 4).map((place) => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`저장된 장소 ${place.name} 선택`} onPress={() => void selectPlace(place)} style={styles.savedChip}><AppIcon name="time" size={15} /><Text numberOfLines={1} style={styles.savedText}>{place.name}</Text></Pressable>)}</View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" accessibilityLabel="최근 선택한 장소 목록, 옆으로 밀어 더 보기" contentContainerStyle={styles.savedList} style={styles.savedScroll}>{savedPlaces.map((place) => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`저장된 장소 ${place.name} 선택`} onPress={() => void selectPlace(place)} style={styles.savedChip}><AppIcon name="time" size={15} /><Text numberOfLines={1} style={styles.savedText}>{place.name}</Text></Pressable>)}</ScrollView>
     </View> : null}
 
     <View style={styles.section}>
@@ -352,8 +352,10 @@ const createStyles = (c: AppPalette) => {
   selected: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: c.successSoft, borderWidth: 1, borderColor: c.success },
   selectedName: { color: c.navy, fontSize: 15, lineHeight: 21, fontWeight: '900' },
   section: { gap: space.sm }, label: { fontSize: 13, color: c.textMuted, fontWeight: '800' },
-  savedList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  savedChip: { minHeight: 44, maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  // The scroller bleeds to the card edge so the last chip peeks in, hinting there is more to swipe.
+  savedScroll: { marginHorizontal: -space.lg },
+  savedList: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg },
+  savedChip: { minHeight: 44, maxWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
   savedText: { flexShrink: 1, color: c.deepBlue, fontSize: 13, fontWeight: '800' },
   searchRow: { flexDirection: 'row', gap: space.sm },
   input: { flex: 1, minHeight: 48, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, fontSize: 16, color: c.text },

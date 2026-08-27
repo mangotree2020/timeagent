@@ -43,8 +43,8 @@ const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth
 // stay strict — only the expiry gets this grace, which callers should treat as the trade-off
 // for keeping a low-sensitivity list (place names) reachable without a fresh sign-in.
 const ID_TOKEN_EXPIRY_GRACE_SECONDS = 60 * 60 * 24 * 90;
-const SAVED_PLACES_SERVER_CAP = 24;
-const SAVED_PLACES_LIST_LIMIT = 8;
+const SAVED_PLACES_SERVER_CAP = 30;
+const SAVED_PLACES_LIST_LIMIT = 30;
 
 const NAVER_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const NAVER_REVERSE_GEOCODING_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";

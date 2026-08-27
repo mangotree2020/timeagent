@@ -1,7 +1,8 @@
 import { Coordinate, GeocodedPlace } from '@/lib/journey';
 
 export const SAVED_PLACES_STORAGE_KEY = '@on-time/saved-places';
-const MAX_SAVED_PLACES = 8;
+/** Thirty is enough for every place a person actually returns to; the list scrolls sideways. */
+export const MAX_SAVED_PLACES = 30;
 
 /**
  * Each signed-in account keeps its own list so one person's places never appear for the next
