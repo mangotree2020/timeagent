@@ -1426,3 +1426,12 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 - 2026-08-27 01:42 KST TMAP 전환 완료: 00:00~01:40 일 정산 제한 종료 뒤 기존 `TimeAgent` 앱의 `TMAP 대중교통 Free`만 해지했다. 상품 목록은 6개 사용 중에서 5개 사용 중으로 바뀌고 해당 상품은 `해지완료(2026.08.27)`, 일반 `TMAP Free`와 PUZZLE 상품은 `사용중`을 유지했다. 해지 직후 Premium 키를 쓰는 운영 `/v1/routes/transit`은 HTTP 200, 10개 경로·첫 탑승·5개 구간을 반환해 서비스 연속성을 확인했다.
 - TAGO 키 발급·승인(완료): 공공데이터포털 동일 계정의 `KMA_SERVICE_KEY`를 공유해 별도 Supabase secret 등록 없이 동작한다. 버스도착정보와 버스정류소정보 모두 앱 개발·개발계정·일일 트래픽 10,000으로 승인됐고, 위치기반서비스 관련 증빙으로 사업자등록증을 첨부했다.
 - Evidence: 이 항목, `docs/RELEASE_CHECKLIST.md` 2026-08-26 항목, `docs/CLIENT_SECRET_SETUP.md`.
+
+## 2026-08-27 1.0.11 (versionCode 11) 프로덕션 후보 빌드 (완료)
+
+- Accept: TMAP Premium 요약/상세 분기 클라이언트(`2a8c920`)를 담은 `1.0.11 (11)` 서명 AAB/APK가 `artifacts/`에 있고 체크리스트에 크기·SHA-256·서명·권한이 기록돼 있다.
+- Implement: `app.json` `version` 1.0.10→1.0.11, `android.versionCode` 10→11, `package.json` 동기화. `npm run release:android`.
+- Verify: 1차 빌드는 AAPT2 데몬 타임아웃(`mergeReleaseResources`, PNG 컴파일)으로 실패 — 재시도에서 797 tasks `BUILD SUCCESSFUL in 15m 26s`. AAB 68,722,691 bytes SHA-256 `28aacab1…f25d69`, APK 117,733,257 bytes SHA-256 `23846ace…564b52`. `apksigner`/`jarsigner` 모두 `CN=TimeAgent Upload` SHA-1 `05:0B:…:8E:B1`. `aapt dump badging`: `com.timeagent.app` `1.0.11 (11)`, minSdk 24, targetSdk 36, 권한 변동 없음.
+- Observe: 실기기 확인(요약 계획 → 출발 30분 이내 상세 조회 → TAGO 도착 표시)은 아직 하지 않았다. 1.0.10 Play 검토가 끝난 뒤 업로드한다.
+- Evidence: `artifacts/TimeAgent-1.0.11-versionCode11.{aab,apk}`(gitignore), `docs/RELEASE_CHECKLIST.md` 2026-08-27 항목, `tmp/release-1.0.11.log`·`tmp/release-1.0.11-retry.log`.
+

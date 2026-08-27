@@ -141,6 +141,22 @@ npm run release:android
 - Play 업로드는 사람이 직접 해야 한다. AAB 68MB가 브라우저 업로드 도구의 10MB 한도를 넘고 `업로드` 버튼이 운영체제 파일 선택창을 열기 때문이다. 끌어다 놓을 파일은 `artifacts/TimeAgent-1.0.6-versionCode7.aab`다.
 - 프로덕션 액세스 요건(테스터 12명 이상·14일 연속)은 아직 진행 중이므로 이번에도 비공개 테스트 Alpha 트랙에 올린다. 남은 일수는 Play Console 대시보드에서 다시 확인한다.
 
+## 2026-08-27 프로덕션 후보 1.0.11 제출본 (업로드 대기)
+
+앞의 8/26 `1.0.10 (10)` 제출본을 대체한다. 커밋 `f424175`(TAGO 실시간 도착 서버 폴백·1.0.9 프로덕션 기록)와 `2a8c920`(TMAP 대중교통 Premium 전환: 계획 계산은 저비용 요약 `/transit/routes/sub`를 `transitSummaryOnly: true`로 요청하고, 지도·출발 30분 이내 첫 탑승·TAGO 확인처럼 구간이 필요할 때만 상세 `/transit/routes`를 추가 조회)가 포함됐다. 클라이언트 변경은 `src/components/transit-evidence.tsx`·`src/lib/mobility-api.ts`뿐이며, 1.0.10 설치본은 서버가 상세 응답을 유지해 기능 회귀 없이 동작한다.
+
+- 버전 `1.0.11 (11)`, 패키지 `com.timeagent.app`, targetSdk 36, minSdk 24, ABI `arm64-v8a`·`armeabi-v7a`
+- AAB: `artifacts/TimeAgent-1.0.11-versionCode11.aab` (68,722,691 bytes)
+- AAB SHA-256: `28aacab12c02eaaed954e2baebebb686123ca44a8cf23d8e47c8bdb509f25d69`
+- APK: `artifacts/TimeAgent-1.0.11-versionCode11.apk` (117,733,257 bytes)
+- APK SHA-256: `23846acee32032c45b88c7b76f4fa06f31429ea2957c93ca53cfb450b2564b52`
+- 서명: `CN=TimeAgent Upload` SHA-1 `05:0B:58:2C:0B:D8:6F:80:CF:19:60:A6:4D:F9:02:51:7B:41:8E:B1`, AAB(`jarsigner` verified)·APK(`apksigner`) 동일
+- 권한: 1.0.10과 동일, 새 권한 없음(`aapt dump badging`으로 비교)
+- 빌드: `npm run release:android`. 1차는 `:app:mergeReleaseResources`에서 AAPT2 데몬이 PNG 컴파일 중 타임아웃돼 `BUILD FAILED in 7m 36s`(코드 무관 일시 오류), 같은 명령 재시도에서 Gradle 797 tasks `BUILD SUCCESSFUL in 15m 26s`(02:14~02:30). `npm run verify` 56스위트·576/576(커밋 `2a8c920` 기준).
+- 서버: mobility는 Premium 키·요약/상세 분기 코드로 배포된 상태(`/health` `realtimeArrivals: configured`, `/v1/routes/transit` 200, `transitSummaryOnly` 요약 200 — 01:51 KST 확인).
+- 실기기: 이 빌드의 기기 설치·요약→상세 전환·TAGO 도착 표시는 아직 확인하지 않았다(`docs/HARNESS.md` 50번 흐름). 업로드 전 또는 내부 테스트 트랙에서 확인한다.
+- Play 업로드는 사람이 직접 한다. 1.0.10이 아직 검토 중이면 검토 완료 후 같은 프로덕션 트랙에 새 버전으로 올린다.
+
 ## 2026-08-26 프로덕션 후보 1.0.10 제출본 (업로드 완료·Play 검토 중)
 
 앞의 8/22 `1.0.9 (9)` 제출본을 대체한다. 커밋 `ab57cef`(스플래시 아이콘 20% 축소), `3fbd838`(대중교통 공급자 분리·약속 시각 기준 TMAP 시간표 경로·TAGO 첫 탑승 실시간 도착·NAVER/카카오맵 연결·`이동 시간 근거` 카드, 준비 행동 시간 좌우 드럼), `289cd2e`(mobility Edge Function 배포 기록)가 포함됐다.
