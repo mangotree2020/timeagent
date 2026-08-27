@@ -1463,7 +1463,7 @@ Mobility API는 자체 서버 대신 Supabase Edge Function 기본 HTTPS 주소�
 
 - Accept: 목적지 찾기의 `최근 선택한 장소`가 네 개에서 끊기지 않고 가로로 밀어 최근 30개까지 보인다. 기기 저장·서버 저장·병합 모두 30개를 유지한다.
 - Implement: `saved-places.ts`의 `MAX_SAVED_PLACES` 8→30(export), mobility의 `SAVED_PLACES_LIST_LIMIT` 8→30·`SAVED_PLACES_SERVER_CAP` 24→30(RPC `p_cap` 인자로 전달되므로 마이그레이션 불필요). `destination-picker.tsx`는 `slice(0, 4)` 줄바꿈 목록을 가로 `ScrollView`(스크롤바 숨김, `keyboardShouldPersistTaps`, 카드 패딩만큼 양쪽 bleed로 마지막 칩이 살짝 보여 더 있음을 암시)로 바꾸고 칩 최대 폭을 220으로 뒀다. 테스트는 32개 저장→30개 유지, 20+20 병합→30개로 갱신.
-- Verify: `npm run verify` 56스위트·576/576. 실기기 확인은 아래 Observe.
-- Observe: 서버 목록 한도 변경은 mobility 재배포가 필요하다(이 세션에서는 CLI가 Keychain에 막혀 있어 MCP 배포로 처리 예정). 기존 설치본은 서버가 30개를 돌려줘도 8개로 잘라 쓰므로 회귀 없음.
+- Verify: `npm run verify` 56스위트·576/576. mobility는 MCP로 version 18 배포(14:52 KST) 후 `/health`·`/v1/places`·`/v1/routes/walk`·`/v1/routes/transit` 200, `/v1/saved-places` 미인증 401 확인. arm64 APK(`3b0c35c3…`, 772 tasks)를 Samsung Android 12 `SM-N971N`에 덮어 설치해 11:54 KST 새 일정 화면에서 `최근 선택한 장소`가 한 줄 가로 목록으로 바뀌고 두 번째 칩이 오른쪽 가장자리에 걸쳐 보이며, 왼쪽으로 밀자 `해운대돼지국밥&뼈해장국`·`롯데호텔 부산점`과 다섯 번째 칩이 이어서 나오는 것을 확인했다.
+- Observe: 기존 설치본(1.0.9~1.0.12)은 서버가 30개를 돌려줘도 클라이언트가 8개로 잘라 쓰므로 회귀 없음. 임시 함수 `permission-probe`는 CLI 삭제가 Keychain에 막혀 아직 남아 있다(`npx supabase functions delete permission-probe --project-ref chpsoncuxjpgugowrydb`).
 - Evidence: `src/lib/saved-places.ts`, `src/components/destination-picker.tsx`, `src/lib/__tests__/saved-places.test.ts`, `supabase/functions/mobility/index.ts`.
 
