@@ -17,6 +17,7 @@ import CloudRain from 'lucide-react-native/icons/cloud-rain';
 import CloudSun from 'lucide-react-native/icons/cloud-sun';
 import Footprints from 'lucide-react-native/icons/footprints';
 import Home from 'lucide-react-native/icons/house';
+import LocateFixed from 'lucide-react-native/icons/locate-fixed';
 import MapPin from 'lucide-react-native/icons/map-pin';
 import Moon from 'lucide-react-native/icons/moon';
 import Maximize2 from 'lucide-react-native/icons/maximize-2';
@@ -69,6 +70,7 @@ const icons = {
   walk: Footprints,
   home: Home,
   expand: Maximize2,
+  locate: LocateFixed,
   location: MapPin,
   voice: Mic2,
   speaker: Volume2,

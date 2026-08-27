@@ -1,25 +1,30 @@
-import { NaverMapMarkerOverlay, NaverMapPathOverlay, NaverMapView } from '@mj-studio/react-native-naver-map';
-import { StyleSheet, Text, View } from 'react-native';
+import { NaverMapMarkerOverlay, NaverMapPathOverlay, NaverMapView, NaverMapViewRef } from '@mj-studio/react-native-naver-map';
+import { useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppIcon } from '@/components/app-icon';
 import { useAppType } from '@/components/app-ui';
 import { radius, space } from '@/constants/design';
 import { AppPalette, useAppTheme, useThemedStyles } from '@/state/theme-context';
 import { DestinationMapProps } from '@/components/destination-map';
 import { describeRoutePlan, mapRegionForPath } from '@/lib/journey';
 
-export function DestinationMap({ coordinate, onSelect, route, fill = false }: DestinationMapProps) {
+export function DestinationMap({ coordinate, onSelect, route, fill = false, onExpand }: DestinationMapProps) {
   const styles = useThemedStyles(createStyles);
   const c = useAppTheme().palette;
   const type = useAppType();
+  const map = useRef<NaverMapViewRef>(null);
   const summary = route ? describeRoutePlan(route) : null;
   const region = route ? mapRegionForPath(route.path) : null;
   return <View accessibilityLabel={route ? '출발지에서 목적지까지 이동 경로 지도' : '목적지를 직접 지정하는 지도'} style={[styles.container, fill && styles.fill]}>
     <NaverMapView
+      ref={map}
       style={styles.map}
       mapType="Basic"
       {...(region ? { region } : { initialCamera: { ...coordinate, zoom: 16 } })}
-      isShowLocationButton={!!onSelect}
-      isShowZoomControls
+      // Zoom is pinch and spread only; the native +/- and location buttons give way to the round ones below.
+      isShowLocationButton={false}
+      isShowZoomControls={false}
       onTapMap={onSelect ? ({ latitude, longitude }) => onSelect({ latitude, longitude }) : undefined}
     >
       {route ? <NaverMapPathOverlay
@@ -41,6 +46,22 @@ export function DestinationMap({ coordinate, onSelect, route, fill = false }: De
         caption={{ text: route ? '도착' : '선택한 목적지', color: c.navy, haloColor: 'white', textSize: 13 }}
       />
     </NaverMapView>
+    <View pointerEvents="box-none" style={styles.controls}>
+      {onExpand ? <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="지도 전체 화면으로 보기"
+        onPress={onExpand}
+        style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}>
+        <AppIcon name="expand" size={20} iconColor={c.deepBlue} />
+      </Pressable> : null}
+      {onSelect ? <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="내 위치로 이동"
+        onPress={() => map.current?.setLocationTrackingMode('Follow')}
+        style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}>
+        <AppIcon name="locate" size={20} iconColor={c.deepBlue} />
+      </Pressable> : null}
+    </View>
     {summary ? <Text
       accessibilityLabel={`이동 경로 ${summary.sourceText}, 거리 ${summary.distanceText}, 예상 시간 ${summary.durationText}`}
       style={[type.bodyMuted, styles.summary]}>
@@ -53,5 +74,8 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   container: { height: 280, overflow: 'hidden', borderRadius: radius.md, borderWidth: 1, borderColor: c.border },
   fill: { flex: 1, height: 'auto' },
   map: { flex: 1 },
+  controls: { position: 'absolute', top: space.md, right: space.md, gap: space.sm },
+  roundButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, elevation: 2 },
+  roundButtonPressed: { opacity: 0.7 },
   summary: { minHeight: 36, paddingHorizontal: space.md, paddingVertical: space.sm, backgroundColor: c.surface },
 });

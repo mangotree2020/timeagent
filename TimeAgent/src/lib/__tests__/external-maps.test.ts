@@ -29,8 +29,8 @@ describe('handing the journey to an external map', () => {
     expect(kakaoMapLinks({ ...request, mode: 'car' }).appUrl).toContain('by=CAR');
   });
 
-  it('offers both apps, labelled', () => {
-    expect(externalMapLinks(request).map((links) => links.label)).toEqual(['네이버 지도에서 보기', '카카오맵에서 보기']);
+  it('offers NAVER only on the plan screen, labelled', () => {
+    expect(externalMapLinks(request).map((links) => links.label)).toEqual(['네이버 지도에서 보기']);
   });
 
   it('opens the app when it is installed and the web page when it is not', async () => {

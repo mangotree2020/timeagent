@@ -318,8 +318,8 @@ export function DestinationPicker({ value, onChange, title = '목적지 찾기',
 
     <Button label={showMap ? '지도 닫기' : '지도에서 직접 지정'} variant="secondary" onPress={openMap} />
     {showMap ? <View style={styles.mapSection}>
-      <View style={styles.mapHint}><Text style={[type.bodyMuted, styles.flex]}>지도에서 목적지 위치를 한 번 눌러 주세요.</Text><Pressable accessibilityRole="button" accessibilityLabel="지도 전체 화면으로 보기" onPress={() => setMapExpanded(true)} style={({ pressed }) => [styles.expandButton, pressed && styles.pressed]}><AppIcon name="expand" size={18} iconColor={c.deepBlue} /></Pressable></View>
-      <DestinationMap coordinate={mapCoordinate} onSelect={(coordinate) => void chooseMapCoordinate(coordinate)} />
+      <View style={styles.mapHint}><Text style={[type.bodyMuted, styles.flex]}>지도에서 목적지 위치를 한 번 눌러 주세요.</Text></View>
+      <DestinationMap coordinate={mapCoordinate} onSelect={(coordinate) => void chooseMapCoordinate(coordinate)} onExpand={() => setMapExpanded(true)} />
       {mapStatus === 'loading' ? <Text accessibilityLiveRegion="polite" style={styles.message}>선택한 위치의 주소를 확인하고 있습니다.</Text> : null}
       {mapPlace && mapStatus === 'ready' ? <View style={styles.mapConfirm}><View style={styles.flex}><Text style={styles.resultName}>{mapPlace.name}</Text><Text style={styles.address}>{displayAddress(mapPlace)}</Text></View><Button label="이 위치 선택" onPress={() => void selectPlace(mapPlace)} /></View> : null}
     </View> : null}

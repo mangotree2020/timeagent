@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { radius, space } from '@/constants/design';
@@ -157,15 +157,31 @@ const createStyles = (c: AppPalette) => StyleSheet.create({
   readout: { marginTop: space.sm, textAlign: 'center', fontSize: 14, lineHeight: 20, color: c.textMuted, fontWeight: '700' },
 });
 
-export const MINUTE_WHEEL_ITEM_WIDTH = 52;
-const MINUTE_WHEEL_VISIBLE = 3;
+export const MINUTE_WHEEL_ITEM_WIDTH = 56;
 export const MINUTE_WHEEL_MAX = 120;
+const MINUTE_WHEEL_HEIGHT = 52;
 const MINUTE_ITEMS = Array.from({ length: MINUTE_WHEEL_MAX }, (_, index) => `${index + 1}분`);
+
+/** One value on the sideways drum; memoized so a change re-paints only the values whose emphasis moved. */
+const MinuteItem = memo(function MinuteItem({ item, index, distance, onSelect }: {
+  item: string;
+  index: number;
+  distance: number;
+  onSelect: (index: number) => void;
+}) {
+  const styles = useThemedStyles(createMinuteStyles);
+  return (
+    <Pressable onPress={() => onSelect(index)} style={styles.item}>
+      <Text numberOfLines={1} style={[styles.itemText, distance === 0 ? styles.itemTextSelected : distance === 1 ? styles.itemTextNear : styles.itemTextFar]}>{item}</Text>
+    </Pressable>
+  );
+});
 
 /**
  * The same drum laid on its side for a preparation step's minutes: swipe left or right, the value
- * under the band is the choice. One adjustable control for assistive tech, every visible value
- * tappable, and the band itself is the 44 pt touch target.
+ * under the band is the choice. It fills whatever width its row gives it, so more values are in
+ * reach per swipe. One adjustable control for assistive tech, every visible value tappable, and the
+ * band itself is the 44 pt touch target.
  */
 export function MinuteWheel({ label, value, onChange, testID }: {
   label: string;
@@ -181,21 +197,27 @@ export function MinuteWheel({ label, value, onChange, testID }: {
   const offset = useRef(selectedIndex * MINUTE_WHEEL_ITEM_WIDTH);
   const selected = useRef(selectedIndex);
   const lastItem = MINUTE_ITEMS.length - 1;
+  // The side padding centres the band; it is known only once the row has laid out.
+  const [width, setWidth] = useState(0);
+  const sidePadding = Math.max(0, Math.round((width - MINUTE_WHEEL_ITEM_WIDTH) / 2));
   useEffect(() => { selected.current = selectedIndex; }, [selectedIndex]);
 
   const scrollToIndex = useCallback((index: number, animated = true) => {
     scrollRef.current?.scrollTo({ x: index * MINUTE_WHEEL_ITEM_WIDTH, animated });
   }, []);
-  useEffect(() => { scrollToIndex(selected.current, false); }, [scrollToIndex]);
+  // Placed once the width is known; padding changes shift the content, so the drum is re-placed then.
+  useEffect(() => { if (width > 0) scrollToIndex(selected.current, false); }, [scrollToIndex, width]);
+  // A value set elsewhere moves the drum to match, but never while a finger is on it: on Android a
+  // programmatic scroll during a drag cancels the gesture and the drum feels dead afterwards.
   useEffect(() => {
-    if (Math.abs(offset.current - selectedIndex * MINUTE_WHEEL_ITEM_WIDTH) < 0.5) return;
+    if (dragging.current || Math.abs(offset.current - selectedIndex * MINUTE_WHEEL_ITEM_WIDTH) < 0.5) return;
     scrollToIndex(selectedIndex, false);
   }, [scrollToIndex, selectedIndex]);
   useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
 
   const commit = useCallback((x: number) => {
     const index = Math.min(lastItem, Math.max(0, Math.round(x / MINUTE_WHEEL_ITEM_WIDTH)));
-    if (index !== selected.current) onChange(index + 1);
+    if (index !== selected.current) { selected.current = index; onChange(index + 1); }
     if (Math.abs(x - index * MINUTE_WHEEL_ITEM_WIDTH) > 0.5) scrollToIndex(index);
   }, [lastItem, onChange, scrollToIndex]);
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -210,10 +232,10 @@ export function MinuteWheel({ label, value, onChange, testID }: {
     offset.current = event.nativeEvent.contentOffset.x;
     commit(offset.current);
   };
-  const select = (index: number) => {
-    if (index !== selected.current) onChange(index + 1);
+  const select = useCallback((index: number) => {
+    if (index !== selected.current) { selected.current = index; onChange(index + 1); }
     scrollToIndex(index);
-  };
+  }, [onChange, scrollToIndex]);
 
   return (
     <View
@@ -228,46 +250,43 @@ export function MinuteWheel({ label, value, onChange, testID }: {
         if (event.nativeEvent.actionName === 'increment' && selectedIndex < lastItem) select(selectedIndex + 1);
         if (event.nativeEvent.actionName === 'decrement' && selectedIndex > 0) select(selectedIndex - 1);
       }}
+      onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}
       testID={testID}
       style={styles.wheel}>
-      <View pointerEvents="none" style={styles.band} />
+      <View pointerEvents="none" style={[styles.band, { left: sidePadding }]} />
       <ScrollView
         ref={scrollRef}
         horizontal
         importantForAccessibility="no-hide-descendants"
         nestedScrollEnabled
+        overScrollMode="never"
         showsHorizontalScrollIndicator={false}
         snapToInterval={MINUTE_WHEEL_ITEM_WIDTH}
+        snapToAlignment="start"
+        disableIntervalMomentum
         decelerationRate="fast"
         scrollEventThrottle={16}
-        contentOffset={{ x: selectedIndex * MINUTE_WHEEL_ITEM_WIDTH, y: 0 }}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{ paddingHorizontal: sidePadding }}
         onScroll={onScroll}
         onScrollBeginDrag={() => { dragging.current = true; }}
         onScrollEndDrag={(event) => { dragging.current = false; onScroll(event); }}
         onMomentumScrollEnd={onMomentumScrollEnd}
         style={styles.scroll}>
-        {MINUTE_ITEMS.map((item, index) => {
-          const distance = Math.abs(index - selectedIndex);
-          return (
-            <Pressable key={item} onPress={() => select(index)} style={styles.item}>
-              <Text numberOfLines={1} style={[styles.itemText, distance === 0 ? styles.itemTextSelected : distance === 1 ? styles.itemTextNear : styles.itemTextFar]}>{item}</Text>
-            </Pressable>
-          );
-        })}
+        {MINUTE_ITEMS.map((item, index) => (
+          <MinuteItem key={item} item={item} index={index} distance={Math.min(2, Math.abs(index - selectedIndex))} onSelect={select} />
+        ))}
       </ScrollView>
     </View>
   );
 }
 
 const createMinuteStyles = (c: AppPalette) => StyleSheet.create({
-  wheel: { width: MINUTE_WHEEL_ITEM_WIDTH * MINUTE_WHEEL_VISIBLE, height: 48, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, overflow: 'hidden' },
-  band: { position: 'absolute', top: 2, bottom: 2, left: MINUTE_WHEEL_ITEM_WIDTH, width: MINUTE_WHEEL_ITEM_WIDTH, borderRadius: radius.md, backgroundColor: c.selectedSoft, borderWidth: 1, borderColor: c.primarySoft },
+  wheel: { flex: 1, minWidth: MINUTE_WHEEL_ITEM_WIDTH * 3, height: MINUTE_WHEEL_HEIGHT, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: c.surfaceMuted, overflow: 'hidden' },
+  band: { position: 'absolute', top: 2, bottom: 2, width: MINUTE_WHEEL_ITEM_WIDTH, borderRadius: radius.md, backgroundColor: c.selectedSoft, borderWidth: 1, borderColor: c.primarySoft },
   scroll: { flexGrow: 0 },
-  content: { paddingHorizontal: MINUTE_WHEEL_ITEM_WIDTH },
-  item: { width: MINUTE_WHEEL_ITEM_WIDTH, height: 48, alignItems: 'center', justifyContent: 'center' },
+  item: { width: MINUTE_WHEEL_ITEM_WIDTH, height: MINUTE_WHEEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
   itemText: { textAlign: 'center', fontVariant: ['tabular-nums'] },
-  itemTextSelected: { fontSize: 17, lineHeight: 22, fontWeight: '900', color: c.navy },
+  itemTextSelected: { fontSize: 18, lineHeight: 23, fontWeight: '900', color: c.navy },
   itemTextNear: { fontSize: 14, lineHeight: 18, fontWeight: '700', color: c.textMuted, opacity: 0.55 },
   itemTextFar: { fontSize: 13, lineHeight: 18, fontWeight: '700', color: c.textMuted, opacity: 0.25 },
 });

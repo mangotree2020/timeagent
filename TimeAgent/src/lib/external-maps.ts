@@ -71,8 +71,9 @@ export function kakaoMapLinks({ destination, destinationName, origin, mode = 'tr
   };
 }
 
+/** The apps offered on the plan screen: NAVER only, so one route button stands under the evidence. */
 export function externalMapLinks(request: ExternalMapRequest): ExternalMapLinks[] {
-  return [naverMapLinks(request), kakaoMapLinks(request)];
+  return [naverMapLinks(request)];
 }
 
 export type UrlOpener = (url: string) => Promise<unknown>;

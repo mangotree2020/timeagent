@@ -11,6 +11,8 @@ export type DestinationMapProps = {
   route?: RoutePlan | null;
   /** Fills the parent instead of the default fixed height, for full-screen viewing. */
   fill?: boolean;
+  /** Shows a round full-screen button on the map that calls this when pressed. */
+  onExpand?: () => void;
 };
 
 export function DestinationMap({ coordinate, route, fill = false }: DestinationMapProps) {
